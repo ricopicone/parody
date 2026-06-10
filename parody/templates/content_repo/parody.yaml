@@ -1,0 +1,21 @@
+# Parody project configuration — https://pypi.org/project/parody/
+title: $title
+slug: $slug
+authors:
+  - $author
+description: ""
+acronym: ""
+cover_image: ""
+pdf_file: ""
+
+# Toolchain pin: collaborators and CI build with this parody version.
+parody: "$parody_version"
+
+# Targets built by CI (artifact is always built; preview/pdf are optional).
+targets: [artifact, preview]
+
+chapters:
+  - slug: introduction
+    title: Introduction
+    sections:
+      - overview

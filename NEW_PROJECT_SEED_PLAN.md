@@ -95,8 +95,8 @@ v2 (post-migration, not now): rtc-style stable short-hash IDs per section/anchor
 - [ ] Release v0.1.0 → homepage-django Phase 2 (see its `NOTEBOOKS_SPLIT_PLAN.md`) swaps its management commands to thin wrappers over this CLI.
 
 ### Phase 2 — Content-repo ergonomics
-- [ ] `parody init` scaffold (layout above), `parody build` (JSON + preview), `parody watch` (replaces homepage's `watch_notebooks.py`/livereload), `parody preview` (static HTML so a collaborator never needs Django to see their work).
-- [ ] CI workflow template: build on PR (the missing System B affordance), artifact + checksums on tag.
+- [x] `parody init` scaffold (layout above), `parody build` (JSON + preview), `parody watch` (replaces homepage's `watch_notebooks.py`/livereload), `parody preview` (static HTML so a collaborator never needs Django to see their work). *(2026-06-10: preview resolves {% media %}/{% cite %}/{% cite_many %} (citeproc when a .bib exists) and degrades {% url %}/{% get_cell %}/{% auth_button %}/{% csrf_token %} — the real tag surface turned out larger than the §3 quirk note. New layout passes slug context to filter.lua/figure_mover via PARODY_* env vars, fallback-only so legacy stays golden.)*
+- [x] CI workflow template: build on PR (the missing System B affordance), artifact + checksums on tag. *(ships in `parody init` → .github/workflows/build.yml)*
 - [ ] Migrate homepage notebooks into content repos one at a time, smallest first (sequencing and delivery mechanics are owned by homepage's plan, not this repo).
 
 ### Phase 3 — Print target (System B's machinery, ported properly)

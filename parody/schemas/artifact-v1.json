@@ -8,9 +8,11 @@
   "properties": {
     "schema_version": { "const": 1 },
     "generator": { "type": "string" },
+    "source_repo": { "type": ["string", "null"] },
     "source_commit": { "type": ["string", "null"] },
     "built_at": { "type": "string" },
     "title": { "type": "string" },
+    "slug": { "type": "string" },
     "author": { "type": "array", "items": { "type": "string" } },
     "description": { "type": "string" },
     "acronym": { "type": "string" },

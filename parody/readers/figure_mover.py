@@ -9,6 +9,7 @@ pandoc filter expects them in the *_files directory structure. This utility brid
 that gap by automatically moving files after notebook execution.
 """
 
+import os
 import shutil
 from pathlib import Path
 from typing import List, Dict
@@ -119,8 +120,19 @@ def determine_destination_path(source_notebook_path: Path) -> Path:
             return destination
 
     except (ValueError, IndexError):
-        # If we can't parse the path, create a fallback destination
         file_stem = source_path.stem
+
+        # Parody content-repo layout: <project>/chapters/<chapter>/<file>.py
+        # with the notebook slug supplied by the build via env var.
+        if 'chapters' in parts:
+            chapters_index = parts.index('chapters')
+            notebook_name = os.environ.get('PARODY_NOTEBOOK_SLUG', 'unknown')
+            if len(parts) > chapters_index + 2:
+                chapter_name = parts[chapters_index + 1]
+                return Path('media') / 'notebooks' / notebook_name / chapter_name / f'{file_stem}_files'
+            return Path('media') / 'notebooks' / notebook_name / f'{file_stem}_files'
+
+        # If we can't parse the path, create a fallback destination
         destination = Path('media') / 'notebooks' / 'unknown' / f'{file_stem}_files'
         return destination
 

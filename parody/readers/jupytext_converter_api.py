@@ -876,7 +876,10 @@ def convert_jupytext_with_api_execution(input_path, output_path=None, timeout=30
                         results = move_figures_to_media(
                             source_notebook_path=input_path,
                             figure_files=figure_files,
-                            media_root=Path.cwd(),  # Use project root
+                            # Ancestor behavior: project root = cwd. Parody
+                            # builds override via env so figures land with
+                            # the artifact rather than wherever cwd is.
+                            media_root=Path(os.environ.get("PARODY_MEDIA_ROOT", Path.cwd())),
                             dry_run=False
                         )
                         if results['moved_files']:

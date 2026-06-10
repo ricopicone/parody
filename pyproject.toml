@@ -30,6 +30,7 @@ parody = "parody.cli:main"
 dev = [
     "pytest>=8.0",
     "ruff>=0.4",
+    "watchdog>=4.0",
 ]
 
 [build-system]
@@ -42,6 +43,8 @@ packages = ["parody"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# templates are scaffolding payloads (jupytext sources etc.), not module code
+extend-exclude = ["parody/templates"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]

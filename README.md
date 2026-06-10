@@ -7,7 +7,8 @@ One authoring toolchain for books and course notebooks: pandoc markdown
 
 - **JSON artifact** (schema-versioned; the contract consumed by
   [ricopic.one](https://ricopic.one)'s Django importer and other tools)
-- **standalone HTML preview** (planned, Phase 2)
+- **standalone HTML preview** (no server needed; resolves the artifact's
+  site-template tags itself)
 - **print-quality PDF** via LaTeX profiles (planned, Phase 3)
 
 Parody unifies and replaces the toolchains of two ancestor systems: the
@@ -28,6 +29,14 @@ uv run pytest    # golden tests need the ancestor corpora; see tests/golden/
 ## CLI
 
 ```
-parody build <notebook_dir> <output.json>   # build the JSON artifact
-parody check <artifact.json>                # validate artifact against schema
+parody init <dir>                          # scaffold a content repo (incl. CI workflow)
+parody build <project_dir> <output.json>   # build the JSON artifact (executes code)
+parody preview <project_dir> -o preview    # static HTML site for review
+parody watch <project_dir>                 # rebuild on save (pip install 'parody[watch]')
+parody check <artifact.json>               # validate artifact against schema
+parody check --toolchain                   # verify pinned toolchain versions
 ```
+
+Content repos use `parody.yaml` + `chapters/<ch>/<sec>.md`; the legacy
+System A layout (`__meta.yaml` + `chapter_*/`) builds bit-compatibly and
+remains covered by golden tests.

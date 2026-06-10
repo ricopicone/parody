@@ -1,0 +1,19 @@
+# Build outputs — artifacts are released via CI, never committed
+# (a hard-won lesson: an ancestor repo carries 153 MB of versioned PDFs)
+artifact/
+preview/
+media/
+*.pdf
+
+# Execution byproducts
+.jupytext_cache.json
+.autofig_log.jsonl
+*_files/
+chapters/**/*_code.md
+
+# Python
+__pycache__/
+.venv/
+
+# OS
+.DS_Store

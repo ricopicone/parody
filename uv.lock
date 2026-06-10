@@ -1006,6 +1006,7 @@ watch = [
 dev = [
     { name = "pytest" },
     { name = "ruff" },
+    { name = "watchdog" },
 ]
 
 [package.metadata]
@@ -1027,6 +1028,7 @@ provides-extras = ["watch"]
 dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.4" },
+    { name = "watchdog", specifier = ">=4.0" },
 ]
 
 [[package]]

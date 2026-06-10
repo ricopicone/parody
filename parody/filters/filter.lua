@@ -339,6 +339,15 @@ local function include_jupytext_code(el)
     chapter_slug = current_dir:match("(chapter_[^/]+)/") or ""
   end
 
+  -- Fallback for parody content-repo layout (chapters/<ch>/<sec>.md): the
+  -- build sets these env vars since the legacy path patterns can't match.
+  if notebook_slug == "" then
+    notebook_slug = os.getenv("PARODY_NOTEBOOK_SLUG") or ""
+  end
+  if chapter_slug == "" then
+    chapter_slug = os.getenv("PARODY_CHAPTER_SLUG") or ""
+  end
+
   -- Get the base name without extension for media path construction
   local base_name = path:gsub("%.py$", "")
 
