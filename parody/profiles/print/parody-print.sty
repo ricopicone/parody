@@ -12,6 +12,9 @@
 \RequirePackage{bm}
 \RequirePackage{cancel}
 \RequirePackage{pgf} % matplotlib-exported figures via \inputpgf
+% matplotlib's pgf backend wraps math in \mathdefault; identity is the
+% upstream-recommended definition outside matplotlib's own preamble.
+\providecommand{\mathdefault}[1]{#1}
 \RequirePackage{graphicx}
 \RequirePackage{float}
 \RequirePackage{booktabs}
