@@ -92,6 +92,18 @@ def test_latex_sources_generated_without_tex(tiny_project, monkeypatch):
     assert "\\begin{definition}{Thing}{def:thing}" in section
 
 
+def test_relative_project_dir(tiny_project, monkeypatch):
+    # `parody pdf .` — pandoc runs with cwd at each section dir, so the
+    # writer must resolve the project path up front.
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    monkeypatch.chdir(tiny_project)
+    result = build_pdf(".")
+    assert result is None
+    section = (tiny_project / "build" / "print" / "sections" / "one"
+               / "a-section.tex").read_text()
+    assert "\\begin{exercise}" in section
+
+
 @pytest.mark.pdf
 @needs_tex
 def test_full_pdf_compiles(tiny_project):

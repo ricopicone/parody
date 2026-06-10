@@ -88,8 +88,10 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     section: "chapter-slug/section-slug" builds just that section
     (meta-book's `make section h=...` equivalent).
     """
+    # Resolve before anything derives paths: section_to_latex runs pandoc
+    # with cwd at the section dir, where relative paths no longer resolve.
+    project_dir = Path(project_dir).resolve()
     project = load_project(project_dir)
-    project_dir = Path(project_dir)
 
     if profile_dir is None:
         profile_dir = Path(__file__).parent.parent / "profiles" / "print"
