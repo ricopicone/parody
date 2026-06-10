@@ -132,6 +132,17 @@ def determine_destination_path(source_notebook_path: Path) -> Path:
                 return Path('media') / 'notebooks' / notebook_name / chapter_name / f'{file_stem}_files'
             return Path('media') / 'notebooks' / notebook_name / f'{file_stem}_files'
 
+        # Legacy layout (chapter_*/ dirs) outside a notebooks-source/ tree,
+        # i.e. a standalone content repo keeping the homepage structure:
+        # slug from the env var, chapter from the chapter_* path component.
+        notebook_name = os.environ.get('PARODY_NOTEBOOK_SLUG')
+        if notebook_name:
+            chapter_name = next(
+                (p for p in parts if p.startswith('chapter_')), None)
+            if chapter_name:
+                return Path('media') / 'notebooks' / notebook_name / chapter_name / f'{file_stem}_files'
+            return Path('media') / 'notebooks' / notebook_name / f'{file_stem}_files'
+
         # If we can't parse the path, create a fallback destination
         destination = Path('media') / 'notebooks' / 'unknown' / f'{file_stem}_files'
         return destination
