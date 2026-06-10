@@ -74,7 +74,8 @@ def section_to_latex(section_md, output_tex, resource_dir=None, crossref=True):
 _EXERCISE_ENV_RE = re.compile(
     r"\\begin\{(exercise|labexercise|solution|labsolution)\}"
     r".*?\\end\{\1\}", re.S)
-_MINTED_RE = re.compile(r"\\begin\{minted\}.*?\\end\{minted\}", re.S)
+_MINTED_RE = re.compile(
+    r"\\begin\{(minted|listingsbox|listingsboxfloat)\}.*?\\end\{\1\}", re.S)
 
 
 def _externalize_exercise_verbatim(tex, output_tex):

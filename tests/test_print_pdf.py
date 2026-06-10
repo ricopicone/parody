@@ -140,7 +140,7 @@ def test_verbatim_inside_exercise_is_externalized(tiny_project, monkeypatch):
     assert "\\begin{minted}" in side and "import numpy as np" in side
     # code outside exercises is untouched (the fixture's listing div)
     a_section = (sec_dir / "a-section.tex").read_text()
-    assert "\\begin{listingsbox}" in a_section
+    assert "\\begin{listingsboxfloat}" in a_section
     assert "\\input{sections/one/a-section-verb" not in a_section
 
 
