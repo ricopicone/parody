@@ -145,6 +145,11 @@ def copy_selected_code_files_to_media(notebook_dir, notebook_slug, requested_fil
 
     files_copied = 0
     for chapter_slug, rel_path in sorted(requested_files):
+        # Absolute media-hierarchy paths point at shared assets that already
+        # live in the served media tree; there is nothing to copy from the
+        # source tree (the lua filter passes the href through unchanged).
+        if rel_path.startswith(("notebooks/", "media/")):
+            continue
         chapter_dir = notebook_dir / chapter_slug
         src_path = chapter_dir / rel_path
         if not src_path.exists():

@@ -5,4 +5,4 @@ One pandoc-markdown source (with executed jupytext code), many targets:
 schema-versioned JSON artifact, standalone HTML preview, print PDF.
 """
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"

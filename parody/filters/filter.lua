@@ -288,9 +288,22 @@ local function link_code_file(el)
     chapter_slug = current_dir:match("(chapter_[^/]+)/") or ""
   end
 
-  -- Build media path for download link
+  -- Fallback for standalone content repos (no notebooks-source/ ancestor):
+  -- the build provides the slugs via env vars.
+  if notebook_slug == "" then
+    notebook_slug = os.getenv("PARODY_NOTEBOOK_SLUG") or ""
+  end
+  if chapter_slug == "" then
+    chapter_slug = os.getenv("PARODY_CHAPTER_SLUG") or ""
+  end
+
+  -- Build media path for download link. Paths already inside the media
+  -- hierarchy (notebooks/... or media/...) pass through unchanged so a
+  -- directive can point at shared assets outside its own chapter.
   local media_path = path
-  if notebook_slug ~= "" and chapter_slug ~= "" then
+  if path:match("^notebooks/") or path:match("^media/") then
+    media_path = path:gsub("^media/", "")
+  elseif notebook_slug ~= "" and chapter_slug ~= "" then
     media_path = string.format("notebooks/%s/%s/%s",
       notebook_slug, chapter_slug, path)
   end

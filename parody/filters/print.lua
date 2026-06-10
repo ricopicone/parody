@@ -215,6 +215,28 @@ local function plainciter(el)
     '{\\textcite[{' .. pre .. '}][{' .. post .. '}]{' .. text .. '}' .. postpost .. '}')
 end
 
+-- Web-pipeline bibliography spans: [key]{.cite}, [key|note]{.cite},
+-- [k1,k2]{.cite}. The homepage filter turns these into Django {% cite %}
+-- tags; for print they map to biblatex (\textcite when .plain or
+-- .no-parentheses requests no parentheses).
+local function spanciter(el)
+  if not is_latex() then return el end
+  local text = pandoc.utils.stringify(el.content or '')
+  text = text:match('^%s*(.-)%s*$') or ''
+  local note = ''
+  local pipe_pos = text:find('|')
+  if pipe_pos then
+    note = text:sub(pipe_pos + 1):match('^%s*(.-)%s*$') or ''
+    text = text:sub(1, pipe_pos - 1):match('^%s*(.-)%s*$') or ''
+  end
+  local keys = text:gsub('%s*,%s*', ',')
+  local cmd = '\\autocite'
+  if el.classes:includes('plain') or el.classes:includes('no-parentheses') then
+    cmd = '\\textcite'
+  end
+  return pandoc.RawInline('latex', cmd .. '[{' .. note .. '}]{' .. keys .. '}')
+end
+
 -- Index entries: \myindex (prose) and \indexc (code), with the ancestor's
 -- special-class vocabulary kept verbatim so existing sources port cleanly.
 local indexer_special = {
@@ -893,6 +915,8 @@ function Span(el)
     return labeler(el)
   elseif el.classes:includes('plaincite') then
     return plainciter(el)
+  elseif el.classes:includes('cite') then
+    return spanciter(el)
   elseif el.classes:includes('keyword') then
     return keyworder(el)
   elseif el.classes:includes('index') then
