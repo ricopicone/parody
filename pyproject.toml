@@ -1,0 +1,62 @@
+[project]
+name = "parody"
+version = "0.1.0.dev0"
+description = "Unified book/notebook authoring toolchain: pandoc markdown + executed jupytext sources to JSON artifact, HTML preview, and print PDF"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Rico A.R. Picone" }]
+dependencies = [
+    # Exact pin: bundles pandoc 3.6.1, the version the golden artifacts were
+    # built with (see parody/toolchain.py). Bump only with a golden re-baseline.
+    "pypandoc-binary==1.15",
+    "pyyaml>=6.0",
+    "jupytext>=1.16",
+    "nbformat>=5.10",
+    "nbconvert>=7.16",
+    "matplotlib>=3.8",
+    "traitlets>=5.14",
+    "ipykernel>=6.29",
+    "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+watch = ["watchdog>=4.0"]
+
+[project.scripts]
+parody = "parody.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["parody"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Ported ancestor code is kept near-verbatim for golden parity; only
+# behavior-neutral cleanups are applied there.
+"parody/readers/*" = ["E722", "E731", "E741", "F401", "F841", "W291", "W293"]
+"parody/utils/*" = ["E722", "E731", "E741", "F401", "F841", "W291", "W293"]
+"parody/writers/artifact.py" = ["E722", "E731", "E741", "F401", "F841", "W291", "W293"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "golden: golden-parity tests against ancestor outputs (require source corpora)",
+    "execution: tests that execute notebook code cells (slow)",
+]

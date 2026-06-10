@@ -1,0 +1,11 @@
+{
+  "name": "parody",
+  "build": { "dockerfile": "../Dockerfile" },
+  "overrideCommand": true,
+  "customizations": {
+    "vscode": {
+      "extensions": ["charliermarsh.ruff", "ms-python.python"]
+    }
+  },
+  "postCreateCommand": "uv sync"
+}

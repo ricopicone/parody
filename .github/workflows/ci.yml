@@ -1,0 +1,20 @@
+# CI for the parody toolchain itself. (Content repos get their own template
+# via `parody init` in Phase 2.) Golden-parity tests need the private source
+# corpora and auto-skip here; they run locally pre-release.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run parody check --toolchain
+      - run: uv run pytest -q

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+
+# Build artifacts — never commit build outputs to content or toolchain repos
+# (System B carries 153 MB of versioned PDFs in git; we don't repeat that)
+*.pdf
+.jupytext_cache.json
+.autofig_log.jsonl
+# figure_mover writes media/ relative to cwd (ancestor behavior; parameterize in Phase 2)
+/media/
+
+# OS
+.DS_Store
