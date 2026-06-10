@@ -602,7 +602,14 @@ def _strip_autofig_image_outputs(notebook, autofig_entries):
 
 
 def execute_notebook_api(notebook, timeout=300, cwd=None):
-    """Execute notebook using nbconvert ExecutePreprocessor."""
+    """Execute notebook using nbconvert ExecutePreprocessor.
+
+    The kernel is pinned to the running interpreter (sys.executable) rather
+    than whatever a 'python3' kernelspec resolves to: ipykernel's default spec
+    launches a bare `python` from PATH, so under `make`/CI the kernel could be
+    a different interpreter than the one parody (and the notebook's
+    dependencies) are installed in.
+    """
     try:
         # Create ExecutePreprocessor with figure extraction
         from traitlets.config import Config as TraitletsConfig
@@ -618,9 +625,41 @@ def execute_notebook_api(notebook, timeout=300, cwd=None):
         if cwd:
             ep.cwd = str(cwd)
 
+        # Pin the kernel to the current interpreter.
+        from jupyter_client.manager import KernelManager
+        km = KernelManager(kernel_name='python3')
+        try:
+            km.kernel_spec.argv = [
+                sys.executable, '-m', 'ipykernel_launcher', '-f', '{connection_file}'
+            ]
+        except Exception:
+            # No 'python3' kernelspec anywhere; build the spec from scratch.
+            from jupyter_client.kernelspec import KernelSpec
+            km._kernel_spec = KernelSpec(
+                argv=[sys.executable, '-m', 'ipykernel_launcher', '-f', '{connection_file}'],
+                display_name='python3', language='python',
+            )
+
         # Execute the notebook with proper working directory
         resources = {}
-        executed_notebook, resources = ep.preprocess(notebook, resources)
+        executed_notebook, resources = ep.preprocess(notebook, resources, km=km)
+
+        # allow_errors=True keeps execution going so we can report every
+        # failing cell, but errors must not silently become content: the
+        # ancestor pipeline baked tracebacks into served HTML.
+        errors = []
+        for cell in executed_notebook.cells:
+            if cell.get('cell_type') != 'code':
+                continue
+            for out in cell.get('outputs', []):
+                if out.get('output_type') == 'error':
+                    errors.append(f"{out.get('ename', 'Error')}: {out.get('evalue', '')}")
+        if errors:
+            print(f"❌ {len(errors)} cell(s) raised during execution:")
+            for err in errors[:5]:
+                print(f"   {err}")
+            return executed_notebook, False
+
         return executed_notebook, True
 
     except Exception as e:
@@ -797,6 +836,11 @@ def convert_jupytext_with_api_execution(input_path, output_path=None, timeout=30
 
         # Step 2: Execute the notebook using API (set working directory to script's directory)
         executed_notebook, execution_success = execute_notebook_api(notebook, timeout, cwd=script_dir)
+        if not execution_success:
+            # Do not write markdown from a failed execution: the ancestor
+            # pipeline wrote tracebacks/missing outputs into content silently.
+            print(f"❌ Execution failed; not writing {output_path}")
+            return False, None, False
 
         # Step 2a: Strip injected capture code from cells and remove helper cell
         executed_notebook = _strip_autofig_capture_code(executed_notebook)

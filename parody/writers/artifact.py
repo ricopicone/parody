@@ -55,6 +55,10 @@ def convert_jupytext_files_in_directory(directory):
         force=False
     )
 
+    if results['failed_files']:
+        failed = ", ".join(str(f) for f in results['failed_files'])
+        raise RuntimeError(f"jupytext conversion failed for: {failed}")
+
     return results['converted_files'] + results['cached_files']
 
 def is_jupytext_file(file_path):
@@ -572,6 +576,10 @@ def load_section(chapter_dir, section_slug):
 
 def convert_notebook(notebook_dir, output_path, convert_jupytext=True, media_root=None):
     notebook_dir = Path(notebook_dir)
+    if media_root is not None:
+        # Execution-time figure moves read this env var (the figure mover sits
+        # several layers below and ancestor code resolved against cwd).
+        os.environ["PARODY_MEDIA_ROOT"] = str(Path(media_root).resolve())
     meta = load_yaml(notebook_dir / "__meta.yaml")
     notebook_slug = notebook_dir.name
 
