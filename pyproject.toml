@@ -62,4 +62,5 @@ testpaths = ["tests"]
 markers = [
     "golden: golden-parity tests against ancestor outputs (require source corpora)",
     "execution: tests that execute notebook code cells (slow)",
+    "pdf: tests that compile LaTeX to PDF (require TeX; slow)",
 ]

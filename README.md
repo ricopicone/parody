@@ -9,7 +9,8 @@ One authoring toolchain for books and course notebooks: pandoc markdown
   [ricopic.one](https://ricopic.one)'s Django importer and other tools)
 - **standalone HTML preview** (no server needed; resolves the artifact's
   site-template tags itself)
-- **print-quality PDF** via LaTeX profiles (planned, Phase 3)
+- **print-quality PDF** via LaTeX profiles (lualatex/latexmk; generic
+  profile bundled, book-private profiles pluggable)
 
 Parody unifies and replaces the toolchains of two ancestor systems: the
 homepage-django notebooks pipeline and the rtc-book `meta-*` book machinery.
@@ -33,6 +34,7 @@ parody init <dir>                          # scaffold a content repo (incl. CI w
 parody build <project_dir> <output.json>   # build the JSON artifact (executes code)
 parody preview <project_dir> -o preview    # static HTML site for review
 parody watch <project_dir>                 # rebuild on save (pip install 'parody[watch]')
+parody pdf <project_dir> [--solutions] [--section ch/sec]   # print PDF (needs TeX)
 parody check <artifact.json>               # validate artifact against schema
 parody check --toolchain                   # verify pinned toolchain versions
 ```

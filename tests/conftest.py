@@ -3,6 +3,13 @@ from pathlib import Path
 
 import pytest
 
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--regen-golden", action="store_true", default=False,
+        help="regenerate Phase 3 golden LaTeX snippets instead of comparing",
+    )
+
 # Source corpora live in the (private, local) homepage-django checkout until
 # they migrate to content repos in Phase 2. Golden tests skip when absent.
 DEFAULT_SOURCES = Path.home() / "homepage-django" / "teaching" / "notebooks-source"

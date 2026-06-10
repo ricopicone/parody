@@ -13,6 +13,11 @@ pandoc; this module records the expected version and verifies it.
 # re-baseline.
 PANDOC_VERSION = "3.6.1"
 
+# pandoc-crossref must match the pandoc major/minor it was built against
+# (v0.3.18.1 is built with pandoc 3.6 / pandoc-types 1.23.1). Install:
+#   https://github.com/lierdakil/pandoc-crossref/releases/tag/v0.3.18.1
+PANDOC_CROSSREF_VERSION = "0.3.18.1"
+
 
 def local_pandoc_version():
     """Return the pandoc version pypandoc will use, or None if unavailable."""
@@ -32,5 +37,37 @@ def check_pandoc(warn=True):
         print(
             f"⚠️  pandoc version mismatch: pinned {PANDOC_VERSION}, "
             f"found {local or 'none'}. Output may differ from golden artifacts."
+        )
+    return ok, local
+
+
+def local_pandoc_crossref_version():
+    """Return the local pandoc-crossref version string, or None."""
+    import subprocess
+
+    from .writers.latex import _tool_env
+
+    try:
+        out = subprocess.run(
+            ["pandoc-crossref", "--version"],
+            capture_output=True, text=True, timeout=10, env=_tool_env(),
+        ).stdout
+        # "pandoc-crossref v0.3.18.1 git commit ..."
+        import re
+
+        m = re.search(r"v([\d.]+)", out)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def check_pandoc_crossref(warn=True):
+    """Return (ok, local_version) for the pandoc-crossref pin."""
+    local = local_pandoc_crossref_version()
+    ok = local == PANDOC_CROSSREF_VERSION
+    if warn and not ok:
+        print(
+            f"⚠️  pandoc-crossref mismatch: pinned {PANDOC_CROSSREF_VERSION}, "
+            f"found {local or 'none'}."
         )
     return ok, local

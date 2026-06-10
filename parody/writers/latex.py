@@ -1,0 +1,176 @@
+"""Print-PDF writer (Phase 3).
+
+Pipeline, ported from rtc-book's common.mk + meta-book Makefile:
+
+    section .md --pandoc(-t latex, print.lua, pandoc-crossref, --biblatex)--> .tex
+    main.tex template (\\input per section) --latexmk(lualatex, -shell-escape,
+    biber)--> PDF
+
+Targets mirror meta-book: full book, solutions manual (\\issolution),
+single section. The generic profile (parody/profiles/print/) supplies the
+environments; book-private classes/fonts (MIT Press) come from the content
+repo via profile_dir override.
+"""
+
+import os
+import shutil
+import subprocess
+from pathlib import Path
+from string import Template
+
+from ..config import load_project
+
+PANDOC_FROM = "markdown-markdown_in_html_blocks+raw_tex+tex_math_dollars"
+TEXBIN_FALLBACKS = ["/Library/TeX/texbin", "/usr/local/texlive/bin"]
+
+
+def _tool_env():
+    env = os.environ.copy()
+    extra = [p for p in TEXBIN_FALLBACKS if Path(p).is_dir()]
+    local_bin = Path.home() / ".local" / "bin"
+    if local_bin.is_dir():
+        extra.append(str(local_bin))
+    if extra:
+        env["PATH"] = env["PATH"] + os.pathsep + os.pathsep.join(extra)
+    return env
+
+
+def have_tool(name):
+    return shutil.which(name, path=_tool_env()["PATH"]) is not None
+
+
+def section_to_latex(section_md, output_tex, resource_dir=None, crossref=True):
+    """Convert one section .md to a .tex fragment via pandoc + print.lua."""
+    import pypandoc
+
+    filter_path = Path(__file__).parent.parent / "filters" / "print.lua"
+    args = [
+        f"--lua-filter={filter_path}",
+        "--biblatex",
+        "-M", "cref=True",
+        "--wrap=none",
+    ]
+    if crossref and have_tool("pandoc-crossref"):
+        args += ["-F", shutil.which("pandoc-crossref", path=_tool_env()["PATH"])]
+    if resource_dir:
+        args += [f"--resource-path={resource_dir}"]
+    output_tex = Path(output_tex)
+    output_tex.parent.mkdir(parents=True, exist_ok=True)
+    # pypandoc needs cwd at the section dir so includes resolve relative paths
+    tex = pypandoc.convert_file(
+        str(section_md), "latex", format=PANDOC_FROM, extra_args=args,
+        cworkdir=str(Path(section_md).parent),
+    )
+    output_tex.write_text(tex, encoding="utf-8")
+    return output_tex
+
+
+def strip_frontmatter(md_path, dest_path):
+    """Write a copy of the section with YAML frontmatter removed (pandoc
+    would otherwise interpret stray frontmatter keys)."""
+    raw = Path(md_path).read_text(encoding="utf-8")
+    if raw.startswith("---"):
+        parts = raw.split("---", 2)
+        if len(parts) == 3:
+            raw = parts[2]
+    Path(dest_path).write_text(raw.strip() + "\n", encoding="utf-8")
+    return dest_path
+
+
+def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
+              profile_dir=None, keep_build=False, build_dir=None):
+    """Build the print PDF. Returns the path to the produced PDF.
+
+    section: "chapter-slug/section-slug" builds just that section
+    (meta-book's `make section h=...` equivalent).
+    """
+    project = load_project(project_dir)
+    project_dir = Path(project_dir)
+
+    if profile_dir is None:
+        profile_dir = Path(__file__).parent.parent / "profiles" / "print"
+    profile_dir = Path(profile_dir)
+
+    if build_dir is None:
+        build_dir = project_dir / "build" / ("solutions" if solutions else "print")
+    build_dir = Path(build_dir)
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    # Profile files into the build dir
+    for f in profile_dir.iterdir():
+        if f.name != "main.tex.template":
+            shutil.copy2(f, build_dir / f.name)
+
+    # Convert sections
+    chapters_tex = []
+    for chapter in project.chapters:
+        sections = chapter.section_slugs
+        if section:
+            want_ch, _, want_sec = section.partition("/")
+            if chapter.slug != want_ch:
+                continue
+            sections = [s for s in sections if s == want_sec]
+        if sections and not section:
+            chapters_tex.append(f"\\chapter{{{chapter.title or chapter.slug}}}")
+        for sec_slug in sections:
+            src = chapter.directory / f"{sec_slug}.md"
+            stripped = build_dir / "sections" / chapter.slug / f"{sec_slug}.md"
+            stripped.parent.mkdir(parents=True, exist_ok=True)
+            strip_frontmatter(src, stripped)
+            tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
+            print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
+            section_to_latex(stripped, tex_path, resource_dir=chapter.directory)
+            chapters_tex.append(f"\\input{{sections/{chapter.slug}/{sec_slug}.tex}}")
+
+    if not chapters_tex:
+        raise SystemExit(f"no sections matched (section={section!r})")
+
+    # Bibliography
+    bibresource = ""
+    bibliography = ""
+    if project.bibliography:
+        shutil.copy2(project.bibliography, build_dir / project.bibliography.name)
+        bibresource = f"\\addbibresource{{{project.bibliography.name}}}"
+        bibliography = "\\printbibliography"
+
+    flags = []
+    if solutions:
+        flags.append("\\def\\issolution{1}")
+
+    template = Template((profile_dir / "main.tex.template").read_text(encoding="utf-8"))
+    main_tex = template.safe_substitute(
+        flags="\n".join(flags),
+        title=project.meta.get("title", project.slug),
+        author=" \\and ".join(project.meta.get("author", [])),
+        chapters="\n".join(chapters_tex),
+        bibresource=bibresource,
+        bibliography=bibliography,
+    )
+    (build_dir / "main.tex").write_text(main_tex, encoding="utf-8")
+
+    # latexmk
+    env = _tool_env()
+    if not shutil.which("latexmk", path=env["PATH"]):
+        print("⚠️  latexmk not found — wrote LaTeX sources to "
+              f"{build_dir}, skipping PDF compilation")
+        return None
+    result = subprocess.run(
+        ["latexmk", "-r", "latexmkrc", "main.tex"],
+        cwd=build_dir, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    if result.returncode != 0:
+        tail = "\n".join(result.stdout.splitlines()[-30:])
+        raise RuntimeError(f"latexmk failed (exit {result.returncode}):\n{tail}")
+
+    produced = build_dir / "main.pdf"
+    if output_pdf is None:
+        suffix = "-solutions" if solutions else ""
+        output_pdf = project_dir / f"{project.slug}{suffix}.pdf"
+    output_pdf = Path(output_pdf)
+    output_pdf.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(produced, output_pdf)
+    if not keep_build:
+        pass  # build dir kept for incremental latexmk runs; it is gitignored
+    print(f"PDF written to {output_pdf}")
+    return output_pdf

@@ -1,0 +1,179 @@
+% parody generic print profile.
+% Implements the environments and commands emitted by parody/filters/print.lua
+% with stock LaTeX packages — the portable counterpart of rtc-book's
+% common/styles-tex (whose MIT Press class and licensed fonts are
+% book-private and belong in a private profile package, not here).
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-print}[2026/06/10 parody generic print profile]
+
+\RequirePackage{amsmath}
+\RequirePackage{graphicx}
+\RequirePackage{float}
+\RequirePackage{booktabs}
+\RequirePackage{caption}
+\RequirePackage{subcaption}
+\RequirePackage{xcolor}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage{minted}
+\RequirePackage{xsim}
+\RequirePackage{menukeys}
+\RequirePackage{xurl}
+\RequirePackage{fontawesome5}
+\RequirePackage{imakeidx}
+\RequirePackage{hyperref}
+\RequirePackage[noabbrev,capitalise,nameinlink]{cleveref}
+
+\makeindex
+
+% ---- conditional build flags (set by the writer via \def before \input) ----
+% \issolution  : solutions manual build (print solutions)
+% \ispartial   : partial/sample build
+% \nocropmarks : no crop marks
+
+% ---- exercises (xsim) ----
+\DeclareExerciseProperty{hash}
+\ifdefined\issolution
+  \xsimsetup{solution/print=true}
+\else
+  \xsimsetup{solution/print=false}
+\fi
+\DeclareExerciseType{labexercise}{
+  exercise-env=labexercise,
+  solution-env=labsolution,
+  exercise-name=Lab Exercise,
+  solution-name=Lab Solution,
+  exercise-template=default,
+  solution-template=default,
+}
+\ifdefined\issolution
+  \xsimsetup{labsolution/print=true}
+\fi
+
+% ---- theorem-like environments: \begin{<env>}{title}{label} ----
+\newcounter{thmctr}
+\newtcolorbox{parodythmbox}[2]{%
+  enhanced, breakable, colback=black!3, colframe=black!40,
+  title={\textbf{#1}\if\relax\detokenize{#2}\relax\else\quad\textit{#2}\fi},
+}
+\newenvironment{definition}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Definition~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{theorem}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Theorem~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{lemma}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Lemma~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{corollary}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Corollary~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{proposition}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Proposition~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\crefname{thmctr}{result}{results}
+
+% ---- infobox: \begin{infobox}[label=...]{title} ----
+\newcounter{infoboxctr}
+\newenvironment{infobox}[2][]
+  {\refstepcounter{infoboxctr}%
+   \begin{tcolorbox}[enhanced, breakable, colback=blue!4,
+     colframe=blue!35!black!50,
+     title={\textbf{Box~\theinfoboxctr}%
+       \if\relax\detokenize{#2}\relax\else: #2\fi}, #1]}
+  {\end{tcolorbox}}
+\crefname{infoboxctr}{box}{boxes}
+
+% ---- examples: \begin{myexample}[version]{id}{hash} ----
+\newcounter{examplectr}
+\newenvironment{myexample}[3][]
+  {\refstepcounter{examplectr}%
+   \begin{tcolorbox}[enhanced, breakable, colback=green!4,
+     colframe=green!35!black!50,
+     title={\textbf{Example~\theexamplectr}}]%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi}
+  {\end{tcolorbox}}
+\crefname{examplectr}{example}{examples}
+
+% ---- listings: \begin{listingsbox(float)}{minted-style}{caption}{id}({pos})
+% The style name encodes the language (clisting*, pythonlisting,
+% armlisting, textlisting). minted scans for the *outermost* environment's
+% \end, which \VerbatimEnvironment arranges when called in begin-code.
+\newcounter{listingctr}
+\newenvironment{mintedwrapper}{\par\medskip}{\par\medskip}
+\makeatletter
+\newcommand{\parody@listinghead}[2]{%
+  \par\medskip\refstepcounter{listingctr}%
+  \noindent\textbf{Listing~\thelistingctr}%
+  \if\relax\detokenize{#1}\relax\else: #1\fi
+  \if\relax\detokenize{#2}\relax\else\label{#2}\fi\par\nopagebreak}
+\newcommand{\parody@stylelang}[1]{%
+  \def\parody@lang{text}%
+  \in@{clisting}{#1}\ifin@\def\parody@lang{c}\fi
+  \in@{pythonlisting}{#1}\ifin@\def\parody@lang{python}\fi
+  \in@{armlisting}{#1}\ifin@\def\parody@lang{nasm}\fi}
+\newenvironment{listingsbox}[3]
+  {\parody@listinghead{#2}{#3}%
+   \parody@stylelang{#1}%
+   \VerbatimEnvironment
+   \begin{minted}[autogobble,fontsize=\small,frame=leftline]{\parody@lang}}
+  {\end{minted}\par\medskip}
+\newenvironment{listingsboxfloat}[4]
+  {\parody@listinghead{#2}{#3}%
+   \parody@stylelang{#1}%
+   \VerbatimEnvironment
+   \begin{minted}[autogobble,fontsize=\small,frame=leftline]{\parody@lang}}
+  {\end{minted}\par\medskip}
+\makeatother
+\crefname{listingctr}{listing}{listings}
+
+% ---- algorithms ----
+\newcounter{algorithmctr}
+\newenvironment{algorithmcenter}{\par\medskip\begin{center}}{\end{center}\par\medskip}
+\newenvironment{algorithm}[1][H]{\par}{\par}
+\newcommand{\algcaption}[2]{%
+  \refstepcounter{algorithmctr}%
+  \noindent\textbf{Algorithm~\thealgorithmctr}%
+  \if\relax\detokenize{#2}\relax\else: #2\fi
+  \if\relax\detokenize{#1}\relax\else\label{#1}\fi\par}
+\crefname{algorithmctr}{algorithm}{algorithms}
+
+% ---- captions for figures/tables: \figcaption[opts][]{label}{caption} ----
+\NewDocumentCommand{\figcaption}{O{}O{}mm}{%
+  \caption{#4}\if\relax\detokenize{#3}\relax\else\label{#3}\fi}
+\NewDocumentCommand{\tabcaption}{O{}O{}mm}{%
+  \caption{#4}\if\relax\detokenize{#3}\relax\else\label{#3}\fi}
+\gdef\graphicslist{}
+\newcommand{\inputpgf}[1]{\input{#1.pgf}}
+\providecommand{\includestandalone}[2][]{\includegraphics[#1]{#2}}
+
+% ---- formatted execution output ----
+\newenvironment{formattedoutput}
+  {\begin{tcolorbox}[colback=black!2, colframe=black!20, boxrule=0.4pt,
+     breakable]\small}
+  {\end{tcolorbox}}
+
+% ---- semantic inline commands ----
+\newcommand{\keyword}[1]{\textbf{#1}\index{#1}}
+\newcommand{\mykeys}[1]{\keys{#1}}
+\newcommand{\unicoder}[1]{\texttt{#1}}
+\newcommand{\lref}[1]{\cref{#1}}
+% \myindex*[start|stop][lab][show][under]{term}
+\NewDocumentCommand{\myindex}{sO{}O{}O{}O{}m}{\index{#6}}
+% \indexc*[start|stop][lab][post][fun][under]{lang}{term}
+\NewDocumentCommand{\indexc}{sO{}O{}O{}O{}O{}mm}{\index{#8@\texttt{#8}}}
+% \myurl(*)[punctuation][safety]{url}{hash}; QR codes are a private-profile
+% concern — the generic profile renders a plain URL.
+\NewDocumentCommand{\myurl}{sO{}O{}mm}{\url{#4}#2}
+\NewDocumentCommand{\myurlbottom}{sO{}O{}mm}{\url{#4}#2}
+\NewDocumentCommand{\myurlinline}{smm}{\url{#2}}
+\newcommand{\numberthis}{\addtocounter{equation}{1}\tag{\theequation}}

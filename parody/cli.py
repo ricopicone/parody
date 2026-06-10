@@ -69,14 +69,38 @@ def cmd_watch(args):
     return 0
 
 
+def cmd_pdf(args):
+    from .writers.latex import build_pdf
+
+    if not args.no_execute:
+        from .build import build_project
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            build_project(args.project_dir, Path(td) / "artifact.json",
+                          convert_jupytext=True)
+    build_pdf(
+        args.project_dir,
+        output_pdf=args.output,
+        solutions=args.solutions,
+        section=args.section,
+        profile_dir=args.profile,
+    )
+    return 0
+
+
 def cmd_check(args):
     if args.toolchain:
-        from .toolchain import PANDOC_VERSION, check_pandoc
+        from .toolchain import (PANDOC_CROSSREF_VERSION, PANDOC_VERSION,
+                                check_pandoc, check_pandoc_crossref)
 
         ok, local = check_pandoc(warn=False)
         print(f"pandoc: pinned {PANDOC_VERSION}, local {local or 'not found'}"
               f" {'✓' if ok else '✗'}")
-        return 0 if ok else 1
+        xok, xlocal = check_pandoc_crossref(warn=False)
+        print(f"pandoc-crossref: pinned {PANDOC_CROSSREF_VERSION}, "
+              f"local {xlocal or 'not found'} {'✓' if xok else '✗'}")
+        return 0 if ok and xok else 1
 
     if not args.artifact:
         print("error: provide an artifact path or --toolchain", file=sys.stderr)
@@ -145,6 +169,20 @@ def main(argv=None):
     p_watch.add_argument("--media-root", help="media tree location")
     p_watch.add_argument("--bib", help="bibliography file")
     p_watch.set_defaults(func=cmd_watch)
+
+    p_pdf = sub.add_parser("pdf", help="build the print PDF via LaTeX (Phase 3)")
+    p_pdf.add_argument("project_dir", help="project directory")
+    p_pdf.add_argument("-o", "--output", help="output PDF path")
+    p_pdf.add_argument("--solutions", action="store_true",
+                       help="build the solutions manual (\\issolution)")
+    p_pdf.add_argument("--section", metavar="CH/SEC",
+                       help="build a single section (chapter-slug/section-slug)")
+    p_pdf.add_argument("--profile",
+                       help="LaTeX profile directory (default: bundled generic profile; "
+                            "book-private profiles, e.g. MIT Press, live in content repos)")
+    p_pdf.add_argument("--no-execute", action="store_true",
+                       help="skip jupytext execution before the PDF build")
+    p_pdf.set_defaults(func=cmd_pdf)
 
     p_check = sub.add_parser("check", help="validate an artifact against the schema")
     p_check.add_argument("artifact", nargs="?", help="artifact JSON path")

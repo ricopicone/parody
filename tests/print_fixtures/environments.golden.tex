@@ -1,0 +1,92 @@
+\section{Print Environments}
+\label{sec:envs}
+
+Prose with inline math $E = mc^2$, a keyword \keyword{important term}, an index entry \myindex[][][][]{convolution}, a code index entry \indexc[][][cfun][true][]{c}{printf}, a path \path{/etc/hosts}, keys \mykeys{Ctrl+C}, a menu \menu{File,Save}, a unicode span \unicoder{λ}, and inline code \mintinline{py}|x = 1|.
+
+A citation \autocite[ p. 3]{doe2020} and a plain cite {\textcite[{cf.}][{ch. 2}]{doe2020}}. Cross-references: see \autocite{fig:plot,sec:envs} and a hashref \cref{sec:envs} and capitalized \Cref{sec:envs} and a line ref \lref{line:5}.
+
+A url link: \myurl[][]{https://example.org}{ab} and inline \myurlinline{https://example.org}{cd}.
+
+\begin{definition}{Limit}{def:limit}
+A definition body with math $x \to 0$.
+\end{definition}
+
+\begin{theorem}{Big Theorem}{thm:big}
+Theorem body.
+\end{theorem}
+
+\begin{lemma}{}{lem:small}
+Lemma body.
+\end{lemma}
+
+\begin{corollary}{}{cor:tiny}
+Corollary body.
+\end{corollary}
+
+\begin{infobox}[label=box:note]{A Note}
+Infobox body.
+\end{infobox}
+
+\begin{exercise}[ID=e1,hash=e1]
+Exercise statement.
+
+\end{exercise}
+\begin{solution}
+The solution, with display math: (a + b).
+\end{solution}
+
+\begin{myexample}[]{exm:demo}{x1}
+\noindent Example statement.
+
+\tcblower
+Example solution.
+\end{myexample}
+
+\begin{listingsboxfloat}{clisting}{Hello in C}{lst:hello}{htbp}
+int main(void) { return 0; }
+\end{listingsboxfloat}
+
+\begin{listingsbox}{pythonlisting}{A script}{lst:script}
+print("hi")
+\end{listingsbox}
+
+\begin{formattedoutput}
+\begin{mintedwrapper}\nointerlineskip\nointerlineskip\begin{minted}[autogobble,samepage]{text}
+42
+\end{minted}
+\end{mintedwrapper}
+
+\end{formattedoutput}
+
+\begin{mintedwrapper}\nointerlineskip\nointerlineskip\begin{minted}[autogobble,samepage]{python}
+def f():
+    return 1
+\end{minted}
+\end{mintedwrapper}
+
+\begin{table}
+\tabcaption[][nofloat]{tbl:demo}{A caption}
+\begin{tabular}{ll}
+\toprule
+Left & Right \\
+\midrule
+a & b \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\gdef\graphicslist{}%
+\begin{figure}[H]%
+\centering
+\noindent\includegraphics[width=3in]{figures/plot.png}
+\figcaption[][]{fig:plot}{A figure caption.}
+\end{figure}%
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  first
+\item
+  second
+\end{enumerate}

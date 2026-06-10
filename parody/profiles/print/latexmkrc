@@ -1,0 +1,5 @@
+# parody print profile — ported from meta-book's latexmkrc family.
+# lualatex with -shell-escape (minted); biber for biblatex.
+$pdf_mode = 4;
+$lualatex = 'lualatex -interaction=nonstopmode -halt-on-error -file-line-error -shell-escape -synctex=1 %O %S';
+$bibtex_use = 2;

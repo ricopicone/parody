@@ -3,6 +3,7 @@
 artifact/
 preview/
 media/
+build/
 *.pdf
 
 # Execution byproducts
