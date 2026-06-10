@@ -84,14 +84,14 @@ v2 (post-migration, not now): rtc-style stable short-hash IDs per section/anchor
 ## 4. Phases
 
 ### Phase 0 — Bootstrap & decisions
-- [ ] Confirm name; reserve PyPI; repo + `pyproject.toml` (Python ≥3.11), `uv`/venv, ruff, pytest.
-- [ ] Pin toolchain versions explicitly: pandoc (both ancestors have been bitten by pandoc API churn—System B's adoption notes literally say "might break our build system because the figure environment changed"), pandoc-crossref, jupytext, nbconvert. Provide a Dockerfile/devcontainer from day one (System B's `camerondevine/rtc_docker` proved this is the collaboration enabler).
-- [ ] Decide filter strategy (recommendation: **keep lua filters initially**—System A's `filter.lua` and System B's 2,803-line `filter.lua` are both pandoc-lua; port them as-is per environment, refactor to shared code later. A panflute rewrite is a separate, optional project; do not block migration on it).
+- [x] Confirm name; reserve PyPI; repo + `pyproject.toml` (Python ≥3.11), `uv`/venv, ruff, pytest. *(2026-06-10: name `parody` confirmed available; PyPI reservation pending first publish)*
+- [x] Pin toolchain versions explicitly: pandoc (both ancestors have been bitten by pandoc API churn—System B's adoption notes literally say "might break our build system because the figure environment changed"), pandoc-crossref, jupytext, nbconvert. Provide a Dockerfile/devcontainer from day one (System B's `camerondevine/rtc_docker` proved this is the collaboration enabler). *(pandoc pinned via `pypandoc-binary==1.15` → bundled pandoc 3.6.1, the version the goldens were built with; `parody check --toolchain` verifies; pandoc-crossref deferred to Phase 3 where it first appears)*
+- [x] Decide filter strategy (recommendation: **keep lua filters initially**—System A's `filter.lua` and System B's 2,803-line `filter.lua` are both pandoc-lua; port them as-is per environment, refactor to shared code later. A panflute rewrite is a separate, optional project; do not block migration on it). *(decided: lua kept as-is)*
 
 ### Phase 1 — Parity with System A (gates homepage migration)
-- [ ] Port verbatim from homepage-django: `convert_notebook_md_to_json.py` (614 LOC), `jupytext_converter_api.py` (1,034), `jupytext_converter_with_execution.py` (471), `filter.lua`, `notebook_helpers.py`/`notebook_utils.py`. Strip Django imports (there are none of substance—these are scripts).
-- [ ] Golden tests: build homepage's 5 notebooks (engineering-artificial-intelligence, general-topics, heat-transfer-lab-manual, mechatronics-lab-manual, sample-notebook) and diff against their committed `notebooks_data/*.json` (normalize: key order, whitespace). Target: semantic identity.
-- [ ] Add schema_version/provenance keys; `parody check` validates an artifact against the schema.
+- [x] Port verbatim from homepage-django: `convert_notebook_md_to_json.py` (614 LOC), `jupytext_converter_api.py` (1,034), `jupytext_converter_with_execution.py` (471), `filter.lua`, `notebook_helpers.py`/`notebook_utils.py`. Strip Django imports (there are none of substance—these are scripts). *(2026-06-10: only changes—package imports, `media_root` parameterized away from Django root, generator string)*
+- [x] Golden tests: build homepage's 5 notebooks (engineering-artificial-intelligence, general-topics, heat-transfer-lab-manual, mechatronics-lab-manual, sample-notebook) and diff against their committed `notebooks_data/*.json` (normalize: key order, whitespace). Target: semantic identity. *(all 5 pass; normalization = provenance keys only—generator, built_at, source_commit, schema_version—since older goldens predate them)*
+- [x] Add schema_version/provenance keys; `parody check` validates an artifact against the schema. *(schema at `parody/schemas/artifact-v1.json`)*
 - [ ] Release v0.1.0 → homepage-django Phase 2 (see its `NOTEBOOKS_SPLIT_PLAN.md`) swaps its management commands to thin wrappers over this CLI.
 
 ### Phase 2 — Content-repo ergonomics
