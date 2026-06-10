@@ -13,6 +13,7 @@ repo via profile_dir override.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -65,8 +66,41 @@ def section_to_latex(section_md, output_tex, resource_dir=None, crossref=True):
         str(section_md), "latex", format=PANDOC_FROM, extra_args=args,
         cworkdir=str(Path(section_md).parent),
     )
+    tex = _externalize_exercise_verbatim(tex, output_tex)
     output_tex.write_text(tex, encoding="utf-8")
     return output_tex
+
+
+_EXERCISE_ENV_RE = re.compile(
+    r"\\begin\{(exercise|labexercise|solution|labsolution)\}"
+    r".*?\\end\{\1\}", re.S)
+_MINTED_RE = re.compile(r"\\begin\{minted\}.*?\\end\{minted\}", re.S)
+
+
+def _externalize_exercise_verbatim(tex, output_tex):
+    """Move minted blocks inside xsim environments to \\input'd side files.
+
+    xsim collects exercise/solution bodies by re-tokenizing them, which
+    destroys the line structure verbatim scanning needs — minted inside an
+    exercise dies with 'Paragraph ended before \\FV@BeginScanning'. The
+    ancestor meta-book avoided this by \\input-ing code from side files;
+    do the same mechanically. \\input paths are relative to the latexmk
+    cwd (the build dir), two levels up from sections/<ch>/<sec>.tex.
+    """
+    output_tex = Path(output_tex)
+    counter = 0
+
+    def externalize(env_match):
+        def to_input(minted_match):
+            nonlocal counter
+            counter += 1
+            side = output_tex.with_name(f"{output_tex.stem}-verb{counter}.tex")
+            side.write_text(minted_match.group(0) + "\n", encoding="utf-8")
+            rel = f"sections/{output_tex.parent.name}/{side.name}"
+            return f"\\input{{{rel}}}"
+        return _MINTED_RE.sub(to_input, env_match.group(0))
+
+    return _EXERCISE_ENV_RE.sub(externalize, tex)
 
 
 def strip_frontmatter(md_path, dest_path):

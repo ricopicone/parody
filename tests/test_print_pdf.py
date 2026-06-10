@@ -92,6 +92,57 @@ def test_latex_sources_generated_without_tex(tiny_project, monkeypatch):
     assert "\\begin{definition}{Thing}{def:thing}" in section
 
 
+CODE_IN_EXERCISE_MD = """\
+---
+title: Code Exercise
+slug: code-exercise
+---
+
+# Code Exercise {#sec-ce}
+
+::: {.exercise #exe:code title="Code"}
+Run this:
+
+``` python
+import numpy as np
+x = 1
+```
+
+::: {.exercise-solution}
+``` python
+y = 2
+```
+:::
+
+:::
+"""
+
+
+def test_verbatim_inside_exercise_is_externalized(tiny_project, monkeypatch):
+    # xsim re-tokenizes exercise bodies, which kills minted's verbatim
+    # scanning; the writer must move such blocks to \input'd side files
+    # (the ancestor meta-book's own pattern).
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    (tiny_project / "chapters" / "one" / "code-exercise.md").write_text(
+        CODE_IN_EXERCISE_MD)
+    import yaml
+    cfg_path = tiny_project / "parody.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text())
+    cfg["chapters"][0]["sections"].append("code-exercise")
+    cfg_path.write_text(yaml.dump(cfg))
+    build_pdf(tiny_project)
+    sec_dir = tiny_project / "build" / "print" / "sections" / "one"
+    tex = (sec_dir / "code-exercise.tex").read_text()
+    assert "\\begin{minted}" not in tex
+    assert "\\input{sections/one/code-exercise-verb1.tex}" in tex
+    assert "\\input{sections/one/code-exercise-verb2.tex}" in tex
+    side = (sec_dir / "code-exercise-verb1.tex").read_text()
+    assert "\\begin{minted}" in side and "import numpy as np" in side
+    # minted outside exercises stays inline
+    a_section = (sec_dir / "a-section.tex").read_text()
+    assert "\\begin{minted}" in a_section
+
+
 def test_relative_project_dir(tiny_project, monkeypatch):
     # `parody pdf .` — pandoc runs with cwd at each section dir, so the
     # writer must resolve the project path up front.
