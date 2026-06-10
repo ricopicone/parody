@@ -177,3 +177,7 @@
 \NewDocumentCommand{\myurlbottom}{sO{}O{}mm}{\url{#4}#2}
 \NewDocumentCommand{\myurlinline}{smm}{\url{#2}}
 \newcommand{\numberthis}{\addtocounter{equation}{1}\tag{\theequation}}
+
+% Pandoc emits \tightlist in itemize/enumerate output; define it (standard
+% pandoc-template definition) so generic-profile builds compile.
+\providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}

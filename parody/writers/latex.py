@@ -15,6 +15,7 @@ repo via profile_dir override.
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from string import Template
 
@@ -26,6 +27,9 @@ TEXBIN_FALLBACKS = ["/Library/TeX/texbin", "/usr/local/texlive/bin"]
 
 def _tool_env():
     env = os.environ.copy()
+    # minted shells out to pygmentize; when parody runs from an unactivated
+    # venv the venv bin (where pygmentize lives) isn't on PATH, so prepend it.
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
     extra = [p for p in TEXBIN_FALLBACKS if Path(p).is_dir()]
     local_bin = Path.home() / ".local" / "bin"
     if local_bin.is_dir():

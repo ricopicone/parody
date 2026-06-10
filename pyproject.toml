@@ -1,6 +1,6 @@
 [project]
 name = "parody"
-version = "0.3.1"
+version = "0.3.2"
 description = "Unified book/notebook authoring toolchain: pandoc markdown + executed jupytext sources to JSON artifact, HTML preview, and print PDF"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,6 +18,8 @@ dependencies = [
     "traitlets>=5.14",
     "ipykernel>=6.29",
     "jsonschema>=4.21",
+    # minted shells out to pygmentize during PDF builds
+    "pygments>=2.17",
 ]
 
 [project.optional-dependencies]

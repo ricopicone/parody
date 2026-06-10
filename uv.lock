@@ -983,7 +983,7 @@ wheels = [
 
 [[package]]
 name = "parody"
-version = "0.3.0"
+version = "0.3.2"
 source = { editable = "." }
 dependencies = [
     { name = "ipykernel" },
@@ -992,6 +992,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "nbconvert" },
     { name = "nbformat" },
+    { name = "pygments" },
     { name = "pypandoc-binary" },
     { name = "pyyaml" },
     { name = "traitlets" },
@@ -1017,6 +1018,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "nbconvert", specifier = ">=7.16" },
     { name = "nbformat", specifier = ">=5.10" },
+    { name = "pygments", specifier = ">=2.17" },
     { name = "pypandoc-binary", specifier = "==1.15" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "traitlets", specifier = ">=5.14" },
