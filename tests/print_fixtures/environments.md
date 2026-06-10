@@ -79,5 +79,9 @@ def f():
 
 ![A figure caption.](figures/plot.png){#fig:plot figwidth="3in"}
 
+![A pgf figure, rtc-style extensionless src.](figures/wave){#fig:wave .pgf}
+
+![A pgf figure, src carrying the extension.](figures/pulse.pgf){#fig:pulse .pgf}
+
 1. first
 2. second

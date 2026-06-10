@@ -82,6 +82,20 @@ a & b \\
 \figcaption[][]{fig:plot}{A figure caption.}
 \end{figure}%
 
+\gdef\graphicslist{}%
+\begin{figure}[H]%
+\centering
+\noindent\inputpgf{figures/wave}
+\figcaption[][]{fig:wave}{A pgf figure, rtc-style extensionless src.}
+\end{figure}%
+
+\gdef\graphicslist{}%
+\begin{figure}[H]%
+\centering
+\noindent\inputpgf{figures/pulse}
+\figcaption[][]{fig:pulse}{A pgf figure, src carrying the extension.}
+\end{figure}%
+
 \begin{enumerate}
 \def\labelenumi{\arabic{enumi}.}
 \tightlist

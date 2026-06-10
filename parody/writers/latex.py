@@ -156,6 +156,14 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
 
     # latexmk
     env = _tool_env()
+    # Section figures (\includegraphics, \inputpgf) stay in the content
+    # repo's chapter/assets dirs; let kpathsea find them from the build dir.
+    resource_dirs = [str(ch.directory) for ch in project.chapters]
+    assets = project_dir / "assets"
+    if assets.is_dir():
+        resource_dirs.append(str(assets))
+    env["TEXINPUTS"] = "." + os.pathsep + os.pathsep.join(resource_dirs) \
+        + os.pathsep + env.get("TEXINPUTS", "")
     if not shutil.which("latexmk", path=env["PATH"]):
         print("⚠️  latexmk not found — wrote LaTeX sources to "
               f"{build_dir}, skipping PDF compilation")

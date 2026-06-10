@@ -603,7 +603,8 @@ function imager(el)
   if el.classes:includes('standalone') then
     graphics_command = '\\noindent\\includestandalone[' .. width .. ']{' .. el.src .. '}'
   elseif el.classes:includes('pgf') then
-    graphics_command = '\\noindent\\inputpgf{' .. el.src .. '}'
+    -- \inputpgf appends .pgf; rtc srcs omit the extension, math srcs carry it
+    graphics_command = '\\noindent\\inputpgf{' .. el.src:gsub('%.pgf$', '') .. '}'
   else
     graphics_command = '\\noindent\\includegraphics[' .. width .. ']{' .. el.src .. '}'
   end
@@ -702,7 +703,7 @@ local function figurediver(el)
     end
     local graphics_command
     if classes[i]:includes('pgf') then
-      graphics_command = '\\noindent\\inputpgf{' .. srcs[i] .. '}'
+      graphics_command = '\\noindent\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
     else
       graphics_command = '\\noindent\\includegraphics{' .. srcs[i] .. '}'
     end

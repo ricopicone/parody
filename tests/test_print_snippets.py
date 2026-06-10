@@ -82,6 +82,9 @@ def test_environments_snippet_matches_golden(request):
     "\\myurlinline{https://example.org}{cd}",
     "\\figcaption",
     "\\includegraphics[width=3in]{figures/plot.png}",
+    # both pgf src conventions resolve to the same \inputpgf (which appends .pgf)
+    "\\inputpgf{figures/wave}",
+    "\\inputpgf{figures/pulse}",
     "\\tabcaption[][nofloat]{tbl:demo}{A caption}",
     "\\toprule",
     "\\section{Print Environments}",
