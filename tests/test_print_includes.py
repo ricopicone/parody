@@ -5,7 +5,6 @@ resolved against the source tree, svg converted for LaTeX); include-code
 inlines a file verbatim; link/download-code becomes a pointer note.
 """
 
-import os
 import shutil
 import textwrap
 

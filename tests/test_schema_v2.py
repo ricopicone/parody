@@ -4,7 +4,6 @@ v1 extraction is pinned by golden parity with the ancestor, so everything
 here is opt-in via ``schema: 2`` in parody.yaml / with_hashes=True.
 """
 
-import json
 
 import pytest
 import yaml

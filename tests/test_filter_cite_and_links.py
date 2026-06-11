@@ -8,7 +8,6 @@ accepts absolute media-hierarchy paths for shared assets.
 from pathlib import Path
 
 import pypandoc
-import pytest
 
 FILTERS = Path(__file__).parent.parent / "parody" / "filters"
 
