@@ -7,7 +7,6 @@ supported source layout.
 
 from pathlib import Path
 
-import pytest
 
 from parody.readers.figure_mover import determine_destination_path
 
