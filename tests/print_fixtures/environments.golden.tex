@@ -96,6 +96,13 @@ a & b \\
 \figcaption[][]{fig:pulse}{A pgf figure, src carrying the extension.}
 \end{figure}%
 
+\gdef\graphicslist{}%
+\begin{figure}[H]%
+\centering
+\noindent\inputpgf{figures/spike}
+\figcaption[][]{}{A bare pgf image outside a figure div, classless.}
+\end{figure}%
+
 \begin{enumerate}
 \def\labelenumi{\arabic{enumi}.}
 \tightlist

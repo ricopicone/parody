@@ -83,5 +83,7 @@ def f():
 
 ![A pgf figure, src carrying the extension.](figures/pulse.pgf){#fig:pulse .pgf}
 
+![A bare pgf image outside a figure div, classless.](figures/spike.pgf)
+
 1. first
 2. second

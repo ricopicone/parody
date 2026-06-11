@@ -85,6 +85,8 @@ def test_environments_snippet_matches_golden(request):
     # both pgf src conventions resolve to the same \inputpgf (which appends .pgf)
     "\\inputpgf{figures/wave}",
     "\\inputpgf{figures/pulse}",
+    # classless .pgf outside a figure div must not reach \includegraphics
+    "\\inputpgf{figures/spike}",
     "\\tabcaption[][nofloat]{tbl:demo}{A caption}",
     "\\toprule",
     "\\section{Print Environments}",

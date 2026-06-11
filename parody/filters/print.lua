@@ -624,8 +624,9 @@ function imager(el)
   local graphics_command
   if el.classes:includes('standalone') then
     graphics_command = '\\noindent\\includestandalone[' .. width .. ']{' .. el.src .. '}'
-  elseif el.classes:includes('pgf') then
-    -- \inputpgf appends .pgf; rtc srcs omit the extension, math srcs carry it
+  elseif el.classes:includes('pgf') or el.src:match('%.pgf$') then
+    -- \inputpgf appends .pgf; rtc srcs omit the extension, math srcs carry
+    -- it (and sometimes omit the class — includegraphics can't load .pgf)
     graphics_command = '\\noindent\\inputpgf{' .. el.src:gsub('%.pgf$', '') .. '}'
   else
     graphics_command = '\\noindent\\includegraphics[' .. width .. ']{' .. el.src .. '}'
@@ -724,7 +725,7 @@ local function figurediver(el)
       fig_tex = fig_tex .. '\\\\\n% Row ' .. current_row .. '\n'
     end
     local graphics_command
-    if classes[i]:includes('pgf') then
+    if classes[i]:includes('pgf') or srcs[i]:match('%.pgf$') then
       graphics_command = '\\noindent\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
     else
       graphics_command = '\\noindent\\includegraphics{' .. srcs[i] .. '}'
@@ -894,6 +895,15 @@ function Div(el)
     return only_htmler(el)
   end
   return el
+end
+
+-- Images outside .figure divs fall through to pandoc's writer, whose
+-- \includegraphics cannot load .pgf; route those through \inputpgf.
+function Image(el)
+  if not is_latex() then return el end
+  if el.classes:includes('pgf') or el.src:match('%.pgf$') then
+    return imager(el)
+  end
 end
 
 function Span(el)
