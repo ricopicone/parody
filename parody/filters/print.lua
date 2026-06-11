@@ -778,8 +778,11 @@ end
 
 local function algorithmer_latex(el)
   -- Figure whose image is a standalone .tex algorithm: splice in the body.
+  -- The build converts from build/print/sections/<ch>/, so resolve the
+  -- asset against the real chapter dir (PARODY_CHAPTER_DIR).
   local image = el.content[1].content[1]
   local src = image.src:gsub('%.tex$', '') .. '.tex'
+  src = resolve_asset(src, nil) or src
   local f = io.open(src, 'r')
   if not f then
     error('algorithm source not found: ' .. src)
