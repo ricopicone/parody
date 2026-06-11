@@ -37,6 +37,10 @@ def _tool_env():
         extra.append(str(local_bin))
     if extra:
         env["PATH"] = env["PATH"] + os.pathsep + os.pathsep.join(extra)
+    # xsim writes whole exercise/solution bodies as single .xsim lines;
+    # big solutions overflow TeX's default input buffer (200k). Web2c
+    # texmf.cnf values are overridable via same-name env vars.
+    env.setdefault("buf_size", "2000000")
     return env
 
 
