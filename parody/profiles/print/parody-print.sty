@@ -208,3 +208,10 @@
   }
 }{}
 \makeatother
+
+% ---- \maxwidth: natural image width, capped at \linewidth (pandoc idiom);
+% used by the print filter for notebook figures so raster/converted images
+% never overflow the text block.
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\makeatother

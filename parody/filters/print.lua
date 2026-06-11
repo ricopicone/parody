@@ -43,6 +43,7 @@ end
 
 -- Forward declarations so the interior filter late-binds to the handlers.
 local coder_latex, citer, pandoccrossrefer
+local resolve_asset -- defined in the notebook-includes section below
 
 -- Walks content nested inside environments so spans/code/cites inside
 -- exercise bodies etc. get the same treatment as top-level content.
@@ -623,9 +624,24 @@ end
 
 function imager(el)
   if not is_latex() then return el end
+  -- Notebook print builds (PARODY_PROJECT_DIR set): map media-hierarchy and
+  -- chapter-relative srcs to source-tree files, converting svg as needed.
+  -- pgf/standalone sources are LaTeX inputs with their own commands and
+  -- src conventions (extensionless); they never go through asset resolution.
+  local is_pgf_or_standalone = el.classes:includes('standalone')
+    or el.classes:includes('pgf') or el.src:match('%.pgf$')
+  local notebook_ctx = os.getenv('PARODY_PROJECT_DIR') ~= nil
+  if notebook_ctx and not is_pgf_or_standalone then
+    local resolved = resolve_asset(el.src, nil)
+    if resolved == nil then
+      return pandoc.RawInline('latex', '')
+    end
+    el.src = resolved
+  end
   local width = el.attr.attributes['figwidth']
   if width == nil then
-    width = ''
+    -- notebook figures: natural size capped at the text width
+    width = notebook_ctx and 'width=\\maxwidth' or ''
   else
     width = 'width=' .. pandoc.utils.stringify(width)
   end
@@ -682,8 +698,15 @@ function figurer(el, nofloat)
   else
     caption = inlines_to_latex(caption)
   end
+  -- Notebook sources use unprefixed figure ids (#foo) with prefixed refs
+  -- (@fig:foo); the web resolver tolerates that, \cref needs the prefix.
+  local label = el.identifier
+  if os.getenv('PARODY_PROJECT_DIR') and label ~= ''
+      and not label:match('^%a+:') then
+    label = 'fig:' .. label
+  end
   local fig_tex = graphics_list_reset .. fig_begin .. content
-    .. '\n\\figcaption' .. options .. '[]{' .. el.identifier .. '}{' .. caption .. '}\n'
+    .. '\n\\figcaption' .. options .. '[]{' .. label .. '}{' .. caption .. '}\n'
     .. fig_end
   return pandoc.RawInline('latex', fig_tex)
 end
@@ -827,6 +850,182 @@ local function tabler_latex(el)
   return pandoc.RawBlock('latex', content_latex)
 end
 
+-- Notebook includes + asset resolution --------------------------------------
+--
+-- Notebook content repos inline executed jupytext output via
+-- ```{.include-py path="x.py"} and reference figures with bare names or
+-- media-hierarchy paths (notebooks/<slug>/<chapter>/...). The PDF build
+-- (writers/latex.py) sets PARODY_PROJECT_DIR / PARODY_CHAPTER_DIR /
+-- PARODY_SVG_CACHE so these can be resolved against the SOURCE tree (pandoc
+-- runs from the build dir). Without those env vars (rtc-style projects)
+-- everything below is inert.
+
+local function read_file(path)
+  local f = io.open(path, 'r')
+  if not f then return nil end
+  local content = f:read('*all')
+  f:close()
+  return content
+end
+
+local function file_exists(path)
+  local f = io.open(path, 'r')
+  if f then f:close(); return true end
+  return false
+end
+
+-- Convert an .svg to .pdf in the build's svg cache; returns the pdf path.
+local function svg_to_pdf(svg_path)
+  local cache = os.getenv('PARODY_SVG_CACHE')
+  if not cache then return svg_path end
+  local key = svg_path:gsub('[/\\]', '__')
+  local out = cache .. '/' .. key:gsub('%.svg$', '') .. '.pdf'
+  if not file_exists(out) then
+    os.execute('mkdir -p "' .. cache .. '"')
+    local ok = os.execute('rsvg-convert -f pdf -o "' .. out .. '" "' .. svg_path
+      .. '" 2>/dev/null')
+    if not ok and not file_exists(out) then
+      ok = os.execute('inkscape "' .. svg_path .. '" --export-type=pdf '
+        .. '--export-filename="' .. out .. '" 2>/dev/null')
+    end
+    if not file_exists(out) then
+      io.stderr:write('⚠️  svg conversion failed (need rsvg-convert or '
+        .. 'inkscape): ' .. svg_path .. '\n')
+      return svg_path
+    end
+  end
+  return out
+end
+
+-- Resolve an image src to an absolute file path. base_stem is the include's
+-- file stem (jupytext outputs live in <stem>_files/).
+resolve_asset = function(src, base_stem)
+  local project_dir = os.getenv('PARODY_PROJECT_DIR')
+  local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
+  local resolved = nil
+  local media_rel = src:match('^notebooks/[^/]+/(.*)$')
+  if media_rel and project_dir then
+    -- media-hierarchy path: maps directly onto the source layout
+    local candidate = project_dir .. '/' .. media_rel
+    if file_exists(candidate) then resolved = candidate end
+  elseif not src:match('^/') and chapter_dir then
+    local candidates = {}
+    if base_stem then
+      candidates[#candidates + 1] = chapter_dir .. '/' .. base_stem .. '_files/' .. src
+    end
+    candidates[#candidates + 1] = chapter_dir .. '/' .. src
+    for _, candidate in ipairs(candidates) do
+      if file_exists(candidate) then resolved = candidate; break end
+    end
+  elseif src:match('^/') and file_exists(src) then
+    resolved = src
+  end
+  if not resolved then
+    if project_dir then
+      io.stderr:write('⚠️  unresolved figure (omitting): ' .. src .. '\n')
+      return nil
+    end
+    return src -- rtc projects: leave untouched
+  end
+  if resolved:match('%.svg$') then
+    resolved = svg_to_pdf(resolved)
+  end
+  return resolved
+end
+
+-- Resolve srcs in a tree of parsed blocks (with include-stem context).
+local function resolve_images(blocks, base_stem)
+  local out = {}
+  for _, b in ipairs(blocks) do
+    local walked = pandoc.walk_block(b, {
+      Image = function(img)
+        local resolved = resolve_asset(img.src, base_stem)
+        if resolved == nil then return {} end -- drop unresolvable image
+        img.src = resolved
+        return img
+      end,
+    })
+    -- a bare top-level Image arrives wrapped in Para/Plain/Figure, so the
+    -- child walk above covers it
+    out[#out + 1] = walked
+  end
+  return out
+end
+
+-- Apply this filter's top-level handlers to freshly parsed blocks (returned
+-- blocks are not re-walked by earlier passes in the filter chain).
+local function latexify_blocks(blocks)
+  local out = {}
+  for _, b in ipairs(blocks) do
+    local r
+    if b.t == 'Figure' then
+      r = Figure(b)
+    elseif b.t == 'CodeBlock' then
+      r = CodeBlock(b)
+    elseif b.t == 'Table' then
+      r = Table(b)
+    elseif b.t == 'Header' then
+      r = headerer_latex(b)
+    elseif b.t == 'Div' then
+      r = Div(b)
+    else
+      r = pandoc.walk_block(b, interior_filter)
+    end
+    if r == nil then r = b end
+    if type(r) ~= 'table' or r.t then r = { r } end
+    for _, item in ipairs(r) do
+      if item.t and (item.t == 'RawInline' or item.t == 'Str'
+          or item.t == 'Span') then
+        item = pandoc.Plain { item }
+      end
+      out[#out + 1] = item
+    end
+  end
+  return out
+end
+
+local function include_py_print(el)
+  local path = el.attr.attributes['path']
+  if not path then return el end
+  local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
+  local md_path = path:gsub('%.py$', '.md')
+  local content = chapter_dir and read_file(chapter_dir .. '/' .. md_path)
+    or read_file(md_path)
+  if not content then
+    io.stderr:write('⚠️  include-py: ' .. md_path .. ' not found\n')
+    return {}
+  end
+  local base_stem = path:gsub('%.py$', ''):match('([^/]+)$')
+  local parsed = pandoc.read(content, 'markdown-smart')
+  local blocks = resolve_images(parsed.blocks, base_stem)
+  return latexify_blocks(blocks)
+end
+
+local function include_code_print(el)
+  local path = el.attr.attributes['path']
+  if not path then return el end
+  local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
+  local content = chapter_dir and read_file(chapter_dir .. '/' .. path)
+    or read_file(path)
+  if not content then
+    io.stderr:write('⚠️  include-code: ' .. path .. ' not found\n')
+    return {}
+  end
+  local lang = ({ py = 'python', m = 'matlab', jl = 'julia', c = 'c' })
+    [path:match('%.([A-Za-z]+)$') or ''] or 'text'
+  return coder_latex(pandoc.CodeBlock(content, { class = lang }))
+end
+
+local function download_code_print(el)
+  -- Web-only download affordance; print gets a pointer to the file.
+  local path = el.attr.attributes['path'] or ''
+  local filename = path:match('([^/]+)$') or path
+  local label = el.attr.attributes['label'] or ('Download ' .. filename)
+  return pandoc.RawBlock('latex',
+    '\\noindent\\textit{' .. label .. ' (web version): \\path{'
+    .. filename .. '}}')
+end
+
 -- Top-level dispatchers ----------------------------------------------------
 
 function Code(el)
@@ -841,6 +1040,16 @@ function Code(el)
 end
 
 function CodeBlock(el)
+  if is_latex() then
+    if el.classes:includes('include-py') then
+      return include_py_print(el)
+    elseif el.classes:includes('include-code') then
+      return include_code_print(el)
+    elseif el.classes:includes('link-code')
+        or el.classes:includes('download-code') then
+      return download_code_print(el)
+    end
+  end
   el = code_shorthand(el)
   if is_latex() then
     return coder_latex(el)

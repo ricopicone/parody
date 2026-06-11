@@ -142,26 +142,43 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         if f.name != "main.tex.template":
             shutil.copy2(f, build_dir / f.name)
 
-    # Convert sections
+    # Convert sections. The filter resolves notebook includes and figure
+    # paths against the SOURCE tree (pandoc itself runs in the build dir),
+    # so hand it the project/chapter context and an svg-conversion cache.
+    # Save/restore so the context never leaks past this build.
+    _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
+                 "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR")
+    _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
+    os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
+    os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
+    os.environ["PARODY_SVG_CACHE"] = str(build_dir / "svg-cache")
     chapters_tex = []
-    for chapter in project.chapters:
-        sections = chapter.section_slugs
-        if section:
-            want_ch, _, want_sec = section.partition("/")
-            if chapter.slug != want_ch:
-                continue
-            sections = [s for s in sections if s == want_sec]
-        if sections and not section:
-            chapters_tex.append(f"\\chapter{{{chapter.title or chapter.slug}}}")
-        for sec_slug in sections:
-            src = chapter.directory / f"{sec_slug}.md"
-            stripped = build_dir / "sections" / chapter.slug / f"{sec_slug}.md"
-            stripped.parent.mkdir(parents=True, exist_ok=True)
-            strip_frontmatter(src, stripped)
-            tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
-            print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
-            section_to_latex(stripped, tex_path, resource_dir=chapter.directory)
-            chapters_tex.append(f"\\input{{sections/{chapter.slug}/{sec_slug}.tex}}")
+    try:
+        for chapter in project.chapters:
+            sections = chapter.section_slugs
+            if section:
+                want_ch, _, want_sec = section.partition("/")
+                if chapter.slug != want_ch:
+                    continue
+                sections = [s for s in sections if s == want_sec]
+            if sections and not section:
+                chapters_tex.append(f"\\chapter{{{chapter.title or chapter.slug}}}")
+            os.environ["PARODY_CHAPTER_DIR"] = str(Path(chapter.directory).resolve())
+            for sec_slug in sections:
+                src = chapter.directory / f"{sec_slug}.md"
+                stripped = build_dir / "sections" / chapter.slug / f"{sec_slug}.md"
+                stripped.parent.mkdir(parents=True, exist_ok=True)
+                strip_frontmatter(src, stripped)
+                tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
+                print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
+                section_to_latex(stripped, tex_path, resource_dir=chapter.directory)
+                chapters_tex.append(f"\\input{{sections/{chapter.slug}/{sec_slug}.tex}}")
+    finally:
+        for k, v in _saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
     if not chapters_tex:
         raise SystemExit(f"no sections matched (section={section!r})")
