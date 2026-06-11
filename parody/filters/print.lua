@@ -76,6 +76,7 @@ interior_filter = {
   OrderedList = function(el) return OrderedList(el) end,
   Table = function(el) return Table(el) end,
   Figure = function(el) return Figure(el) end,
+  Image = function(el) return Image(el) end,
 }
 
 local inline_filter = {
@@ -987,6 +988,7 @@ end
 
 return {
   { Div = Div },
+  { Image = Image },
   { Header = Header },
   { RawBlock = RawBlock },
   { OrderedList = OrderedList },
