@@ -23,6 +23,7 @@ import traceback
 # Auto-figure capture constants
 AUTOFIG_HELPER_TAG = "remove_cell"
 AUTOFIG_DISABLE_TAG = "no_autofig"
+AUTOFIG_INDEX_SENTINEL = "# __autofig_cell_index__"
 AUTOFIG_CAPTURE_SENTINEL = "# __AUTOFIG_CAPTURE__"
 
 # Import required libraries
@@ -174,10 +175,17 @@ def _cell_has_tag(cell, tag):
 
 
 def _cell_contains_engcom_show(source):
+    """True when the cell explicitly captures a figure itself (engcom.show
+    or autofig(fig, ...) with a positional figure) — such cells, and cells
+    immediately before them, must not get the end-of-cell auto-capture
+    (it would grab and close the figure first). Keyword-only autofig calls
+    (pending mode) still rely on the auto-capture and are NOT matched."""
+    import re as _re
     return (
         "engcom.show" in source
         or "notebook_utils.show" in source
         or "teaching.utils.notebook_utils.show" in source
+        or _re.search(r"autofig\(\s*[A-Za-z_]\w*\s*[,)]", source) is not None
     )
 
 
@@ -329,7 +337,7 @@ def _autofig_capture_one(fig):
         _AUTOFIG_PENDING = None
         return
     record = {
-        "cell_index": None,
+        "cell_index": globals().get("_AUTOFIG_CELL_INDEX"),
         "execution_count": _autofig_execution_count(),
         "filename": filename,
         "caption": meta.get("caption"),
@@ -534,6 +542,17 @@ def _inject_autofig_capture_calls(notebook):
             continue
 
         source = _cell_source(cell)
+
+        # Stamp every cell with its index so EXPLICIT captures
+        # (autofig(fig, ...)) record an exact cell match for markdown
+        # injection (kernel execution counts are offset by the helper cell
+        # and unreliable across IPython versions).
+        if AUTOFIG_INDEX_SENTINEL not in source:
+            cell.source = (f"{AUTOFIG_INDEX_SENTINEL}\n"
+                           f"_AUTOFIG_CELL_INDEX = {idx}\n") + source
+            cell.metadata.setdefault("autofig_index", idx)
+            source = cell.source
+
         if "_autofig_capture(" in source:
             continue
         if _cell_contains_engcom_show(source):
@@ -569,13 +588,21 @@ def _inject_autofig_capture_calls(notebook):
 
 
 def _strip_autofig_capture_code(notebook):
-    """Remove the appended capture code from all cells after execution."""
+    """Remove the appended capture code and prepended index stamp."""
     for cell in notebook.cells:
         if cell.cell_type != "code":
             continue
         source = _cell_source(cell)
         if AUTOFIG_CAPTURE_SENTINEL in source:
-            cell.source = source[:source.index(AUTOFIG_CAPTURE_SENTINEL)].rstrip()
+            source = source[:source.index(AUTOFIG_CAPTURE_SENTINEL)].rstrip()
+        if AUTOFIG_INDEX_SENTINEL in source:
+            lines = source.splitlines()
+            lines = [l for i, l in enumerate(lines)
+                     if not (l.strip() == AUTOFIG_INDEX_SENTINEL
+                             or (i > 0 and lines[i-1].strip() == AUTOFIG_INDEX_SENTINEL
+                                 and l.startswith("_AUTOFIG_CELL_INDEX")))]
+            source = "\n".join(lines).lstrip("\n")
+        cell.source = source
     return notebook
 
 
@@ -618,20 +645,20 @@ def _inject_autofig_markdown_cells(notebook, autofig_entries):
                 if not filename:
                     continue
 
-                # Build alt text from caption and/or label
-                alt_parts = []
-                if caption:
-                    alt_parts.append(caption)
-                if label:
-                    alt_parts.append(label)
-                alt = "|".join(alt_parts) if alt_parts else ""
-
+                # engcom-proven markup shape: caption as alt, label as a
+                # pandoc {#id} attribute (promotes to the Figure id, which
+                # the web filter turns into <figure id> and the print filter
+                # into a \\cref-able label).
+                alt = caption or ""
                 attrs = []
+                if label:
+                    attrs.append(f"#{label}")
+                attrs.append(".figure")
                 if width:
                     attrs.append(f"width={width}")
                 if height:
                     attrs.append(f"height={height}")
-                attr_text = f"{{{' '.join(attrs)}}}" if attrs else ""
+                attr_text = f"{{{' '.join(attrs)}}}"
                 md_lines.append(f"![{alt}]({filename}){attr_text}")
 
             if md_lines:
