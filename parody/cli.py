@@ -131,6 +131,40 @@ def cmd_check(args):
     return 0
 
 
+def cmd_migrate(args):
+    from .migrate import migrate_meta_book
+
+    dest = Path(args.dest)
+    if not (dest / "parody.yaml").is_file():
+        print(f"error: {dest} is not a parody content repo "
+              "(no parody.yaml; run `parody init` first)", file=sys.stderr)
+        return 2
+    migrate_meta_book(args.src, dest)
+    print("reminder: re-apply the book's re-hash loser list "
+          "(`parody rehash`) before building")
+    return 0
+
+
+def cmd_rehash(args):
+    from .migrate import rehash_duplicates
+    from .migrate.rehash import load_losers
+
+    dest = Path(args.dest)
+    losers_path = Path(args.losers) if args.losers \
+        else dest / "scripts" / "rehash_losers.yaml"
+    if not losers_path.is_file():
+        print(f"error: loser list not found at {losers_path}",
+              file=sys.stderr)
+        return 2
+    salt = args.salt
+    if not salt:
+        import yaml as _yaml
+        meta = _yaml.safe_load((dest / "parody.yaml").read_text())
+        salt = meta.get("slug", dest.resolve().name)
+    rehash_duplicates(dest, load_losers(losers_path), salt)
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="parody",
@@ -145,6 +179,25 @@ def main(argv=None):
     p_init.add_argument("--slug", help="slug (default: directory name)")
     p_init.add_argument("--author", help="author name")
     p_init.set_defaults(func=cmd_init)
+
+    p_mig = sub.add_parser(
+        "migrate", help="migrate a meta-book (System B) repo into this content repo")
+    p_mig.add_argument("src", help="meta-book source repo directory")
+    p_mig.add_argument("--dest", default=".",
+                       help="parody content repo (default: cwd)")
+    p_mig.set_defaults(func=cmd_migrate)
+
+    p_rehash = sub.add_parser(
+        "rehash", help="re-key duplicate short hashes per the book's loser list")
+    p_rehash.add_argument("--dest", default=".",
+                          help="parody content repo (default: cwd)")
+    p_rehash.add_argument("--losers",
+                          help="loser list YAML (default: scripts/rehash_losers.yaml)")
+    p_rehash.add_argument("--salt",
+                          help="hash salt (default: the book slug; the "
+                               "already-migrated books use their source "
+                               "repo's short name)")
+    p_rehash.set_defaults(func=cmd_rehash)
 
     p_build = sub.add_parser("build", help="build the JSON artifact")
     p_build.add_argument("input_dir", help="project directory (parody.yaml or legacy __meta.yaml)")
