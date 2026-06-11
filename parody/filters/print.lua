@@ -428,8 +428,15 @@ coder_latex = function(el)
       .. content .. '\n\\end{minted}\n\\end{mintedwrapper}\n')
   elseif el.t == 'Code' then
     local content = pandoc.utils.stringify(el.text)
+    -- the delimiter must not occur in the content (code spans can print `|`)
+    for delim in string.gmatch('|!=+^~;?', '.') do
+      if not content:find(delim, 1, true) then
+        return pandoc.RawInline('latex',
+          '\\mintinline{' .. language .. '}' .. delim .. content .. delim)
+      end
+    end
     return pandoc.RawInline('latex',
-      '\\mintinline{' .. language .. '}|' .. content .. '|')
+      '\\mintinline{' .. language .. '}{' .. content .. '}')
   end
   return el
 end
