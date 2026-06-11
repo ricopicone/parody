@@ -1040,9 +1040,21 @@ def convert_directory_with_api_execution(input_dir, output_dir=None, recursive=T
         if not force:
             cache_data = load_conversion_cache(cache_file)
 
-    # Find all Python files
+    # Find all Python files. Never descend into hidden dirs (.venv, .git),
+    # build output, vendored wheels, media trees, or tooling dirs — the
+    # jupytext light-format heuristic is loose enough to match arbitrary
+    # library code (it once tried to execute tornado from site-packages).
+    EXCLUDED_DIRS = {"build", "dist", "vendor", "media", "scripts",
+                     "node_modules", "__pycache__"}
+
+    def _excluded(path):
+        return any(
+            part.startswith(".") or part in EXCLUDED_DIRS
+            for part in path.relative_to(input_dir).parts[:-1]
+        )
+
     pattern = '**/*.py' if recursive else '*.py'
-    python_files = list(input_dir.glob(pattern))
+    python_files = [f for f in input_dir.glob(pattern) if not _excluded(f)]
 
     start_time = time.time()
 
