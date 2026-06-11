@@ -14,6 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
+      - name: Install pandoc-crossref (pinned in parody/toolchain.py)
+        run: |
+          curl -fsSL https://github.com/lierdakil/pandoc-crossref/releases/download/v0.3.18.1/pandoc-crossref-Linux-X64.tar.xz \
+            | tar -xJ -C /usr/local/bin pandoc-crossref
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run parody check --toolchain
