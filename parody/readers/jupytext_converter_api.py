@@ -181,18 +181,23 @@ def _cell_contains_engcom_show(source):
     )
 
 
-def _inject_autofig_helpers(notebook, working_dir=None):
+def _inject_autofig_helpers(notebook, working_dir=None, fig_dir=None):
     """Inject auto-figure helper code as first cell.
-    
+
     Args:
         notebook: The notebook object to modify
         working_dir: The working directory path to use for imports and file operations
+        fig_dir: Where captures are saved. Defaults to the working dir; the
+            converter passes <script_dir>/<stem>_files so figures land in
+            their committed source-tree home (no post-hoc moving).
     """
     # Get the working directory - use provided path or fallback to os.getcwd()
     if working_dir:
         wd_code = f'_AUTOFIG_WORKING_DIR = r"{working_dir}"'
     else:
         wd_code = '_AUTOFIG_WORKING_DIR = os.getcwd()'
+    wd_code += (f'\n_AUTOFIG_FIG_DIR = r"{fig_dir}"' if fig_dir
+                else '\n_AUTOFIG_FIG_DIR = _AUTOFIG_WORKING_DIR')
 
     # Build helper code with working directory injected
     helper_code = ('''
@@ -269,18 +274,81 @@ if _AUTOFIG_LOG_PATH and Path(_AUTOFIG_LOG_PATH).exists():
         pass
 
 
-def autofig(caption=None, label=None, width=None, height=None, fmt=None, raster=None, dpi=150):
-    # Set metadata for the next auto-captured figure.
+def autofig(fig=None, caption=None, label=None, width=None, height=None,
+            fmt=None, raster=None, dpi=150, filename=None, ext=None,
+            figsize=None, **_compat):
+    # Two modes:
+    #   autofig(caption=..., label=...)      -> metadata for the figures the
+    #       end-of-cell capture finds (classic pending mode)
+    #   autofig(fig, caption=..., label=...) -> capture THAT figure now
+    #       (drop-in for engcom.show; accepts its ext=/filename=/figsize=)
     global _AUTOFIG_PENDING
     _AUTOFIG_PENDING = {
         "caption": caption,
         "label": label,
         "width": width,
         "height": height,
-        "format": fmt,
+        "format": fmt or ext,
         "raster": raster,
         "dpi": dpi,
+        "filename": filename,
     }
+    if fig is not None:
+        if figsize is not None:
+            try:
+                fig.set_size_inches(*figsize)
+            except Exception:
+                pass
+        _autofig_capture_one(fig)
+
+
+def _autofig_capture_one(fig):
+    """Capture a single explicit figure with the pending metadata."""
+    global _AUTOFIG_PENDING
+    meta = _AUTOFIG_PENDING or {}
+    fmt = meta.get("format")
+    if not fmt:
+        fmt = "png" if (_autofig_is_3d(fig) or meta.get("raster")) else "svg"
+    base = meta.get("filename")
+    if not base and meta.get("label"):
+        base = str(meta["label"])
+        if base.startswith("fig:"):
+            base = base[4:]
+        base = "".join(c if (c.isalnum() or c in "-_") else "-" for c in base)
+    if base:
+        base = base.rsplit(".", 1)[0]
+        filename = f"{base}.{fmt}"
+    else:
+        suffix = _autofig_execution_count() or "cell"
+        filename = f"autofig-{suffix}-x.{fmt}"
+    os.makedirs(_AUTOFIG_FIG_DIR, exist_ok=True)
+    filepath = os.path.join(_AUTOFIG_FIG_DIR, filename)
+    try:
+        fig.savefig(filepath, format=fmt, dpi=meta.get("dpi", 150))
+    except Exception:
+        _AUTOFIG_PENDING = None
+        return
+    record = {
+        "cell_index": None,
+        "execution_count": _autofig_execution_count(),
+        "filename": filename,
+        "caption": meta.get("caption"),
+        "label": meta.get("label"),
+        "width": meta.get("width"),
+        "height": meta.get("height"),
+    }
+    if _AUTOFIG_LOG_PATH and json:
+        try:
+            with Path(_AUTOFIG_LOG_PATH).open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record) + "\\n")
+        except Exception:
+            pass
+    _AUTOFIG_PENDING = None
+    import matplotlib.pyplot as _plt
+    try:
+        _plt.close(fig)
+    except Exception:
+        pass
 
 
 def _autofig_is_3d(fig):
@@ -324,10 +392,24 @@ def _autofig_capture(cell_index=None):
                 fmt = "png" if _autofig_is_3d(fig) else "svg"
 
         dpi = meta.get("dpi", 150)
-        suffix = cell_index if cell_index is not None else _autofig_execution_count() or "cell"
-        filename = f"autofig-{suffix}-{idx}.{fmt}"
-        filepath = os.path.join(_AUTOFIG_WORKING_DIR, filename)
-        
+        # Deterministic names when the author supplied one: filename= wins,
+        # then label= (sanitized, fig: prefix dropped). Unnamed figures keep
+        # the cell-index scheme (documented as unstable across cell moves).
+        base = meta.get("filename")
+        if not base and meta.get("label"):
+            base = str(meta["label"])
+            if base.startswith("fig:"):
+                base = base[4:]
+            base = "".join(c if (c.isalnum() or c in "-_") else "-" for c in base)
+        if base:
+            base = base.rsplit(".", 1)[0]
+            filename = f"{base}.{fmt}" if idx == 1 else f"{base}-{idx}.{fmt}"
+        else:
+            suffix = cell_index if cell_index is not None else _autofig_execution_count() or "cell"
+            filename = f"autofig-{suffix}-{idx}.{fmt}"
+        os.makedirs(_AUTOFIG_FIG_DIR, exist_ok=True)
+        filepath = os.path.join(_AUTOFIG_FIG_DIR, filename)
+
         try:
             fig.savefig(filepath, format=fmt, dpi=dpi)
         except Exception:
@@ -831,7 +913,9 @@ def convert_jupytext_with_api_execution(input_path, output_path=None, timeout=30
         script_dir = input_path.parent.resolve()
 
         # Step 1b: Inject auto-figure helpers and capture calls
-        notebook = _inject_autofig_helpers(notebook, working_dir=str(script_dir))
+        fig_dir = script_dir / f"{input_path.stem}_files"
+        notebook = _inject_autofig_helpers(notebook, working_dir=str(script_dir),
+                                           fig_dir=str(fig_dir))
         notebook = _inject_autofig_capture_calls(notebook)
 
         # Step 2: Execute the notebook using API (set working directory to script's directory)
@@ -878,72 +962,38 @@ def convert_jupytext_with_api_execution(input_path, output_path=None, timeout=30
 
         # Step 4: Clean up the markdown
         clean_markdown_output(output_path)
-        rewrite_markdown_image_paths(output_path, input_path)
+        # Image refs stay bare (e.g. "plot.svg"): the web filter prefixes
+        # notebooks/<slug>/<chapter>/<stem>_files/ and the print filter
+        # resolves against the source tree, so location-independent refs
+        # survive repo moves. (Media-path rewriting retired with the mover.)
 
         # Step 5: Move any generated figure files to proper media directory
         if FIGURE_MOVER_AVAILABLE and execution_success:
             try:
-                from .figure_mover import identify_figure_files, move_figures_to_media, determine_destination_path
-                import shutil
+                from .figure_mover import identify_figure_files, move_figures_to_media
 
-                total_moved = 0
-                directories_to_clean = []
-
-                # Find all directories that might contain figure files
-                search_dirs = [script_dir]
-
-                # Add the nbconvert output files directory
-                output_files_dir = output_path.parent / f"{output_path.stem}_files"
-                if output_files_dir.exists():
-                    search_dirs.append(output_files_dir)
-                    directories_to_clean.append(output_files_dir)
-
-                # Recursively search for any nested media directories and figure files
-                for search_root in [script_dir, output_files_dir] if output_files_dir.exists() else [script_dir]:
-                    for subdir in search_root.rglob("*"):
-                        if subdir.is_dir() and (
-                            "media" in subdir.name or
-                            subdir.name.endswith("_files") or
-                            any(subdir.glob(pattern) for pattern in ["figure-*", "output_*"])
-                        ):
-                            search_dirs.append(subdir)
-                            if "media" in str(subdir):
-                                directories_to_clean.append(subdir)
-
-                # Process each directory for figure files
-                for search_dir in search_dirs:
-                    if not search_dir.exists():
-                        continue
-
-                    figure_files = identify_figure_files(search_dir)
-                    if figure_files:
-                        results = move_figures_to_media(
-                            source_notebook_path=input_path,
-                            figure_files=figure_files,
-                            # Ancestor behavior: project root = cwd. Parody
-                            # builds override via env so figures land with
-                            # the artifact rather than wherever cwd is.
-                            media_root=Path(os.environ.get("PARODY_MEDIA_ROOT", Path.cwd())),
-                            dry_run=False
-                        )
-                        if results['moved_files']:
-                            total_moved += len(results['moved_files'])
-
-                # Clean up nested media directories after moving files
-                for cleanup_dir in directories_to_clean:
-                    if cleanup_dir.exists() and "media" in str(cleanup_dir):
-                        try:
-                            # Only remove if it's empty or contains only empty subdirs
-                            remaining_files = list(cleanup_dir.rglob("*"))
-                            remaining_files = [f for f in remaining_files if f.is_file()]
-                            if not remaining_files:
-                                shutil.rmtree(cleanup_dir)
-                        except Exception as cleanup_error:
-                            print(f"Warning: Could not clean up directory {cleanup_dir}: {cleanup_error}")
-
-                if total_moved > 0:
-                    print(f"  📊 Moved {total_moved} figure files to media directory")
+                # Captures save straight into <stem>_files/ now; the mover
+                # only sweeps LEGACY strays (e.g. engcom.show writing to the
+                # kernel cwd). Top level only: *_files dirs are the
+                # committed home of figures and must never be raided.
+                figure_files = [
+                    f for f in identify_figure_files(script_dir)
+                    if f.parent == script_dir
+                ]
+                if figure_files:
+                    results = move_figures_to_media(
+                        source_notebook_path=input_path,
+                        figure_files=figure_files,
+                        media_root=Path(os.environ.get("PARODY_MEDIA_ROOT", Path.cwd())),
+                        dry_run=False,
+                    )
+                    if results['moved_files']:
+                        print(f"  📊 Moved {len(results['moved_files'])} legacy "
+                              f"figure files to media directory")
             except Exception as e:
+                print(f"Warning: Failed to move figure files: {e}")
+
+    except Exception as e:
                 print(f"Warning: Failed to move figure files: {e}")
 
     except Exception as e:

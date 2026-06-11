@@ -10,6 +10,7 @@ slug context passed to the lua filter and figure mover via env vars
 import contextlib
 import json
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -161,6 +162,25 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
         )
         if files_copied:
             print(f"✓ Copied {files_copied} code files to media/notebooks/{project.slug}/")
+
+    # Stage committed figure assets (chapters/<ch>/<stem>_files/) into the
+    # media tree. Captures save straight into the source-tree _files dirs;
+    # this staging step is how they (and any hand-placed assets) reach the
+    # served-media layout.
+    staged = 0
+    for chapter in project.chapters:
+        for files_dir in sorted(chapter.directory.glob("*_files")):
+            if not files_dir.is_dir():
+                continue
+            dest = (Path(media_root) / "media" / "notebooks" / project.slug
+                    / chapter.slug / files_dir.name)
+            dest.mkdir(parents=True, exist_ok=True)
+            for asset in sorted(files_dir.iterdir()):
+                if asset.is_file() and not asset.name.startswith("."):
+                    shutil.copy2(asset, dest / asset.name)
+                    staged += 1
+    if staged:
+        print(f"✓ Staged {staged} figure assets into media/notebooks/{project.slug}/")
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

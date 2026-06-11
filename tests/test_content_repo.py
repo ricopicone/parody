@@ -91,6 +91,13 @@ def test_build_with_execution_captures_figures(scaffold, tmp_path):
     assert "sampled 200 points" in html, "cell output missing"
     # Figure media path carries the env-provided slug context (not 'unknown')
     assert "{% media 'notebooks/my-book/introduction/example_code_files/" in html
-    # ...and the figure file actually landed there (media_root = project dir)
-    figs = list((scaffold / "media" / "notebooks" / "my-book" / "introduction").rglob("autofig-*"))
-    assert figs, "auto-captured figure not moved into the project media tree"
+    # ...and the figure file landed in BOTH homes: captures save straight
+    # into the source-tree <stem>_files/ dir (committed alongside the .md,
+    # named from the label when one is given), and the build stages a copy
+    # into the media tree.
+    src_figs = list((scaffold / "chapters" / "introduction"
+                     / "example_code_files").glob("*.svg"))
+    assert src_figs, "capture missing from source-tree _files dir"
+    media_figs = list((scaffold / "media" / "notebooks" / "my-book"
+                       / "introduction").rglob("*.svg"))
+    assert media_figs, "capture not staged into the project media tree"
