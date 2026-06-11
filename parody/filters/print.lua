@@ -742,8 +742,10 @@ local function figurediver(el)
     if cap == nil or isempty(cap) then
       caps[i] = ''
     else
-      caps[i] = pandoc.utils.stringify(
-        pandoc.write(pandoc.Pandoc(cap), 'latex'))
+      -- caption is an Inlines list; Pandoc(cap) would coerce each inline
+      -- to its own block (a \par between every word, fatal inside
+      -- \subcaptionbox)
+      caps[i] = inlines_to_latex(cap)
     end
     srcs[i] = img.src or ''
     labels[i] = img.identifier
