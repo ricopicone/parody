@@ -91,3 +91,30 @@ def test_preview_cli_end_to_end(tmp_path):
     page = (out / "introduction" / "overview.html").read_text()
     assert "{%" not in page
     assert "Solution" in page
+
+
+def test_media_assembly_from_project_tree(tmp_path):
+    """Refs missing from the media/ tree are gathered from the project
+    (content repos co-locate assets in chapters/); .pgf refs swap to their
+    .svg siblings and extensionless refs resolve by extension."""
+    proj = tmp_path / "proj"
+    chdir = proj / "chapters" / "ch"
+    chdir.mkdir(parents=True)
+    (chdir / "fig.png").write_bytes(b"\x89PNG fake")
+    (chdir / "plot.pgf").write_text("% pgf source")
+    (chdir / "plot.svg").write_text("<svg/>")
+    (chdir / "bare.png").write_bytes(b"\x89PNG fake")
+    artifact = make_artifact(
+        "<img src=\"{% media 'fig.png' %}\">"
+        "<img src=\"{% media 'plot.pgf' %}\">"
+        "<img src=\"{% media 'bare' %}\">"
+    )
+    out = write_preview(artifact, tmp_path / "site", media_src=proj)
+    media = out / "media"
+    assert (media / "fig.png").is_file()
+    assert (media / "plot.svg").is_file(), "svg sibling not shipped"
+    assert (media / "bare.png").is_file(), "extensionless ref not resolved"
+    page = (out / "ch" / "sec.html").read_text()
+    assert 'src="../media/fig.png"' in page
+    assert 'src="../media/plot.svg"' in page, "pgf ref not rewritten to svg"
+    assert 'src="../media/bare.png"' in page

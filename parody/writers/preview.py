@@ -20,8 +20,11 @@ content with nothing but a browser:
 
 import html as html_mod
 import json
+import os
 import re
 import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 STYLE = """\
@@ -125,10 +128,144 @@ def _render_citations(keys, bib_path):
     return rendered, refs_html
 
 
+def _media_refs(artifact):
+    """Every path referenced by a ``{% media %}`` tag anywhere in the artifact."""
+    text = json.dumps(artifact)
+    return sorted(set(re.findall(r"\{%\s*media\s+['\"]([^'\"]+)['\"]\s*%\}", text)))
+
+
+_SEARCH_SKIP_DIRS = {"build", "node_modules", "__pycache__"}
+
+
+def _index_tree(root, exclude):
+    """Map basename -> path for every file under root, pruning build trees
+    and the preview output itself. Content repos co-locate section assets in
+    chapters/<ch>/ rather than a media/ tree, so refs are looked up by name."""
+    index = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in _SEARCH_SKIP_DIRS and not d.startswith(".")
+            and (Path(dirpath) / d).resolve() != exclude
+        ]
+        for name in filenames:
+            index.setdefault(name, Path(dirpath) / name)
+    return index
+
+
+def _latex_env():
+    from .latex import _tool_env
+    return _tool_env()
+
+
+def _pdf_to_svg(pdf_path, svg_path):
+    if shutil.which("pdftocairo") is None:
+        return False
+    res = subprocess.run(
+        ["pdftocairo", "-svg", str(pdf_path), str(svg_path)],
+        capture_output=True,
+    )
+    return res.returncode == 0 and svg_path.is_file()
+
+
+def _pgf_to_svg(pgf_src, svg_path):
+    """Compile a (matplotlib-style) .pgf to .svg via standalone lualatex +
+    pdftocairo. Raster companions referenced by \\pgfimage are pulled from
+    the .pgf's directory."""
+    env = _latex_env()
+    if shutil.which("lualatex", path=env["PATH"]) is None:
+        return False
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        shutil.copy2(pgf_src, td / pgf_src.name)
+        pgf_text = pgf_src.read_text(errors="ignore")
+        for raster in set(re.findall(r"\\pgfimage(?:\[[^]]*\])?\{([^}]+)\}", pgf_text)):
+            for cand in (pgf_src.parent / raster,
+                         (pgf_src.parent / raster).with_suffix(".png")):
+                if cand.is_file():
+                    shutil.copy2(cand, td / cand.name)
+                    break
+        (td / "wrap.tex").write_text(
+            "\\documentclass{standalone}\n"
+            "\\usepackage{pgf}\n"
+            "\\usepackage{amsmath,amssymb}\n"
+            "\\providecommand{\\mathdefault}[1]{#1}\n"
+            "\\begin{document}\n"
+            "\\input{" + pgf_src.name + "}\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["lualatex", "-interaction=nonstopmode", "wrap.tex"],
+            cwd=td, env=env, capture_output=True,
+        )
+        pdf = td / "wrap.pdf"
+        # nonstopmode can exit nonzero yet still emit a usable pdf
+        if not pdf.is_file():
+            return False
+        return _pdf_to_svg(pdf, svg_path)
+
+
+def _assemble_media(artifact, media_src, output_dir):
+    """Copy every referenced media file into output_dir/media and make it
+    browser-renderable. Returns {original ref: replacement ref} for refs
+    whose target changed (.pgf/.pdf converted or swapped for an .svg
+    sibling)."""
+    media_dir = output_dir / "media"
+    media_map = {}
+    missing = []
+    index = None
+    for ref in _media_refs(artifact):
+        target = ref
+        dest = media_dir / ref
+        src = None
+        if not dest.is_file():
+            if index is None:
+                index = _index_tree(media_src, output_dir.resolve()) \
+                    if media_src else {}
+            src = index.get(Path(ref).name)
+            if src is None and not Path(ref).suffix:
+                # extensionless refs (standalone-TikZ style) rely on TeX
+                # extension resolution; try the usual suspects
+                for ext in (".svg", ".png", ".jpg", ".jpeg", ".pdf"):
+                    src = index.get(Path(ref).name + ext)
+                    if src is not None:
+                        target = ref + ext
+                        dest = media_dir / target
+                        break
+            if src is None:
+                missing.append(ref)
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+        if target != ref:
+            media_map[ref] = target
+        if dest.suffix.lower() not in (".pgf", ".pdf"):
+            continue
+        svg_ref = str(Path(target).with_suffix(".svg"))
+        svg_dest = media_dir / svg_ref
+        if not svg_dest.is_file():
+            sibling = (src or dest).with_suffix(".svg")
+            if src is not None and sibling.is_file():
+                shutil.copy2(sibling, svg_dest)
+            elif dest.suffix.lower() == ".pgf":
+                if not _pgf_to_svg(src or dest, svg_dest):
+                    continue
+            else:
+                if not _pdf_to_svg(src or dest, svg_dest):
+                    continue
+        media_map[ref] = svg_ref
+    if missing:
+        print(f"warning: {len(missing)} media refs not found "
+              f"(first: {missing[0]!r})")
+    return media_map
+
+
 class TagResolver:
-    def __init__(self, citations=None, refs_page=False):
+    def __init__(self, citations=None, refs_page=False, media_map=None):
         self.citations = citations or {}
         self.refs_page = refs_page
+        self.media_map = media_map or {}
 
     def _cite_one(self, key, prefix):
         rendered = self.citations.get(key)
@@ -140,7 +277,8 @@ class TagResolver:
 
     def resolve(self, content, prefix=""):
         def media(m):
-            return f"{prefix}media/{m.group(1)}"
+            ref = self.media_map.get(m.group(1), m.group(1))
+            return f"{prefix}media/{ref}"
 
         def static(m):
             return f"{prefix}static/{m.group(1)}"
@@ -221,7 +359,6 @@ def write_preview(artifact, output_dir, media_src=None, bib_path=None,
     citations, refs_html = _render_citations(
         _collect_cite_keys(artifact), bib_path
     )
-    resolver = TagResolver(citations, refs_page=bool(refs_html))
 
     (output_dir / "style.css").write_text(STYLE, encoding="utf-8")
 
@@ -229,6 +366,11 @@ def write_preview(artifact, output_dir, media_src=None, bib_path=None,
         media_tree = Path(media_src) / "media"
         if media_tree.is_dir():
             shutil.copytree(media_tree, output_dir / "media", dirs_exist_ok=True)
+    media_map = _assemble_media(
+        artifact, Path(media_src) if media_src else None, output_dir
+    )
+    resolver = TagResolver(citations, refs_page=bool(refs_html),
+                           media_map=media_map)
 
     # Flattened section list for prev/next navigation
     flat = []
