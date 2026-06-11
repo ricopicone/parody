@@ -108,11 +108,17 @@ def cmd_check(args):
 
     import jsonschema
 
-    schema_path = Path(__file__).parent / "schemas" / "artifact-v1.json"
-    with open(schema_path, encoding="utf-8") as f:
-        schema = json.load(f)
     with open(args.artifact, encoding="utf-8") as f:
         artifact = json.load(f)
+
+    version = artifact.get("schema_version", 1)
+    schema_path = Path(__file__).parent / "schemas" / f"artifact-v{version}.json"
+    if not schema_path.is_file():
+        print(f"error: unknown schema_version {version!r} "
+              f"(no {schema_path.name})", file=sys.stderr)
+        return 2
+    with open(schema_path, encoding="utf-8") as f:
+        schema = json.load(f)
 
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(artifact), key=lambda e: list(e.path))
@@ -121,7 +127,7 @@ def cmd_check(args):
             loc = "/".join(str(p) for p in err.path) or "<root>"
             print(f"✗ {loc}: {err.message}")
         return 1
-    print(f"✓ {args.artifact} is a valid schema-v1 artifact")
+    print(f"✓ {args.artifact} is a valid schema-v{version} artifact")
     return 0
 
 

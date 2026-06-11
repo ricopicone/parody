@@ -207,11 +207,25 @@ def _post_process_html_for_anchors(html):
 
     return html
 
-def extract_anchor_ids(markdown_content):
+# Short-hash attribute on headings/divs: h=xx, h="xx", hash='xx' (meta/rtc
+# style; the stable permalink/cross-ref/QR key, distinct from the anchor id).
+_HASH_ATTR_RE = re.compile(r'''(?:^|\s)h(?:ash)?=(?:"([^"]*)"|'([^']*)'|([^\s}]+))''')
+
+
+def _attr_hash(attr_text):
+    if not attr_text:
+        return None
+    m = _HASH_ATTR_RE.search(attr_text)
+    if not m:
+        return None
+    return next((g for g in m.groups() if g), None)
+
+
+def extract_anchor_ids(markdown_content, with_hashes=False):
     """
     Extract all {#id} patterns from markdown content with context.
     Returns a list of anchor objects with id, type, level (for headings), and title.
-    
+
     Supports:
     - Headings: ## Title {#id}
     - Figures: ![caption](path){#fig:label}
@@ -220,16 +234,24 @@ def extract_anchor_ids(markdown_content):
     - Definitions: ::: {.definition #def:label}
     - Comments: ::: {.comment #cmt:label}
     - Theorems: ::: {.theorem #thm:label}
+
+    with_hashes (schema v2): also match headings/divs that carry extra
+    attributes (id-first divs, ``h=xx`` short hashes, ``.example`` divs) and
+    attach a "hash" key to anchors that declare one. Schema-v1 extraction is
+    deliberately untouched: it is pinned by golden parity with the ancestor.
     """
     anchors = []
 
     # Pattern for headings with IDs: ## Title {#id}
-    heading_pattern = r'^(#{1,6})\s+(.+?)\s+\{#([A-Za-z0-9_-]+)\}\s*$'
+    if with_hashes:
+        heading_pattern = r'^(#{1,6})\s+(.+?)\s+\{#([A-Za-z0-9_:-]+)((?:\s[^}]*)?)\}\s*$'
+    else:
+        heading_pattern = r'^(#{1,6})\s+(.+?)\s+\{#([A-Za-z0-9_-]+)\}\s*$'
 
     # Pattern for typed anchors: {#prefix:label} or {#prefix-label}
     # (figures, tables, equations, definitions, comments, theorems, exercises)
     # Allow attributes like width, height after the label
-    typed_pattern = r'\{#(fig|tbl|eq|def|cmt|thm|exe)([:\-])([A-Za-z0-9_-]+)[\s\S]*?\}'
+    typed_pattern = r'\{#(fig|tbl|eq|def|cmt|thm|exe)([:\-])([A-Za-z0-9_-]+)([^}]*)\}'
 
     # Pattern for div environments: ::: {.type ... #id ...}
     # Captures the environment type (definition/comment/theorem/exercise) and the ID
@@ -251,12 +273,17 @@ def extract_anchor_ids(markdown_content):
             anchor_id = heading_match.group(3)
 
             if anchor_id not in found_ids:
-                anchors.append({
+                anchor = {
                     'id': anchor_id,
                     'type': 'heading',
                     'level': level,
                     'title': title
-                })
+                }
+                if with_hashes:
+                    h = _attr_hash(heading_match.group(4))
+                    if h:
+                        anchor['hash'] = h
+                anchors.append(anchor)
                 found_ids.add(anchor_id)
 
     # Extract typed anchors (figures, tables, equations, definitions, comments, theorems)
@@ -278,26 +305,47 @@ def extract_anchor_ids(markdown_content):
                 'thm': 'theorem',
                 'exe': 'exercise'
             }
-            anchors.append({
+            anchor = {
                 'id': anchor_id,
                 'type': type_map.get(prefix, 'anchor'),
                 'level': None,
                 'title': None
-            })
+            }
+            if with_hashes:
+                h = _attr_hash(match.group(4))
+                if h:
+                    anchor['hash'] = h
+            anchors.append(anchor)
             found_ids.add(anchor_id)
 
     # Extract div environment anchors: ::: {.definition #id}
-    for match in re.finditer(div_pattern, markdown_content):
-        env_class = match.group(1)  # definition, comment, or theorem
-        full_id = match.group(2)
+    # v2 parses the attribute block instead of pattern-matching it, so
+    # id-first divs (::: {#chortle .exercise h="x"}) and .example divs are
+    # found and their hashes captured.
+    class_type_map = {
+        'definition': 'definition',
+        'comment': 'comment',
+        'theorem': 'theorem',
+    }
+    if with_hashes:
+        class_type_map = dict(class_type_map, exercise='exercise',
+                              example='example')
+        div_matches = []
+        for m in re.finditer(r'^:{3,}\s*\{([^}]*)\}', markdown_content,
+                             flags=re.MULTILINE):
+            attr_text = m.group(1)
+            idm = re.search(r'#([A-Za-z0-9_:-]+)', attr_text)
+            env_class = next(
+                (c for c in re.findall(r'\.([A-Za-z0-9_-]+)', attr_text)
+                 if c in class_type_map), None)
+            if idm and env_class:
+                div_matches.append((env_class, idm.group(1),
+                                    _attr_hash(attr_text)))
+    else:
+        div_matches = [(m.group(1), m.group(2), None)
+                       for m in re.finditer(div_pattern, markdown_content)]
 
-        # Map class to anchor type
-        class_type_map = {
-            'definition': 'definition',
-            'comment': 'comment',
-            'theorem': 'theorem',
-        }
-
+    for env_class, full_id, div_hash in div_matches:
         anchor_id = full_id
         anchor_type = class_type_map.get(env_class, 'anchor')
 
@@ -313,12 +361,15 @@ def extract_anchor_ids(markdown_content):
             anchor_type = type_map.get(prefix, anchor_type)
 
         if anchor_id not in found_ids:
-            anchors.append({
+            anchor = {
                 'id': anchor_id,
                 'type': anchor_type,
                 'level': None,
                 'title': None
-            })
+            }
+            if div_hash:
+                anchor['hash'] = div_hash
+            anchors.append(anchor)
             found_ids.add(anchor_id)
 
     # Also find standalone IDs (not on headings, not typed) as generic anchors
@@ -482,7 +533,7 @@ def convert_solution_to_html(solution_markdown, chapter_dir):
     html = _post_process_html_for_anchors(html)
     return html
 
-def load_section(chapter_dir, section_slug):
+def load_section(chapter_dir, section_slug, with_hashes=False):
     section_path = chapter_dir / f"{section_slug}.md"
     with open(section_path, "r", encoding="utf-8") as f:
         raw = f.read()
@@ -519,20 +570,29 @@ def load_section(chapter_dir, section_slug):
         }
 
     # Extract anchor IDs from the content (now without solutions)
-    anchor_ids = extract_anchor_ids(content_without_solutions)
+    anchor_ids = extract_anchor_ids(content_without_solutions,
+                                    with_hashes=with_hashes)
+
+    # Section-level short hash (schema v2): front matter `hash:` key
+    section_hash = None
+    if with_hashes and meta.get('hash') is not None:
+        section_hash = str(meta['hash'])
 
     # Add the section's frontmatter ID as a heading anchor for cross-referencing
     if 'id' in meta and meta['id']:
         section_id = str(meta['id'])  # Ensure ID is a string (YAML may parse numeric IDs as integers)
         # Only add if not already in anchors (avoid duplicates)
         if not any(a.get('id') == section_id for a in anchor_ids if isinstance(a, dict)):
-            anchor_ids.insert(0, {
+            section_anchor = {
                 'id': section_id,
                 'type': 'heading',
                 'level': 2,  # Section-level anchor (matches ## heading level)
                 'title': meta.get('title', ''),
                 'is_section': True  # Mark this as a section-level anchor, not an internal heading
-            })
+            }
+            if section_hash:
+                section_anchor['hash'] = section_hash
+            anchor_ids.insert(0, section_anchor)
 
     # Create a temporary file with the content to preserve directory context
     import tempfile
@@ -567,6 +627,8 @@ def load_section(chapter_dir, section_slug):
         "html": html,
         "anchors": anchor_ids
     }
+    if section_hash:
+        result["hash"] = section_hash
 
     # Add solutions if any were found
     if solutions_html:

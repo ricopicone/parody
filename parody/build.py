@@ -39,6 +39,38 @@ def get_source_repo(path):
         return None
 
 
+class DuplicateHashError(RuntimeError):
+    """Short hashes are permalink/cross-ref/QR keys; per the seed plan a
+    duplicate is a build error, never a warning (the ancestor's advisory
+    find_duplicate_hashes.py let collisions ship)."""
+
+
+def _check_duplicate_hashes(artifact):
+    """One flat namespace per book, matching the ancestor's checker. A
+    section's own hash and its heading anchor's hash are one identity."""
+    locations = {}
+    for chapter in artifact["chapters"]:
+        for section in chapter["sections"]:
+            where = f"{chapter['slug']}/{section['slug']}"
+            anchor_hashes = set()
+            for anchor in section.get("anchors", []):
+                h = anchor.get("hash") if isinstance(anchor, dict) else None
+                if h:
+                    anchor_hashes.add(h)
+                    locations.setdefault(h, []).append(
+                        f"{where}#{anchor['id']}")
+            h = section.get("hash")
+            if h and h not in anchor_hashes:
+                locations.setdefault(h, []).append(where)
+    duplicates = {h: locs for h, locs in locations.items() if len(locs) > 1}
+    if duplicates:
+        lines = [f"  {h}: {', '.join(locs)}" for h, locs in
+                 sorted(duplicates.items())]
+        raise DuplicateHashError(
+            "duplicate short hashes (must be unique per book):\n"
+            + "\n".join(lines))
+
+
 @contextlib.contextmanager
 def _slug_env(notebook_slug=None, chapter_slug=None, media_root=None):
     """Set PARODY_* context env vars, restoring previous values on exit."""
@@ -80,8 +112,13 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
     if media_root is None:
         media_root = project.directory
 
+    # Schema v2 (parody.yaml `schema: 2`) adds short-hash stable IDs; v1
+    # stays the default because its output is pinned by golden parity.
+    schema_version = int(project.meta.get("schema", SCHEMA_VERSION))
+    with_hashes = schema_version >= 2
+
     output = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": schema_version,
         "generator": f"parody {__version__}",
         "source_repo": get_source_repo(project.directory),
         "source_commit": get_source_commit(project.directory),
@@ -109,9 +146,13 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
             for section_slug in chapter.section_slugs:
                 for path in get_section_download_paths(chapter.directory, section_slug):
                     requested_code_files.add((chapter.directory.name, path))
-                chapter_data["sections"].append(load_section(chapter.directory, section_slug))
+                chapter_data["sections"].append(load_section(
+                    chapter.directory, section_slug, with_hashes=with_hashes))
 
         output["chapters"].append(chapter_data)
+
+    if with_hashes:
+        _check_duplicate_hashes(output)
 
     if requested_code_files:
         files_copied = copy_selected_code_files_to_media(

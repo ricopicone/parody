@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ricopicone/parody/schemas/artifact-v2.json",
+  "title": "Parody artifact schema v2",
+  "description": "v1 plus rtc-style stable short-hash IDs: optional \"hash\" on sections and anchors (meta's h= header/div attributes and front-matter hash keys). Hashes are permalink/cross-ref/QR keys and must be unique per book; the build errors on duplicates. Superset of homepage-django's notebooks_data/*.json. The html fields are Django-template-flavored ({% media %}, {% static %}, {% cite %} tags) for parity; consumers either re-render through Django's template engine or resolve the tags themselves. Provenance keys are optional because pre-parody artifacts lack them.",
+  "type": "object",
+  "required": [
+    "title",
+    "author",
+    "chapters"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "generator": {
+      "type": "string"
+    },
+    "source_repo": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "built_at": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "author": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "description": {
+      "type": "string"
+    },
+    "acronym": {
+      "type": "string"
+    },
+    "cover_image": {
+      "type": "string"
+    },
+    "pdf_file": {
+      "type": "string"
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "title",
+          "slug",
+          "sections"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "title",
+                "slug",
+                "html",
+                "anchors"
+              ],
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": [
+                    "string",
+                    "integer"
+                  ]
+                },
+                "html": {
+                  "type": "string"
+                },
+                "anchors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "type"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "level": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "title": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "is_section": {
+                        "type": "boolean"
+                      },
+                      "hash": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "has_solutions": {
+                  "type": "boolean"
+                },
+                "solutions": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "required": [
+                      "content"
+                    ],
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "problems": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "required": [
+                      "content"
+                    ],
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "hash": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
