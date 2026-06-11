@@ -76,8 +76,12 @@ interior_filter = {
   OrderedList = function(el) return OrderedList(el) end,
   Table = function(el) return Table(el) end,
   Figure = function(el) return Figure(el) end,
-  Image = function(el) return Image(el) end,
 }
+
+-- Bare-image fallback. Walked separately AFTER interior_filter: within a
+-- single walk table inlines run before blocks, so registering Image
+-- alongside Figure would hand Figure an already-converted RawInline.
+local image_filter = { Image = function(el) return Image(el) end }
 
 local inline_filter = {
   Math = function(el) return Math(el) end,
@@ -92,6 +96,7 @@ local inline_filter = {
 
 local function walk_to_latex(el)
   local el_walked = pandoc.walk_block(el, interior_filter)
+  el_walked = pandoc.walk_block(el_walked, image_filter)
   local content_doc = pandoc.Pandoc(el_walked.content)
   return pandoc.write(content_doc, 'latex')
 end
@@ -503,6 +508,7 @@ local function exerciser(el)
     end,
   })
   el_walked = pandoc.walk_block(el_walked, interior_filter)
+  el_walked = pandoc.walk_block(el_walked, image_filter)
   local content_doc = pandoc.Pandoc(el_walked.content)
   local content = delimiter_dollar(pandoc.write(content_doc, 'latex'))
   local hash = el.attr.attributes['h'] or el.attr.attributes['hash']
@@ -530,6 +536,7 @@ local function exampler(el)
     Div = function(inner) return example_solution(inner) end,
   })
   el_walked = pandoc.walk_block(el_walked, interior_filter)
+  el_walked = pandoc.walk_block(el_walked, image_filter)
   local content_doc = pandoc.Pandoc(el_walked.content)
   local content = delimiter_dollar(pandoc.write(content_doc, 'latex'))
   local hash = el.attr.attributes['h'] or el.attr.attributes['hash'] or identifier
@@ -643,7 +650,7 @@ local figcaption_keys = {
 
 function figurer(el, nofloat)
   if not is_latex() then return el end
-  local image = el.content[1].content[1]
+  local image = el.content[1] and el.content[1].content and el.content[1].content[1]
   local el_walked = pandoc.walk_block(el, {
     Image = function(img) return imager(img) end,
   })
@@ -659,7 +666,7 @@ function figurer(el, nofloat)
     fig_begin = '\\begin{figure}[' .. position .. ']\n\\centering\n'
     fig_end = '\\end{figure}\n'
   end
-  local attributes = image.attr.attributes
+  local attributes = (image and image.attr and image.attr.attributes) or {}
   local options = '['
   local i = 0
   for key, value in pairs(attributes) do
@@ -669,7 +676,7 @@ function figurer(el, nofloat)
     end
   end
   options = options .. ']'
-  local caption = image.caption
+  local caption = image and image.caption
   if caption == nil then
     caption = ''
   else
@@ -963,7 +970,9 @@ function Math(el)
 end
 
 function Figure(el)
-  if el.content[1].content[1].classes:includes('algorithm') then
+  local first = el.content[1]
+  local image = first and first.content and first.content[1]
+  if image and image.classes and image.classes:includes('algorithm') then
     if is_latex() then
       return algorithmer_latex(el)
     end
@@ -988,7 +997,6 @@ end
 
 return {
   { Div = Div },
-  { Image = Image },
   { Header = Header },
   { RawBlock = RawBlock },
   { OrderedList = OrderedList },
@@ -1000,5 +1008,8 @@ return {
   { Link = Link },
   { Math = Math },
   { Figure = Figure },
+  -- After Figure: Figure consumes its own images via figurer; this pass
+  -- catches only bare images that no block handler claimed.
+  { Image = Image },
   { Table = Table },
 }
