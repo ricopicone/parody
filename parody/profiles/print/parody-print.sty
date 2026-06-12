@@ -224,3 +224,7 @@
 \makeatother
 % pandoc writes .underline spans as \ul (assumes soul); shim it
 \providecommand{\ul}[1]{\underline{#1}}
+% pandoc's image-width idiom (width capped at natural size)
+\makeatletter
+\providecommand{\maxwidth}{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\makeatother
