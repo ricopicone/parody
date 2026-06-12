@@ -196,6 +196,14 @@ local function hashrefer(el)
   local text = pandoc.utils.stringify(el.content)
   local cap = el.classes:includes('Hashref') or el.classes:includes('Href')
   if not is_latex() then return el end
+  -- capitalized typed refs ([Fig:x]{.hashref}) mean "capitalize the name":
+  -- labels are lowercase; the capitalization belongs to \Cref
+  local prefix, rest = text:match('^(%u%l*):(.+)$')
+  if prefix and (prefix == 'Fig' or prefix == 'Tbl' or prefix == 'Eq'
+      or prefix == 'Sec' or prefix == 'Lst') then
+    text = prefix:lower() .. ':' .. rest
+    cap = true
+  end
   if cap then
     return pandoc.RawInline('latex', '\\Cref{' .. text .. '}')
   end
