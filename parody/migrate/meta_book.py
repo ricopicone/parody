@@ -69,8 +69,10 @@ def slugify(text):
 
 
 def first_header_line(text):
-    """First ATX H1 line (sections may open with raw-latex lines like
-    \\clearpage before their header)."""
+    """First live ATX header line (sections may open with raw-latex lines
+    like \\clearpage before their header; HTML-commented headings are
+    dead and must not define the section identity)."""
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     for line in text.splitlines():
         if HEADER_RE.match(line):
             return line

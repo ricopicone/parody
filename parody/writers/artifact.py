@@ -237,9 +237,14 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
 
     with_hashes (schema v2): also match headings/divs that carry extra
     attributes (id-first divs, ``h=xx`` short hashes, ``.example`` divs) and
-    attach a "hash" key to anchors that declare one. Schema-v1 extraction is
-    deliberately untouched: it is pinned by golden parity with the ancestor.
+    attach a "hash" key to anchors that declare one; HTML-commented content
+    is skipped (commented-out headings created phantom anchors whose hashes
+    collided with the live ones). Schema-v1 extraction is deliberately
+    untouched: it is pinned by golden parity with the ancestor.
     """
+    if with_hashes:
+        markdown_content = re.sub(r"<!--.*?-->", "", markdown_content,
+                                  flags=re.S)
     anchors = []
 
     # Pattern for headings with IDs: ## Title {#id}

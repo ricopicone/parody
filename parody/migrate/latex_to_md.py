@@ -60,9 +60,16 @@ def preprocess(tex_text):
     def sec3(m):
         if _commented(m.string, m.start()):
             return m.group(0)  # stay commented: markers insert newlines
-        cmd, _opts, slug, h, title = m.groups()
+        cmd, opts, slug, h, title = m.groups()
         title = " ".join(title.split())
-        cls = " resource" if cmd == "resource" else ""
+        classes = []
+        if cmd == "resource":
+            classes.append("resource")
+        # 2nd optional is the ts/ds/both versioned marker (margin icons)
+        brackets = re.findall(r"\[([^]]*)\]", opts or "")
+        if len(brackets) >= 2 and brackets[1] in ("ts", "ds", "both"):
+            classes.append(f"versioned-{brackets[1]}")
+        cls = (" " + ",".join(classes)) if classes else ""
         return (f"\\{_LEVEL_CMD[cmd]}{{{title}}}\n\n"
                 f"{_SEC_MARK} {slug} {h}{cls}\n")
 
@@ -130,11 +137,12 @@ def postprocess(md_text):
     for line in lines:
         # tolerate trailing debris merged into the marker paragraph
         # (e.g. a \label that followed the sectioning command)
-        m = re.match(rf"^{_SEC_MARK} (\S+) (\S+)( resource)?\b",
+        m = re.match(rf"^{_SEC_MARK} (\S+) (\S+)( [\w,-]+)?\b",
                      line.strip())
         if m:
-            slug, h, res = m.groups()
-            cls = " .resource" if res else ""
+            slug, h, classes = m.groups()
+            cls = "".join(
+                f" .{c}" for c in (classes or "").strip().split(",") if c)
             # attach to the nearest preceding ATX header (skipping blanks)
             for j in range(len(out) - 1, -1, -1):
                 if out[j].strip() == "":
