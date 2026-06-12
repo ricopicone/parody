@@ -321,6 +321,9 @@ local function indexer(el)
     show = '[' .. el.attr.attributes['show'] .. ']'
   end
   local content = pandoc.utils.stringify(el.content)
+  -- code index entries carry TeX specials (%, #, &): escape or the
+  -- emitted argument swallows its own closing brace
+  content = content:gsub('([%%#&])', '\\%1')
   if not code then
     return pandoc.RawInline('latex',
       '\\myindex' .. primary .. ss .. lab .. show .. under .. '{' .. content .. '}')

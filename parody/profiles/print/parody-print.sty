@@ -179,7 +179,8 @@
 % \myindex*[start|stop][lab][show][under]{term}
 \NewDocumentCommand{\myindex}{sO{}O{}O{}O{}m}{\index{#6}}
 % \indexc*[start|stop][lab][post][fun][under]{lang}{term}
-\NewDocumentCommand{\indexc}{sO{}O{}O{}O{}O{}mm}{\index{#8@\texttt{#8}}}
+% \detokenize: code index entries carry specials (#include)
+\NewDocumentCommand{\indexc}{sO{}O{}O{}O{}O{}mm}{\index{\detokenize{#8}@\texttt{\detokenize{#8}}}}
 % \myurl(*)[punctuation][safety]{url}{hash}; QR codes are a private-profile
 % concern — the generic profile renders a plain URL.
 \NewDocumentCommand{\myurl}{sO{}O{}mm}{\url{#4}#2}
