@@ -100,6 +100,7 @@ def test_migrate_meta_book(tmp_path):
     assert cfg["chapters"] == [{
         "slug": "one", "title": "One [Draft]",
         "sections": ["lead-in", "widgets", "problems"],
+        "hash": "q1",
     }]
 
 

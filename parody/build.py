@@ -149,6 +149,8 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
                     print(f"✓ Converted {len(converted)} jupytext files in chapter {chapter.slug}")
 
             chapter_data = {"title": chapter.title, "slug": chapter.slug, "sections": []}
+            if with_hashes and chapter.hash:
+                chapter_data["hash"] = chapter.hash
             for section_slug in chapter.section_slugs:
                 for path in get_section_download_paths(chapter.directory, section_slug):
                     requested_code_files.add((chapter.directory.name, path))

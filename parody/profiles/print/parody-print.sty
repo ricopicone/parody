@@ -109,7 +109,8 @@
    \begin{tcolorbox}[enhanced, breakable, colback=green!4,
      colframe=green!35!black!50,
      title={\textbf{Example~\theexamplectr}}]%
-   \if\relax\detokenize{#2}\relax\else\label{#2}\fi}
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi%
+   \ifstrequal{#2}{#3}{}{\if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
   {\end{tcolorbox}}
 \crefname{examplectr}{example}{examples}
 
@@ -228,3 +229,7 @@
 \makeatletter
 \providecommand{\maxwidth}{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
 \makeatother
+% hashref targets: exercises are cref'd by their hash labels
+\RequirePackage{etoolbox}
+\crefname{exercise}{exercise}{exercises}
+\crefname{labexercise}{lab exercise}{lab exercises}

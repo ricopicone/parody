@@ -126,6 +126,12 @@ local function headerer_latex(el)
   if label and label ~= '' then
     sec_tex = sec_tex .. '\n\\label{' .. label .. '}'
   end
+  -- short hashes are cross-ref keys: [h]{.hashref} -> \cref{h} needs a
+  -- label at the heading carrying that hash
+  local h = el.attr.attributes['h'] or el.attr.attributes['hash']
+  if h and h ~= '' and h ~= label then
+    sec_tex = sec_tex .. '\n\\label{' .. h .. '}'
+  end
   return { pandoc.RawBlock('latex', sec_tex) }
 end
 
@@ -528,8 +534,16 @@ local function exerciser(el)
     hash = el.identifier or ''
   end
   local env = el.classes:includes('lab') and 'labexercise' or 'exercise'
+  -- labels for the id and hash so hashrefs to exercises resolve
+  local labels = ''
+  local id = el.identifier or ''
+  if id ~= '' then labels = labels .. '\\label{' .. id .. '}' end
+  if hash ~= '' and hash ~= id then
+    labels = labels .. '\\label{' .. hash .. '}'
+  end
   return pandoc.RawBlock('latex',
-    '\\begin{' .. env .. '}[ID=' .. hash .. ',hash=' .. hash .. ']\n' .. content)
+    '\\begin{' .. env .. '}[ID=' .. hash .. ',hash=' .. hash .. ']\n'
+    .. labels .. '\n' .. content)
 end
 
 local function example_solution(el)

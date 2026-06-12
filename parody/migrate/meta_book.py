@@ -159,11 +159,13 @@ class MetaBookMigrator:
                 continue
             chx, title = m.group(1), (m.group(2) or "").strip()
             ch_slug = chx.removeprefix("chx-")
+            ch_hash = None
             header = self.src / chx / f"{chx}-header.tex"
             if header.is_file():
                 hm = CHAPTER_HEADER_RE.search(header.read_text())
                 if hm:
                     title = hm.group(3)
+                    ch_hash = hm.group(2)
                     if not chx.startswith("chx-"):
                         # numbered chapter dirs (rtc ch01): the real slug
                         # lives in the header's first mandatory arg
@@ -214,7 +216,7 @@ class MetaBookMigrator:
                             print(f"  warning: section input not found: "
                                   f"{im.group(1)}")
                     i += 1
-            chapters.append((ch_slug, title, entries))
+            chapters.append((ch_slug, title, ch_hash, entries))
         return chapters
 
     # Figure compilation ---------------------------------------------------
@@ -569,7 +571,7 @@ class MetaBookMigrator:
 
         yaml_chapters = []
         n_sections = 0
-        for ch_slug, ch_title, entries in self.parse_chapters():
+        for ch_slug, ch_title, ch_hash, entries in self.parse_chapters():
             ch_dir = chapters_dir / ch_slug
             ch_dir.mkdir(parents=True)
             slugs = []
@@ -619,9 +621,10 @@ class MetaBookMigrator:
                 (ch_dir / f"{slug}.md").write_text(fm + text.rstrip() + "\n")
                 slugs.append(slug)
                 n_sections += 1
-            yaml_chapters.append(
-                {"slug": ch_slug, "title": ch_title, "sections": slugs}
-            )
+            entry = {"slug": ch_slug, "title": ch_title, "sections": slugs}
+            if ch_hash:
+                entry["hash"] = ch_hash  # chapter-level hashref target
+            yaml_chapters.append(entry)
 
         cfg_path = self.dst / "parody.yaml"
         cfg = yaml.safe_load(cfg_path.read_text())

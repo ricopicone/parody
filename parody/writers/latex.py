@@ -174,7 +174,12 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                     continue
                 sections = [s for s in sections if s == want_sec]
             if sections and not section:
-                chapters_tex.append(f"\\chapter{{{chapter.title or chapter.slug}}}")
+                chapter_tex = f"\\chapter{{{chapter.title or chapter.slug}}}"
+                chapter_tex += f"\\label{{{chapter.slug}}}"
+                if chapter.hash and chapter.hash != chapter.slug:
+                    # chapter-level hashref target
+                    chapter_tex += f"\\label{{{chapter.hash}}}"
+                chapters_tex.append(chapter_tex)
             os.environ["PARODY_CHAPTER_DIR"] = str(Path(chapter.directory).resolve())
             for sec_slug in sections:
                 src = chapter.directory / f"{sec_slug}.md"

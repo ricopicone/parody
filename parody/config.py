@@ -30,6 +30,7 @@ class Chapter:
     title: str
     directory: Path
     section_slugs: list = field(default_factory=list)
+    hash: str = ""  # stable short hash (schema v2 / hashref target)
 
 
 @dataclass
@@ -108,6 +109,7 @@ def load_project(project_dir):
             title=ch.get("title", ""),
             directory=project_dir / "chapters" / ch_slug,
             section_slugs=sections,
+            hash=str(ch.get("hash", "") or ""),
         ))
 
     return Project(
