@@ -61,14 +61,17 @@ end
 local det_counter = 0
 local function random_string()
   -- deterministic (parody toolkit): sha1 of input filename + occurrence
-  -- counter, mapped to [a-z0-9]^2. Identical inputs convert identically.
+  -- counter, mapped to [a-z0-9]^3. Identical inputs convert identically.
+  -- Three chars: meta's real hashes are two, so generated ones can never
+  -- collide with them (they collided constantly at two).
   local chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   det_counter = det_counter + 1
   local seed = table.concat(PANDOC_STATE.input_files or {}, ';')
   local hex = pandoc.utils.sha1(seed .. '#' .. det_counter)
   local a = (tonumber(hex:sub(1, 4), 16) % 36) + 1
   local b = (tonumber(hex:sub(5, 8), 16) % 36) + 1
-  return chars:sub(a, a) .. chars:sub(b, b)
+  local c = (tonumber(hex:sub(9, 12), 16) % 36) + 1
+  return chars:sub(a, a) .. chars:sub(b, b) .. chars:sub(c, c)
 end
 
 -- Table to keep track of used random strings to ensure uniqueness

@@ -23,17 +23,20 @@ from pathlib import Path
 import yaml
 
 # Some main-file inputs carry no `% Title` comment; titles come from each
-# chapter's header file instead: \chapter[toc]{slug}{hash}{Title}
-CHAPTER_RE = re.compile(r"^\\input\{(chx-[\w-]+)/\1\}\s*(?:%\s*(.+))?$")
-# toc arg may nest brackets ([Notebooks [Outlined]]); anchor on the last
-# three brace groups instead: {slug}{hash}{Title}
+# chapter's header file instead. Two chapter-dir conventions: chx-<slug>
+# (math/ec/systems) and chNN (rtc).
+CHAPTER_RE = re.compile(
+    r"^\\input\{((?:chx-[\w-]+|ch\d+))/\1\}\s*(?:%\s*(.+))?$")
+# \chapter[toc][wherein...]{slug}{hash}{Title}: optional args may nest
+# brackets ([Notebooks [Outlined]]); anchor on the last three brace groups
 CHAPTER_HEADER_RE = re.compile(
-    r"\\chapter.*\{[\w-]+\}\{([\w-]+)\}\{(.+)\}\s*$", re.M)
+    r"\\chapter.*\{([\w-]+)\}\{([\w-]+)\}\{(.+)\}\s*$", re.M)
 INCLUDESECTION_RE = re.compile(r"^\s*\\includesection\{([\w-]+)\}")
 EXERCISES_BEGIN_RE = re.compile(r"^\s*\\begin\{exercises\}\{([\w-]+)\}")
 EXERCISES_END_RE = re.compile(r"^\s*\\end\{exercises\}")
 INPUT_RE = re.compile(r"^\s*\\input\{([\w/-]+)\}")
-HEADER_RE = re.compile(r"^#\s+(.+?)\s*\{([^}]*)\}\s*$")
+# some versioned sections open at H2/H3 (e.g. rtc's .ds subsections)
+HEADER_RE = re.compile(r"^#{1,3}\s+(.+?)\s*\{([^}]*)\}\s*$")
 INCLUDE_BLOCK_RE = re.compile(r"^```\s*include\s*$")
 # pandoc image/link targets: ](path) or ](path){attrs}
 IMAGE_REF_RE = re.compile(r"\]\(([^)\s]+\.(?:pgf|pdf|png|jpg|jpeg|svg|gif))\)")
@@ -154,11 +157,16 @@ class MetaBookMigrator:
             if not m:
                 continue
             chx, title = m.group(1), (m.group(2) or "").strip()
+            ch_slug = chx.removeprefix("chx-")
             header = self.src / chx / f"{chx}-header.tex"
             if header.is_file():
                 hm = CHAPTER_HEADER_RE.search(header.read_text())
                 if hm:
-                    title = hm.group(2)
+                    title = hm.group(3)
+                    if not chx.startswith("chx-"):
+                        # numbered chapter dirs (rtc ch01): the real slug
+                        # lives in the header's first mandatory arg
+                        ch_slug = hm.group(1)
             if not title:
                 sys.exit(f"no title found for chapter {chx}")
             wrapper = self.src / chx / f"{chx}.tex"
@@ -188,12 +196,24 @@ class MetaBookMigrator:
                         i += 1
                 else:
                     sm = INCLUDESECTION_RE.match(lines[i])
+                    im = INPUT_RE.match(lines[i])
                     if sm:
                         h = sm.group(1)
                         if not any(h == e[0] for e in entries):
                             entries.append((h, "section", None))
+                    elif im and im.group(1).startswith(chx + "/") \
+                            and not im.group(1).endswith("-header") \
+                            and "exercises" not in im.group(1):
+                        # latex-only prose section (rtc):
+                        # \input{ch01/memory/memory} -> converter
+                        tex = self.src / f"{im.group(1)}.tex"
+                        if tex.is_file():
+                            entries.append((tex.stem, "section-tex", tex))
+                        else:
+                            print(f"  warning: section input not found: "
+                                  f"{im.group(1)}")
                     i += 1
-            chapters.append((chx.removeprefix("chx-"), title, entries))
+            chapters.append((ch_slug, title, entries))
         return chapters
 
     # Figure compilation ---------------------------------------------------
@@ -377,11 +397,22 @@ class MetaBookMigrator:
                     if svg.is_file():
                         shutil.copy2(svg, ch_dir / f"{new_name}.svg")
                     return f"\\includegraphics{{{new_name}}}"
-            print(f"  warning: raw includestandalone not found: {ref}")
-            return m.group(0)
+            for d in search_dirs:
+                cand = (d / (ref + ".tex")).resolve()
+                if cand.is_file():
+                    pdf = self.compile_tikz_fragment(cand)
+                    if pdf:
+                        new_name = f"{sec_slug}-{cand.parent.name}-{cand.stem}"
+                        shutil.copy2(pdf, ch_dir / f"{new_name}.pdf")
+                        return f"\\includegraphics{{{new_name}}}"
+            print(f"  warning: raw includestandalone not found: {ref}; "
+                  "TODO marker")
+            return f"\\textbf{{[TODO(migration): missing figure {ref}]}}"
 
         def repl_raw(m):
             cmd, ref = m.group(1), m.group(2)
+            if ref.startswith(sec_slug + "-"):
+                return m.group(0)  # already localized by an earlier pass
             # extensionless raw includes rely on TeX extension resolution
             exts = ("",) if "." in ref.rsplit("/", 1)[-1] else ("",) + BARE_EXTS
             for d in search_dirs:
@@ -394,13 +425,15 @@ class MetaBookMigrator:
                         if cand.suffix in (".pdf", ".pgf") and sib.is_file():
                             shutil.copy2(sib, ch_dir / f"{sec_slug}-{sib.name}")
                         return f"{cmd}{{{new_name}}}"
-            print(f"  warning: raw graphics not found: {ref}")
-            return m.group(0)
+            print(f"  warning: raw graphics not found: {ref}; TODO marker")
+            return f"\\textbf{{[TODO(migration): missing figure {ref}]}}"
 
         def repl_bare(m):
             ref, brace = m.group(1), m.group(2)
             if "." in ref.rsplit("/", 1)[-1]:
                 return m.group(0)  # extensioned: handled by the other passes
+            if ref.rsplit("/", 1)[-1].startswith(sec_slug + "-"):
+                return m.group(0)  # already localized
             for d in search_dirs:
                 for ext in BARE_EXTS:
                     cand = (d / (ref + ext)).resolve()
@@ -531,12 +564,22 @@ class MetaBookMigrator:
             ch_dir.mkdir(parents=True)
             slugs = []
             for h, kind, payload in entries:
-                if kind == "exercises-tex":
+                if kind in ("exercises-tex", "section-tex"):
                     text = self.convert_exercises_tex(payload)
-                    include_dirs = [payload.parent]
+                    # the converter emits ```include fences for versioned
+                    # pulls; inline them like any other include
+                    text, extra_dirs = self.inline_includes(
+                        text, payload.parent)
+                    include_dirs = [payload.parent] + extra_dirs
                 else:
-                    src_md = self.src / "common" / "versioned" / h / "source.md"
-                    if not src_md.is_file():
+                    # rtc keeps hardware-version-independent sections in a
+                    # separate versionless/ tree
+                    candidates = [
+                        self.src / "common" / "versioned" / h / "source.md",
+                        self.src / "versionless" / h / "source.md",
+                    ]
+                    src_md = next((c for c in candidates if c.is_file()), None)
+                    if src_md is None:
                         sys.exit(f"missing versioned section {h} "
                                  f"(chapter {ch_slug})")
                     text, include_dirs = self.inline_includes(
@@ -576,6 +619,12 @@ class MetaBookMigrator:
         bib = self.src / "common" / "book.bib"
         if bib.is_file():
             shutil.copy2(bib, self.dst / "book.bib")
+
+        # hardware-versioning DB for the versioning plugin (.yaml: the
+        # ancestor's json is hand-edited with trailing commas, YAML-only)
+        versions = self.src / "common" / "versions.json"
+        if versions.is_file():
+            shutil.copy2(versions, self.dst / "versions.yaml")
 
         print(f"migrated {len(yaml_chapters)} chapters, {n_sections} sections")
         return len(yaml_chapters), n_sections

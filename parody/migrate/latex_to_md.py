@@ -26,6 +26,7 @@ FILTER = Path(__file__).parent / "filters" / "latex-to-md.lua"
 
 _SEC_MARK = "PARODYSECATTR"
 _INC_MARK = "PARODYVERSIONED"
+_PCT_MARK = "PARODYPCT"
 
 # \section / \subsection / \subsubsection / \resource (MIT lab apparatus
 # pages, same shape) with 0-4 optional args and the 3-arg
@@ -76,6 +77,13 @@ def preprocess(tex_text):
     tex_text = re.sub(r"\\(d?frac)\{([^}]+)\}\{([^}]+)\}",
                       r"\\\1{\2} {\3}", tex_text)
     tex_text = tex_text.replace(r"\begin{tabular}{", r"\begin{tabular} {")
+    # % inside \mintinline survives pandoc standalone, but inside an
+    # unknown raw env (exercise/solution) the reader's comment stripping
+    # eats it and mangles the env body; sentinel through the pipeline
+    tex_text = re.sub(
+        r"(\\mintinline\{\w+\})\{([^}]*)\}",
+        lambda m: m.group(1) + "{" + m.group(2).replace("%", _PCT_MARK) + "}",
+        tex_text)
     return tex_text
 
 
@@ -111,7 +119,7 @@ def postprocess(md_text):
             out.append("```")
             continue
         out.append(line)
-    return clean_math("\n".join(out))
+    return clean_math("\n".join(out)).replace(_PCT_MARK, "%")
 
 
 def convert_latex_file(tex_path, src_root):
@@ -124,7 +132,9 @@ def convert_latex_file(tex_path, src_root):
 
     tex_path = Path(tex_path)
     src_root = Path(src_root)
-    tmp = src_root / ".parody-migrate-tmp.tex"
+    # the tmp name seeds the filter's deterministic hash generator: it must
+    # vary per source file or every conversion shares one hash sequence
+    tmp = src_root / f".parody-migrate-{tex_path.stem}.tex"
     tmp.write_text(preprocess(tex_path.read_text()))
     try:
         out = pypandoc.convert_file(
