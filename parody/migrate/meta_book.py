@@ -260,33 +260,12 @@ class MetaBookMigrator:
     # LaTeX-only exercises --------------------------------------------------
 
     def convert_exercises_tex(self, tex_path):
-        """LaTeX xsim exercises -> markdown .exercise/.solution divs, reusing
-        the meta system's own conversion pipeline (space_frac preprocessor +
-        latex-to-md-filter.lua). Known-unreliable; a rewritten converter is
-        planned before the rtc migration (see the seed plan)."""
-        import pypandoc
+        """LaTeX xsim exercises -> markdown .exercise/.solution divs via
+        parody's own latex-to-md converter (filters/latex-to-md.lua +
+        sectioning pre-pass + math cleanup)."""
+        from .latex_to_md import convert_latex_file
 
-        tmp = self.src / ".parody-migrate-tmp.tex"
-        shutil.copy2(tex_path, tmp)
-        try:
-            subprocess.run(
-                [sys.executable, "scripts/space_frac_and_tabular_braces.py",
-                 tmp.name, tmp.name],
-                cwd=self.src, check=True, capture_output=True,
-            )
-            # System pandoc, not parody's pinned pypandoc binary: the filter
-            # requires the luafilesystem C module, whose homebrew build is
-            # arm64 while the pypandoc wheel's pandoc is x86_64. One-time
-            # conversion, so the version skew is acceptable.
-            pandoc = shutil.which("pandoc") or pypandoc.get_pandoc_path()
-            out = subprocess.run(
-                [pandoc, "-s", "--from=latex+raw_tex", "-t", "markdown",
-                 tmp.name, "--lua-filter=scripts/latex-to-md-filter.lua"],
-                cwd=self.src, check=True, capture_output=True, text=True,
-            )
-            return clean_math(out.stdout)
-        finally:
-            tmp.unlink(missing_ok=True)
+        return convert_latex_file(tex_path, self.src)
 
     # Includes ---------------------------------------------------------------
 
