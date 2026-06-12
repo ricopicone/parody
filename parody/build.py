@@ -118,6 +118,11 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
     schema_version = int(project.meta.get("schema", SCHEMA_VERSION))
     with_hashes = schema_version >= 2
 
+    from .plugins import apply_transforms, content_transforms
+    transforms = content_transforms(project.meta, project.directory)
+    transform = (lambda text: apply_transforms(text, transforms)) \
+        if transforms else None
+
     output = {
         "schema_version": schema_version,
         "generator": f"parody {__version__}",
@@ -148,7 +153,8 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
                 for path in get_section_download_paths(chapter.directory, section_slug):
                     requested_code_files.add((chapter.directory.name, path))
                 chapter_data["sections"].append(load_section(
-                    chapter.directory, section_slug, with_hashes=with_hashes))
+                    chapter.directory, section_slug,
+                    with_hashes=with_hashes, transform=transform))
 
         output["chapters"].append(chapter_data)
 

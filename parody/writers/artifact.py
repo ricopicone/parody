@@ -533,7 +533,7 @@ def convert_solution_to_html(solution_markdown, chapter_dir):
     html = _post_process_html_for_anchors(html)
     return html
 
-def load_section(chapter_dir, section_slug, with_hashes=False):
+def load_section(chapter_dir, section_slug, with_hashes=False, transform=None):
     section_path = chapter_dir / f"{section_slug}.md"
     with open(section_path, "r", encoding="utf-8") as f:
         raw = f.read()
@@ -544,6 +544,9 @@ def load_section(chapter_dir, section_slug, with_hashes=False):
         meta = yaml.safe_load(frontmatter.strip())
     else:
         raise ValueError(f"Missing frontmatter in {section_path}")
+
+    if transform is not None:
+        content = transform(content)
 
     # Extract solutions before processing content
     content_without_solutions, solutions_markdown = extract_exercise_solutions(content)

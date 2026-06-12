@@ -108,14 +108,17 @@ def _externalize_exercise_verbatim(tex, output_tex):
     return _EXERCISE_ENV_RE.sub(externalize, tex)
 
 
-def strip_frontmatter(md_path, dest_path):
+def strip_frontmatter(md_path, dest_path, transform=None):
     """Write a copy of the section with YAML frontmatter removed (pandoc
-    would otherwise interpret stray frontmatter keys)."""
+    would otherwise interpret stray frontmatter keys), applying any
+    plugin content transforms."""
     raw = Path(md_path).read_text(encoding="utf-8")
     if raw.startswith("---"):
         parts = raw.split("---", 2)
         if len(parts) == 3:
             raw = parts[2]
+    if transform is not None:
+        raw = transform(raw)
     Path(dest_path).write_text(raw.strip() + "\n", encoding="utf-8")
     return dest_path
 
@@ -131,6 +134,11 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # with cwd at the section dir, where relative paths no longer resolve.
     project_dir = Path(project_dir).resolve()
     project = load_project(project_dir)
+
+    from ..plugins import apply_transforms, content_transforms
+    transforms = content_transforms(project.meta, project.directory)
+    transform = (lambda text: apply_transforms(text, transforms)) \
+        if transforms else None
 
     if profile_dir is None:
         profile_dir = Path(__file__).parent.parent / "profiles" / "print"
@@ -172,7 +180,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                 src = chapter.directory / f"{sec_slug}.md"
                 stripped = build_dir / "sections" / chapter.slug / f"{sec_slug}.md"
                 stripped.parent.mkdir(parents=True, exist_ok=True)
-                strip_frontmatter(src, stripped)
+                strip_frontmatter(src, stripped, transform=transform)
                 tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
                 print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
                 section_to_latex(stripped, tex_path, resource_dir=chapter.directory)
