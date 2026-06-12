@@ -37,7 +37,8 @@ EXERCISES_END_RE = re.compile(r"^\s*\\end\{exercises\}")
 INPUT_RE = re.compile(r"^\s*\\input\{([\w/-]+)\}")
 # some versioned sections open at H2/H3 (e.g. rtc's .ds subsections)
 HEADER_RE = re.compile(r"^#{1,3}\s+(.+?)\s*\{([^}]*)\}\s*$")
-INCLUDE_BLOCK_RE = re.compile(r"^```\s*include\s*$")
+# both spellings appear: ```include (math/ec) and ```{.include} (rtc)
+INCLUDE_BLOCK_RE = re.compile(r"^```\s*(?:include|\{\.include\})\s*$")
 # pandoc image/link targets: ](path) or ](path){attrs}
 IMAGE_REF_RE = re.compile(r"\]\(([^)\s]+\.(?:pgf|pdf|png|jpg|jpeg|svg|gif))\)")
 # extensionless standalone-TikZ refs: ](figures/x/main){... .standalone ...}
@@ -304,6 +305,15 @@ class MetaBookMigrator:
                     if rel:
                         path = (self.src / rel) if (self.src / rel).is_file() \
                             else (base_dir / rel)
+                        if not path.is_file():
+                            # versioned pulls may live in the versionless tree
+                            m_v = re.match(
+                                r"common/versioned/([\w-]+)/source\.md$", rel)
+                            if m_v:
+                                alt = (self.src / "versionless" / m_v.group(1)
+                                       / "source.md")
+                                if alt.is_file():
+                                    path = alt
                         if not path.is_file():
                             # dangling in meta too (e.g. source/j3/main.md):
                             # keep going, leave a marker for content triage
@@ -585,6 +595,8 @@ class MetaBookMigrator:
                     text, include_dirs = self.inline_includes(
                         src_md.read_text(), src_md.parent)
                     include_dirs = [src_md.parent] + include_dirs
+                from .latex_to_md import normalize_lexers
+                text = normalize_lexers(text)
                 slug, title = section_slug_and_title(
                     text, h, kind, slugs, ch_title)
                 if kind in ("exercises", "exercises-tex") \

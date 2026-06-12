@@ -74,9 +74,31 @@ def preprocess(tex_text):
 
     tex_text = _SECTION3_RE.sub(sec3, tex_text)
     tex_text = _SECTION2_RE.sub(sec2, tex_text)
+    # raw \includesection{hash} inside latex prose: same versioned pull
+    tex_text = re.sub(
+        r"\\includesection\{([\w-]+)\}",
+        lambda m: (m.group(0) if _commented(m.string, m.start())
+                   else f"\n{_INC_MARK} {m.group(1)} -\n"),
+        tex_text)
     tex_text = re.sub(r"\\(d?frac)\{([^}]+)\}\{([^}]+)\}",
                       r"\\\1{\2} {\3}", tex_text)
     tex_text = tex_text.replace(r"\begin{tabular}{", r"\begin{tabular} {")
+    # table floats: pandoc's reader dismembers them (caption and tabulars
+    # become reflowable raw fragments; \subcaptionbox args end up spanning
+    # \par). Rename to an unknown env so the whole float survives as one
+    # verbatim raw block; renamed back in postprocess.
+    tex_text = tex_text.replace("\\begin{table}", "\\begin{parodytableraw}")
+    tex_text = tex_text.replace("\\end{table}", "\\end{parodytableraw}")
+    # \begin{myexample}{id}{hash} / {id}: the filter extracts the env body
+    # verbatim, so bare brace args leak into prose; move them into a label
+    # the filter already reads (hash rides along, split in postprocess)
+    def myexample(m):
+        env, eid, h = m.group(1), m.group(2), m.group(3)
+        label = f"{eid}@@{h}" if h else eid
+        return f"\\begin{{{env}}}\\label{{{label}}}"
+    tex_text = re.sub(
+        r"\\begin\{(myexample(?:always)?)\}\{([\w:-]+)\}(?:\{([\w-]+)\})?",
+        myexample, tex_text)
     # % inside \mintinline survives pandoc standalone, but inside an
     # unknown raw env (exercise/solution) the reader's comment stripping
     # eats it and mangles the env body; sentinel through the pipeline
@@ -85,6 +107,17 @@ def preprocess(tex_text):
         lambda m: m.group(1) + "{" + m.group(2).replace("%", _PCT_MARK) + "}",
         tex_text)
     return tex_text
+
+
+def normalize_lexers(md):
+    """pygments has no 'arm' lexer (the ancestor used a private plugin).
+    Fenced ```arm blocks keep their class — the print profile renders the
+    armlisting environment with the nasm lexer — but inline forms hit
+    pygmentize directly and need a real lexer name. Applies to converted
+    latex and natively-markdown sections alike."""
+    md = md.replace("\\mintinline{arm}", "\\mintinline{nasm}")
+    md = md.replace("`{.arm}", "`{.nasm}")
+    return md
 
 
 def postprocess(md_text):
@@ -119,7 +152,42 @@ def postprocess(md_text):
             out.append("```")
             continue
         out.append(line)
-    return clean_math("\n".join(out)).replace(_PCT_MARK, "%")
+    md = "\n".join(out)
+    # split the myexample label rider back into id + hash attrs
+    md = re.sub(r'\{#([\w:-]+)@@([\w-]+)((?:\s+\.[\w-]+)*)\}',
+                r'{#\1\3 h="\2"}', md)
+    # the label also survives inside the env body; the div attrs carry it
+    md = re.sub(r"`\\label\{[\w:.-]+@@[\w-]+\}`\{=latex\}\s*", "", md)
+    # \noindent raw inlines lose their trailing space on the next pandoc
+    # write and glue onto the following word; pandoc paragraphs don't
+    # need them anyway
+    md = md.replace("`\\noindent `{=latex}", "").replace(
+        "`\\noindent`{=latex}", "")
+    # the conversion strips \begin{table} float wrappers, so surviving raw
+    # \tabcaption calls are orphans: switch them to nofloat mode
+    md = md.replace("\\tabcaption{", "\\tabcaption[][nofloat]{")
+    # latex line-continuation % at EOL inside surviving raw blocks: pandoc
+    # re-emission can reflow lines so the % swallows real content (e.g.
+    # \subcaptionbox{..}{% losing its closing brace). Removing it merely
+    # reintroduces an interword space.
+    md = re.sub(r"(?<![\\%])%\n", "\n", md)
+    # whole-line latex comments inside surviving raw blocks comment out
+    # everything after them once pandoc reflows; drop them entirely
+    md = re.sub(r"(?m)^\s*%(?!%).*\n", "", md)
+    md = normalize_lexers(md)
+    # empty definition-list artifacts: a lone ':' line misparses on
+    # re-read and shifts div fence nesting (solutions escape exercises)
+    md = re.sub(r"(?m)^:[ \t]*$\n?", "", md)
+    # restore table floats kept verbatim through pandoc; inside a real
+    # float \tabcaption stays in float mode
+    md = md.replace("\\begin{parodytableraw}", "\\begin{table}")
+    md = md.replace("\\end{parodytableraw}", "\\end{table}")
+    md = re.sub(
+        r"\\begin\{table\}.*?\\end\{table\}",
+        lambda m: m.group(0).replace("\\tabcaption[][nofloat]{",
+                                     "\\tabcaption{"),
+        md, flags=re.S)
+    return clean_math(md).replace(_PCT_MARK, "%")
 
 
 def convert_latex_file(tex_path, src_root):

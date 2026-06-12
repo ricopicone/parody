@@ -159,8 +159,14 @@
 % ---- captions for figures/tables: \figcaption[opts][]{label}{caption} ----
 \NewDocumentCommand{\figcaption}{O{}O{}mm}{%
   \caption{#4}\if\relax\detokenize{#3}\relax\else\label{#3}\fi}
-\NewDocumentCommand{\tabcaption}{O{}O{}mm}{%
-  \caption{#4}\if\relax\detokenize{#3}\relax\else\label{#3}\fi}
+% \tabcaption[short][float|nofloat]{id}{caption} (ancestor semantics):
+% nofloat wraps \captionof in a minipage (legal outside floats)
+\NewDocumentCommand{\tabcaption}{O{}O{float}mm}{%
+  \ifstrequal{#2}{nofloat}{%
+    \noindent\begin{minipage}{\linewidth}\captionof{table}{#4}%
+    \if\relax\detokenize{#3}\relax\else\label{#3}\fi\end{minipage}\par}{%
+    \if\relax\detokenize{#1}\relax\caption{#4}\else\caption[#1]{#4}\fi
+    \if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
 \gdef\graphicslist{}
 \newcommand{\inputpgf}[1]{\input{#1.pgf}}
 \providecommand{\includestandalone}[2][]{\includegraphics[#1]{#2}}
@@ -180,7 +186,7 @@
 \NewDocumentCommand{\myindex}{sO{}O{}O{}O{}m}{\index{#6}}
 % \indexc*[start|stop][lab][post][fun][under]{lang}{term}
 % \detokenize: code index entries carry specials (#include)
-\NewDocumentCommand{\indexc}{sO{}O{}O{}O{}O{}mm}{\index{\detokenize{#8}@\texttt{\detokenize{#8}}}}
+\NewDocumentCommand{\indexc}{sO{}O{}O{}O{}O{}mm}{\index{\detokenize{#8}@\texttt{#8}}}
 % \myurl(*)[punctuation][safety]{url}{hash}; QR codes are a private-profile
 % concern — the generic profile renders a plain URL.
 \NewDocumentCommand{\myurl}{sO{}O{}mm}{\url{#4}#2}
@@ -216,3 +222,5 @@
 \makeatletter
 \def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
 \makeatother
+% pandoc writes .underline spans as \ul (assumes soul); shim it
+\providecommand{\ul}[1]{\underline{#1}}
