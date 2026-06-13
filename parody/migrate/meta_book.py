@@ -524,6 +524,11 @@ class MetaBookMigrator:
                 return m2.group(0)
 
             text2 = re.sub(r"\\input\{([^}\\]+)\}", inner, text2)
+            # resolve figure includes inside the asset too (the ancestor
+            # layout's figures/ paths don't exist in the build tree)
+            text2 = re.sub(r"\\includestandalone(\[[^]]*\])?\{([^}]+)\}",
+                           repl_raw_standalone, text2)
+            text2 = RAW_GRAPHICS_RE.sub(repl_raw, text2)
             # these assets are spliced inside exercise/example boxes where
             # floats are illegal ("not in outer par mode"); de-float them
             text2 = re.sub(r"\\begin\{figure\}(\[[^]]*\])?",
