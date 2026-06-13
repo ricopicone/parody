@@ -158,8 +158,13 @@
 \crefname{algorithmctr}{algorithm}{algorithms}
 
 % ---- captions for figures/tables: \figcaption[opts][]{label}{caption} ----
-\NewDocumentCommand{\figcaption}{O{}O{}mm}{%
-  \caption{#4}\if\relax\detokenize{#3}\relax\else\label{#3}\fi}
+% \figcaption[short][float|nofloat]{id}{caption}: nofloat (de-floated
+% assets) wraps \captionof in a minipage, legal outside floats
+\NewDocumentCommand{\figcaption}{O{}O{float}mm}{%
+  \ifstrequal{#2}{nofloat}{%
+    \noindent\begin{minipage}{\linewidth}\captionof{figure}{#4}%
+    \if\relax\detokenize{#3}\relax\else\label{#3}\fi\end{minipage}\par}{%
+    \caption{#4}\if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
 % \tabcaption[short][float|nofloat]{id}{caption} (ancestor semantics):
 % nofloat wraps \captionof in a minipage (legal outside floats)
 \NewDocumentCommand{\tabcaption}{O{}O{float}mm}{%
