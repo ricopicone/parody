@@ -384,6 +384,18 @@ class MetaBookMigrator:
                     new_name = f"{sec_slug}-{cand.parent.name}-{cand.stem}"
                     shutil.copy2(cand, ch_dir / f"{new_name}.pdf")
                     return f"]({new_name}){attrs}"
+            # the latex-to-md filter extracts figure envs into
+            # figures_converted/<hash>/main.tex (complete standalone docs);
+            # refs keep the figures/ prefix. Compile the dir in place.
+            if ref.startswith("figures/"):
+                conv = (self.src / "figures_converted"
+                        / ref[len("figures/"):]).resolve()
+                if conv.name == "main" and (conv.parent / "main.tex").is_file():
+                    pdf = self.compile_standalone_fig(conv.parent)
+                    if pdf:
+                        new_name = f"{sec_slug}-{conv.parent.name}-main"
+                        shutil.copy2(pdf, ch_dir / f"{new_name}.pdf")
+                        return f"]({new_name}){attrs}"
             # no committed pdf: some are flat matlab2tikz fragments (no
             # preamble); wrap and compile one-off
             for d in search_dirs:
