@@ -181,6 +181,9 @@
           },
           "hash": {
             "type": "string"
+          },
+          "appendix": {
+            "type": "boolean"
           }
         }
       }

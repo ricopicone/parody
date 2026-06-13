@@ -31,6 +31,10 @@ CHAPTER_RE = re.compile(
 # brackets ([Notebooks [Outlined]]); anchor on the last three brace groups
 CHAPTER_HEADER_RE = re.compile(
     r"\\chapter.*\{([\w-]+)\}\{([\w-]+)\}\{(.+)\}\s*$", re.M)
+# bare appendix input (after \appendix): \input{chx-foo} with \chapter inline
+APPENDIX_CHAPTER_RE = re.compile(r"^\\input\{(chx-[\w-]+)\}\s*$")
+# auto-generated / glossary appendices skipped (no migratable prose content)
+_SKIP_APPENDIX = {"chx-lists-of-figures-tables", "chx-acronyms"}
 INCLUDESECTION_RE = re.compile(r"^\s*\\includesection\{([\w-]+)\}")
 EXERCISES_BEGIN_RE = re.compile(r"^\s*\\begin\{exercises\}\{([\w-]+)\}")
 EXERCISES_END_RE = re.compile(r"^\s*\\end\{exercises\}")
@@ -150,31 +154,53 @@ class MetaBookMigrator:
         return mains[0]
 
     def parse_chapters(self):
-        """[(chapter_slug, chapter_title, [(hash, kind, payload), ...])] in
-        book order; kind is 'section' (payload None), 'exercises' (versioned
-        md, payload None), or 'exercises-tex' (payload = Path to the
-        chapter's exercises .tex)."""
+        """[(chapter_slug, chapter_title, hash, is_appendix, entries)] in
+        book order; entry kind is 'section' (payload None), 'exercises'
+        (versioned md, None), 'exercises-tex' / 'section-tex' (Path to a
+        latex source)."""
         chapters = []
+        in_appendix = False
         for line in self.find_main_tex().read_text().splitlines():
-            m = CHAPTER_RE.match(line.strip())
-            if not m:
+            s = line.strip()
+            if s == r"\appendix":
+                in_appendix = True
                 continue
-            chx, title = m.group(1), (m.group(2) or "").strip()
+            if s.startswith(r"\backmatter"):
+                break
+            m = CHAPTER_RE.match(s)
+            bm = APPENDIX_CHAPTER_RE.match(s) if in_appendix else None
+            if m:
+                # dir form: \input{chx-foo/chx-foo} [% Title]; \chapter
+                # lives in chx-foo/chx-foo-header.tex
+                chx, title = m.group(1), (m.group(2) or "").strip()
+                wrapper = self.src / chx / f"{chx}.tex"
+                hdr = self.src / chx / f"{chx}-header.tex"
+                header_text = hdr.read_text() if hdr.is_file() else ""
+            elif bm:
+                # bare appendix form: \input{chx-foo}; \chapter is inline in
+                # chx-foo.tex (auto-generated lists/glossary skipped)
+                chx = bm.group(1)
+                if chx in _SKIP_APPENDIX:
+                    continue
+                wrapper = self.src / f"{chx}.tex"
+                if not wrapper.is_file():
+                    continue
+                header_text = wrapper.read_text()
+                title = ""
+            else:
+                continue
             ch_slug = chx.removeprefix("chx-")
             ch_hash = None
-            header = self.src / chx / f"{chx}-header.tex"
-            if header.is_file():
-                hm = CHAPTER_HEADER_RE.search(header.read_text())
-                if hm:
-                    title = hm.group(3)
-                    ch_hash = hm.group(2)
-                    if not chx.startswith("chx-"):
-                        # numbered chapter dirs (rtc ch01): the real slug
-                        # lives in the header's first mandatory arg
-                        ch_slug = hm.group(1)
+            hm = CHAPTER_HEADER_RE.search(header_text)
+            if hm:
+                title = hm.group(3)
+                ch_hash = hm.group(2)
+                if not chx.startswith("chx-"):
+                    # numbered chapter dirs (rtc ch01): the real slug
+                    # lives in the header's first mandatory arg
+                    ch_slug = hm.group(1)
             if not title:
                 sys.exit(f"no title found for chapter {chx}")
-            wrapper = self.src / chx / f"{chx}.tex"
             entries = []
             lines = wrapper.read_text().splitlines()
             i = 0
@@ -218,7 +244,7 @@ class MetaBookMigrator:
                             print(f"  warning: section input not found: "
                                   f"{im.group(1)}")
                     i += 1
-            chapters.append((ch_slug, title, ch_hash, entries))
+            chapters.append((ch_slug, title, ch_hash, in_appendix, entries))
         return chapters
 
     # Figure compilation ---------------------------------------------------
@@ -585,7 +611,15 @@ class MetaBookMigrator:
 
         yaml_chapters = []
         n_sections = 0
-        for ch_slug, ch_title, ch_hash, entries in self.parse_chapters():
+        for ch_slug, ch_title, ch_hash, is_appendix, entries in \
+                self.parse_chapters():
+            if not entries:
+                # latex-only appendices (whole-chapter prose, no
+                # \includesection) aren't migrated yet — skip rather than
+                # emit an empty chapter
+                print(f"  note: chapter {ch_slug} has no includesection "
+                      "entries (latex-only); skipping")
+                continue
             ch_dir = chapters_dir / ch_slug
             ch_dir.mkdir(parents=True)
             slugs = []
@@ -638,6 +672,8 @@ class MetaBookMigrator:
             entry = {"slug": ch_slug, "title": ch_title, "sections": slugs}
             if ch_hash:
                 entry["hash"] = ch_hash  # chapter-level hashref target
+            if is_appendix:
+                entry["appendix"] = True
             yaml_chapters.append(entry)
 
         cfg_path = self.dst / "parody.yaml"

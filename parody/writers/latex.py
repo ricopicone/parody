@@ -165,6 +165,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
     os.environ["PARODY_SVG_CACHE"] = str(build_dir / "svg-cache")
     chapters_tex = []
+    appendix_started = False
     try:
         for chapter in project.chapters:
             sections = chapter.section_slugs
@@ -174,6 +175,10 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                     continue
                 sections = [s for s in sections if s == want_sec]
             if sections and not section:
+                if chapter.appendix and not appendix_started:
+                    # switch to A.1/B.1 numbering for the appendix chapters
+                    chapters_tex.append("\\appendix")
+                    appendix_started = True
                 chapter_tex = f"\\chapter{{{chapter.title or chapter.slug}}}"
                 chapter_tex += f"\\label{{{chapter.slug}}}"
                 if chapter.hash and chapter.hash != chapter.slug:

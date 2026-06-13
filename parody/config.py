@@ -31,6 +31,7 @@ class Chapter:
     directory: Path
     section_slugs: list = field(default_factory=list)
     hash: str = ""  # stable short hash (schema v2 / hashref target)
+    appendix: bool = False  # renders after \appendix (A.1, B.1 numbering)
 
 
 @dataclass
@@ -110,6 +111,7 @@ def load_project(project_dir):
             directory=project_dir / "chapters" / ch_slug,
             section_slugs=sections,
             hash=str(ch.get("hash", "") or ""),
+            appendix=bool(ch.get("appendix", False)),
         ))
 
     return Project(
