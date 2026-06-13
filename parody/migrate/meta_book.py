@@ -33,8 +33,8 @@ CHAPTER_HEADER_RE = re.compile(
     r"\\chapter.*\{([\w-]+)\}\{([\w-]+)\}\{(.+)\}\s*$", re.M)
 # bare appendix input (after \appendix): \input{chx-foo} with \chapter inline
 APPENDIX_CHAPTER_RE = re.compile(r"^\\input\{(chx-[\w-]+)\}\s*$")
-# auto-generated / glossary appendices skipped (no migratable prose content)
-_SKIP_APPENDIX = {"chx-lists-of-figures-tables", "chx-acronyms"}
+# auto-generated appendix skipped (just \listoffigures/\listoftables)
+_SKIP_APPENDIX = {"chx-lists-of-figures-tables"}
 INCLUDESECTION_RE = re.compile(r"^\s*\\includesection\{([\w-]+)\}")
 EXERCISES_BEGIN_RE = re.compile(r"^\s*\\begin\{exercises\}\{([\w-]+)\}")
 EXERCISES_END_RE = re.compile(r"^\s*\\end\{exercises\}")
@@ -95,6 +95,9 @@ def header_attrs(text):
 
 
 def section_slug_and_title(text, h, kind, existing, ch_title):
+    if kind == "chapter-tex":
+        # whole-chapter appendix body renders under the chapter heading
+        return "lead-in", ch_title
     if kind in ("exercises", "exercises-tex"):
         return "problems", "Problems"
     if h.endswith("-lead-in"):
@@ -244,6 +247,13 @@ class MetaBookMigrator:
                             print(f"  warning: section input not found: "
                                   f"{im.group(1)}")
                     i += 1
+            # latex-only appendix chapter (no \includesection): convert the
+            # whole chapter body as a single lead-in section
+            if in_appendix and not entries and bm:
+                body = re.sub(r"<!--.*?-->", "", wrapper.read_text(), flags=re.S)
+                body = re.sub(r"^\\chapter\b[^\n]*$", "", body, flags=re.M)
+                if body.strip():
+                    entries.append((ch_hash or ch_slug, "chapter-tex", wrapper))
             chapters.append((ch_slug, title, ch_hash, in_appendix, entries))
         return chapters
 
@@ -629,7 +639,7 @@ class MetaBookMigrator:
             ch_dir.mkdir(parents=True)
             slugs = []
             for h, kind, payload in entries:
-                if kind in ("exercises-tex", "section-tex"):
+                if kind in ("exercises-tex", "section-tex", "chapter-tex"):
                     text = self.convert_exercises_tex(payload)
                     # the converter emits ```include fences for versioned
                     # pulls; inline them like any other include
@@ -668,8 +678,11 @@ class MetaBookMigrator:
                 ]
                 text = self.copy_figures(text, search_dirs, ch_dir, slug)
                 sec_id, h_attr = header_attrs(text)
+                # chapter-tex lead-ins render under the chapter heading; the
+                # chapter owns the hash, so don't duplicate it on the section
+                sec_hash = None if kind == "chapter-tex" else (h_attr or h)
                 fm = frontmatter(
-                    title, slug, sec_id or f"sec-{ch_slug}-{slug}", h_attr or h
+                    title, slug, sec_id or f"sec-{ch_slug}-{slug}", sec_hash
                 )
                 (ch_dir / f"{slug}.md").write_text(fm + text.rstrip() + "\n")
                 slugs.append(slug)

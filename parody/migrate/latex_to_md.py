@@ -79,6 +79,10 @@ def preprocess(tex_text):
         _cmd, slug, h = m.groups()
         return f"\n{_INC_MARK} {h} {slug}\n"
 
+    # \chapter is chapter-level (the migrator captures title/hash from it
+    # separately); drop standalone \chapter lines so chapter-body
+    # conversion doesn't emit a spurious top heading
+    tex_text = re.sub(r"^\\chapter\b[^\n]*$", "", tex_text, flags=re.M)
     tex_text = _SECTION3_RE.sub(sec3, tex_text)
     tex_text = _SECTION2_RE.sub(sec2, tex_text)
     # raw \includesection{hash} inside latex prose: same versioned pull
