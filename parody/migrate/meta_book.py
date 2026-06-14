@@ -543,6 +543,21 @@ class MetaBookMigrator:
                 return m2.group(0)
 
             text2 = re.sub(r"\\input\{([^}\\]+)\}", inner, text2)
+            # meta sectioning commands (\subsection[opts]{slug}{hash}{title})
+            # in localized raw-latex assets (e.g. the versions-list parts
+            # lists) would mis-render under standard LaTeX and emit no label;
+            # rewrite to \<cmd>{title}\label{hash}\label{slug} so hashrefs
+            # like [a6] resolve
+            def sec_in_asset(sm):
+                cmd, slug, h, title = sm.group(1), sm.group(2), sm.group(3), sm.group(4)
+                title = " ".join(title.split())
+                return (f"\\{cmd}{{{title}}}\\label{{{h}}}"
+                        + (f"\\label{{{slug}}}" if slug != h else ""))
+            text2 = re.sub(
+                r"\\(section|subsection|subsubsection)"
+                r"(?:\[[^][]*\]){0,4}"
+                r"\{([\w-]+)\}\{([\w-]+)\}\{((?:[^{}]|\{[^{}]*\})*)\}",
+                sec_in_asset, text2)
             # resolve figure includes inside the asset too (the ancestor
             # layout's figures/ paths don't exist in the build tree)
             text2 = re.sub(r"\\includestandalone(\[[^]]*\])?\{([^}]+)\}",
