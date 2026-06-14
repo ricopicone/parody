@@ -234,9 +234,12 @@ def convert_latex_file(tex_path, src_root):
 
     tex_path = Path(tex_path)
     src_root = Path(src_root)
-    # the tmp name seeds the filter's deterministic hash generator: it must
-    # vary per source file or every conversion shares one hash sequence
-    tmp = src_root / f".parody-migrate-{tex_path.stem}.tex"
+    # the tmp name seeds the filter's deterministic hash generator, so it
+    # must be unique per source PATH — many chapters share an exercises.tex
+    # stem, and a shared seed collides their generated hashes
+    import hashlib
+    tag = hashlib.md5(str(tex_path.resolve()).encode()).hexdigest()[:10]
+    tmp = src_root / f".parody-migrate-{tag}.tex"
     tmp.write_text(preprocess(tex_path.read_text()))
     try:
         out = pypandoc.convert_file(
