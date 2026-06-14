@@ -100,6 +100,11 @@ def preprocess(tex_text):
     # verbatim raw block; renamed back in postprocess.
     tex_text = tex_text.replace("\\begin{table}", "\\begin{parodytableraw}")
     tex_text = tex_text.replace("\\end{table}", "\\end{parodytableraw}")
+    # longtables likewise: the meta filter's Table->html drops the
+    # \caption{\label{...}} (rtc acronyms' tbl:acronyms); keep verbatim so
+    # the label survives and it renders as a real longtable
+    tex_text = tex_text.replace("\\begin{longtable}", "\\begin{parodylongtableraw}")
+    tex_text = tex_text.replace("\\end{longtable}", "\\end{parodylongtableraw}")
     # figure floats: pandoc drops \begin{figure} blocks whose caption is
     # \figcaption (not \caption) and whose image is \includestandalone, so
     # latex-only-section figures vanished entirely. Keep them verbatim (the
@@ -165,7 +170,9 @@ def postprocess(md_text):
                     out[j] += f' {{#{slug}{cls} h="{h}"}}'
                 break
             continue
-        m = re.match(rf"^{_INC_MARK} (\S+) (\S+)\b", line.strip())
+        # slug may be the '-' placeholder (\includesection has no slug), so
+        # don't require a \b after it — only the hash (group 1) is used
+        m = re.match(rf"^{_INC_MARK} (\S+) \S+", line.strip())
         if m:
             h = m.group(1)
             out.append("```include")
@@ -203,6 +210,8 @@ def postprocess(md_text):
     # float \tabcaption stays in float mode
     md = md.replace("\\begin{parodytableraw}", "\\begin{table}")
     md = md.replace("\\end{parodytableraw}", "\\end{table}")
+    md = md.replace("\\begin{parodylongtableraw}", "\\begin{longtable}")
+    md = md.replace("\\end{parodylongtableraw}", "\\end{longtable}")
     md = md.replace("\\begin{parodyfigureraw}", "\\begin{figure}")
     md = md.replace("\\end{parodyfigureraw}", "\\end{figure}")
     md = re.sub(

@@ -475,6 +475,23 @@ local function infoboxer(el)
     '\\begin{infobox}' .. identifier .. title .. '\n' .. content .. '\n\\end{infobox}')
 end
 
+-- pandoc-crossref reference prefix per environment; a div whose id lacks
+-- the prefix (e.g. {#magnitude-criterion .definition} referenced as
+-- def:magnitude-criterion) needs the prefixed label emitted too.
+local crossref_prefix = {
+  definition = 'def', theorem = 'thm', lemma = 'lem',
+  corollary = 'cor', proposition = 'prp',
+}
+
+local function typed_labels(envtype, identifier)
+  if identifier == nil or identifier == '' then return '' end
+  local prefix = crossref_prefix[envtype]
+  if not prefix or identifier:match('^%a+:') then
+    return ''  -- already prefixed, or no convention
+  end
+  return '\\label{' .. prefix .. ':' .. identifier .. '}'
+end
+
 local function theoremer(el)
   local content = walk_to_latex(el)
   local title = el.attr.attributes['title'] or ''
@@ -494,6 +511,7 @@ local function theoremer(el)
   end
   return pandoc.RawBlock('latex',
     '\\begin{' .. envtype .. '}{' .. title .. '}{' .. identifier .. '}\n'
+    .. typed_labels(envtype, identifier)
     .. content .. '\n\\end{' .. envtype .. '}\n')
 end
 
@@ -504,6 +522,7 @@ local function definitioner(el)
   if not is_latex() then return el end
   return pandoc.RawBlock('latex',
     '\\begin{definition}{' .. title .. '}{' .. identifier .. '}\n'
+    .. typed_labels('definition', identifier)
     .. content .. '\n\\end{definition}\n')
 end
 
