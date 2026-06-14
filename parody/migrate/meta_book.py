@@ -718,6 +718,8 @@ class MetaBookMigrator:
                 entry["appendix"] = True
             yaml_chapters.append(entry)
 
+        self.assign_generated_hashes()
+
         cfg_path = self.dst / "parody.yaml"
         cfg = yaml.safe_load(cfg_path.read_text())
         cfg["chapters"] = yaml_chapters
@@ -735,6 +737,45 @@ class MetaBookMigrator:
 
         print(f"migrated {len(yaml_chapters)} chapters, {n_sections} sections")
         return len(yaml_chapters), n_sections
+
+    def assign_generated_hashes(self):
+        """Replace the converter's __pg<token> placeholders (headings the
+        author didn't hash) with real 2-char hashes, globally collision-free
+        against authored hashes and each other. Authored hashes are never
+        touched. Deterministic: the same token -> the same hash across
+        re-migrations (derived from the token, dedup in stable file order)."""
+        from .rehash import fresh_hash, used_hashes
+
+        md_files = sorted((self.dst / "chapters").rglob("*.md"))
+        # authored hashes = every h="..."/front-matter hash that ISN'T a
+        # placeholder; these are sacrosanct (published permalinks)
+        used = {h for h in used_hashes(self.dst) if not h.startswith("__pg")}
+        # also avoid authored hashes anywhere in the SOURCE — including
+        # commented-out / online-only sections — so generated hashes never
+        # collide with a website permalink in the shared QR namespace
+        for sf in list(self.src.rglob("source.md")) + list(self.src.rglob("*.tex")):
+            try:
+                used |= set(re.findall(r'h="([a-z0-9]{2})"', sf.read_text()))
+                used |= set(re.findall(r'\}\{([a-z0-9]{2})\}\{', sf.read_text()))
+            except (OSError, UnicodeDecodeError):
+                pass
+        salt = self.dst.name
+        n = 0
+        for md in md_files:
+            text = md.read_text()
+            tokens = []
+            for t in re.findall(r'h="(__pg[\w]+)"', text):
+                if t not in tokens:
+                    tokens.append(t)
+            if not tokens:
+                continue
+            for tok in tokens:
+                h = fresh_hash(tok, used, salt)  # adds h to `used`
+                text = text.replace(f'h="{tok}"', f'h="{h}"')
+            md.write_text(text)
+            n += len(tokens)
+        if n:
+            print(f"assigned {n} generated heading hashes (2-char, dedup)")
 
 
 def migrate_meta_book(src, dst):

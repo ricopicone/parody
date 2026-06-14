@@ -1040,12 +1040,12 @@ function Header(elem)
   if elem.level > 2 then
     return elem
   end
-  -- Generate a unique random two-character alphanumeric string
-  local unique_str = unique_random_string()
+  -- Headings the author didn't hash get a placeholder; the migrator
+  -- assigns the real (2-char, globally collision-free) hash afterward, so
+  -- it never clashes with authored permalink hashes. The unique token
+  -- keeps re-migration deterministic.
+  elem.attributes['h'] = '__pg' .. unique_random_string()
 
-  -- Add the attribute `h` with the unique string to the header
-  elem.attributes['h'] = unique_str
-  
   return elem
 end
 
