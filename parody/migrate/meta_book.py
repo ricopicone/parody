@@ -487,6 +487,15 @@ class MetaBookMigrator:
                         if cand.suffix in (".pdf", ".pgf") and sib.is_file():
                             shutil.copy2(sib, ch_dir / f"{sec_slug}-{sib.name}")
                         return f"{cmd}{{{new_name}}}"
+            # some assets ship only as <name>_source.pdf (the publishable
+            # export); fall back to it (rtc Lab5_Drwg_1a)
+            stem = re.sub(r"\.pdf$", "", ref)
+            for d in search_dirs:
+                cand = (d / (stem + "_source.pdf")).resolve()
+                if cand.is_file():
+                    new_name = f"{sec_slug}-{Path(stem).name}.pdf"
+                    shutil.copy2(cand, ch_dir / new_name)
+                    return f"{cmd}{{{new_name[:-4]}}}"
             print(f"  warning: raw graphics not found: {ref}; TODO marker")
             return f"\\textbf{{[TODO(migration): missing figure {ref}]}}"
 
