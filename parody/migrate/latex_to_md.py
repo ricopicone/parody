@@ -118,11 +118,13 @@ def preprocess(tex_text):
     # verbatim, so bare brace args leak into prose; move them into a label
     # the filter already reads (hash rides along, split in postprocess)
     def myexample(m):
-        env, eid, h = m.group(1), m.group(2), m.group(3)
+        env, eid, h = m.group(1), m.group(3), m.group(4)
         label = f"{eid}@@{h}" if h else eid
         return f"\\begin{{{env}}}\\label{{{label}}}"
     tex_text = re.sub(
-        r"\\begin\{(myexample(?:always)?)\}\{([\w:-]+)\}(?:\{([\w-]+)\})?",
+        # optional [..] arg may precede the {id}{hash} (e.g.
+        # \begin{myexample}[]{exa:x}{vp})
+        r"\\begin\{(myexample(?:always)?)\}(\[[^]]*\])?\{([\w:-]+)\}(?:\{([\w-]+)\})?",
         myexample, tex_text)
     # % inside \mintinline survives pandoc standalone, but inside an
     # unknown raw env (exercise/solution) the reader's comment stripping
