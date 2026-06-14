@@ -265,8 +265,10 @@ end
 local function replace_exercise(el)
   -- Extract the ID attribute from the exercise environment
   local id
-  local id1 = el.text:match("ID=%a+,") -- matches ID=...,
-  local id2 = el.text:match("ID=%a+%]") -- matches ID=...]
+  -- hashes are alphanumeric ([a-z0-9-]); %a+ (letters only) misparsed any
+  -- digit-bearing hash (3u, d2, v5...) and fell through to the IDME default
+  local id1 = el.text:match("ID=[%w-]+,") -- matches ID=...,
+  local id2 = el.text:match("ID=[%w-]+%]") -- matches ID=...]
   if id1 == nil and id2 == nil then
     id = "IDME"
   elseif id1 == nil then
