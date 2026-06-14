@@ -100,6 +100,15 @@ def preprocess(tex_text):
     # verbatim raw block; renamed back in postprocess.
     tex_text = tex_text.replace("\\begin{table}", "\\begin{parodytableraw}")
     tex_text = tex_text.replace("\\end{table}", "\\end{parodytableraw}")
+    # figure floats: pandoc drops \begin{figure} blocks whose caption is
+    # \figcaption (not \caption) and whose image is \includestandalone, so
+    # latex-only-section figures vanished entirely. Keep them verbatim (the
+    # \includegraphics/\includestandalone inside are resolved post-convert
+    # by copy_figures; \figcaption emits the label so hashrefs resolve).
+    tex_text = re.sub(r"\\begin\{figure\*?\}", "\\\\begin{parodyfigureraw}",
+                      tex_text)
+    tex_text = re.sub(r"\\end\{figure\*?\}", "\\\\end{parodyfigureraw}",
+                      tex_text)
     # \begin{myexample}{id}{hash} / {id}: the filter extracts the env body
     # verbatim, so bare brace args leak into prose; move them into a label
     # the filter already reads (hash rides along, split in postprocess)
@@ -194,6 +203,8 @@ def postprocess(md_text):
     # float \tabcaption stays in float mode
     md = md.replace("\\begin{parodytableraw}", "\\begin{table}")
     md = md.replace("\\end{parodytableraw}", "\\end{table}")
+    md = md.replace("\\begin{parodyfigureraw}", "\\begin{figure}")
+    md = md.replace("\\end{parodyfigureraw}", "\\end{figure}")
     md = re.sub(
         r"\\begin\{table\}.*?\\end\{table\}",
         lambda m: m.group(0).replace("\\tabcaption[][nofloat]{",
