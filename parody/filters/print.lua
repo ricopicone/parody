@@ -749,16 +749,19 @@ function figurer(el, nofloat)
   else
     caption = inlines_to_latex(caption)
   end
-  -- Notebook sources use unprefixed figure ids (#foo) with prefixed refs
-  -- (@fig:foo); the web resolver tolerates that, \cref needs the prefix.
+  -- Notebook sources use unprefixed figure ids (#foo) but reference them
+  -- either way ([foo]{.hashref} -> \cref{foo} OR @fig:foo). Emit both the
+  -- bare and fig:-prefixed labels so either resolves.
   local label = el.identifier
+  local extra_label = ''
   if os.getenv('PARODY_PROJECT_DIR') and label ~= ''
       and not label:match('^%a+:') then
+    extra_label = '\\label{' .. label .. '}'
     label = 'fig:' .. label
   end
   local fig_tex = graphics_list_reset .. fig_begin .. content
     .. '\n\\figcaption' .. options .. '[]{' .. label .. '}{' .. caption .. '}\n'
-    .. fig_end
+    .. extra_label .. fig_end
   return pandoc.RawInline('latex', fig_tex)
 end
 
@@ -792,7 +795,13 @@ local function figurediver(el)
       caps[i] = inlines_to_latex(cap)
     end
     srcs[i] = img.src or ''
+    -- pandoc 3 puts ![cap](src){#id} 's id on the Figure block wrapper,
+    -- not the inner Image; read the wrapper's id when the image's is empty
     labels[i] = img.identifier
+    if (labels[i] == nil or labels[i] == '')
+        and el.content[i].identifier then
+      labels[i] = el.content[i].identifier
+    end
     if labels[i] == nil or labels[i] == '' then
       labels[i] = 'fig:sub-' .. i
     end
