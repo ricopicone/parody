@@ -86,6 +86,27 @@ def test_v2_build_emits_hashes_and_validates(v2_project, tmp_path):
     assert main(["check", str(out)]) == 0
 
 
+def test_v2_emits_appendix_flag(v2_project, tmp_path):
+    meta = yaml.safe_load((v2_project / "parody.yaml").read_text())
+    meta["chapters"][0]["appendix"] = True
+    (v2_project / "parody.yaml").write_text(yaml.safe_dump(meta))
+    artifact = build_project(v2_project, tmp_path / "artifact.json",
+                             convert_jupytext=False)
+    assert artifact["chapters"][0]["appendix"] is True
+
+
+def test_v1_omits_appendix_flag(tmp_path):
+    project_dir = tmp_path / "plain-appendix"
+    assert main(["init", str(project_dir), "--title", "P", "--author", "A"]) == 0
+    meta = yaml.safe_load((project_dir / "parody.yaml").read_text())
+    meta["chapters"][0]["appendix"] = True  # v1: flag present but not emitted
+    (project_dir / "parody.yaml").write_text(yaml.safe_dump(meta))
+    (project_dir / "chapters/introduction/overview.md").write_text(SECTION_MD)
+    artifact = build_project(project_dir, tmp_path / "a.json",
+                             convert_jupytext=False)
+    assert "appendix" not in artifact["chapters"][0]
+
+
 def test_v2_duplicate_hashes_are_a_build_error(v2_project, tmp_path):
     dup = SECTION_MD.replace("hash: w1", "hash: w2") \
                     .replace('{#widgets h="w1"}', '{#gadgets h="w2"}') \
