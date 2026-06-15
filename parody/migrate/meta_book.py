@@ -14,6 +14,7 @@ appendices, exams, solutions manuals, book-json/apocrypha versioning (plugin
 territory), index see-entries.
 """
 
+import json
 import re
 import shutil
 import subprocess
@@ -719,10 +720,13 @@ class MetaBookMigrator:
             yaml_chapters.append(entry)
 
         self.assign_generated_hashes()
+        has_apocrypha = self.copy_apocrypha()
 
         cfg_path = self.dst / "parody.yaml"
         cfg = yaml.safe_load(cfg_path.read_text())
         cfg["chapters"] = yaml_chapters
+        if has_apocrypha:
+            cfg["apocrypha"] = True  # enable the apocrypha plugin
         cfg_path.write_text(yaml.dump(cfg, sort_keys=False, allow_unicode=True))
 
         bib = self.src / "common" / "book.bib"
@@ -737,6 +741,27 @@ class MetaBookMigrator:
 
         print(f"migrated {len(yaml_chapters)} chapters, {n_sections} sections")
         return len(yaml_chapters), n_sections
+
+    def copy_apocrypha(self):
+        """Convert meta's common/book-json/apocrypha.json (online-only section
+        metadata for website TOCs) into a normalized apocrypha.yaml the
+        apocrypha plugin surfaces into the artifact. Returns True if written."""
+        from ..plugins.apocrypha import normalize_entries
+
+        src = self.src / "common" / "book-json" / "apocrypha.json"
+        if not src.is_file():
+            return False
+        try:
+            raw = json.loads(src.read_text())
+        except (OSError, ValueError):
+            return False
+        entries = normalize_entries(raw)
+        if not entries:
+            return False
+        (self.dst / "apocrypha.yaml").write_text(
+            yaml.dump(entries, sort_keys=False, allow_unicode=True))
+        print(f"copied {len(entries)} apocrypha entries")
+        return True
 
     def assign_generated_hashes(self):
         """Replace the converter's __pg<token> placeholders (headings the

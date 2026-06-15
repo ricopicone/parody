@@ -187,6 +187,51 @@
           }
         }
       }
+    },
+    "apocrypha": {
+      "description": "Online-only sections — present on the website but not in this build (meta's book-json/apocrypha.json). The apocrypha plugin emits the subset whose hash is not an in-book section/anchor, so consumers can build a complete table of contents spanning in-book and online-only content.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "hash",
+          "id",
+          "title",
+          "type"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "v_specific": {
+            "type": "boolean"
+          },
+          "v_ts": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "v_ds": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subhash": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

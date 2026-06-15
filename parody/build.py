@@ -163,6 +163,12 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
     if with_hashes:
         _check_duplicate_hashes(output)
 
+    # Plugin artifact hooks augment the finished dict (e.g. apocrypha adds
+    # online-only TOC metadata). Run after dedup so they see the full build.
+    from .plugins import apply_artifact_hooks, artifact_hooks
+    hooks = artifact_hooks(project.meta, project.directory)
+    output = apply_artifact_hooks(output, hooks)
+
     if requested_code_files:
         files_copied = copy_selected_code_files_to_media(
             project.directory / "chapters", project.slug, requested_code_files,
