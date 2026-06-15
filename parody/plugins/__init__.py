@@ -14,6 +14,7 @@ separate plugin list). A plugin module may expose either (or both) hook:
 Sources on disk stay pristine either way.
 """
 
+import inspect
 from importlib import import_module
 
 # config key in parody.yaml -> module providing make_transform() and/or
@@ -23,18 +24,28 @@ REGISTRY = {
     "apocrypha": "parody.plugins.apocrypha",
     "book": "parody.plugins.bookmeta",
     "videos": "parody.plugins.videos",
+    "parts_list": "parody.plugins.partslist",
 }
 
 
-def content_transforms(project_meta, project_dir):
-    """Build the active per-section transform pipeline for a project."""
+def content_transforms(project_meta, project_dir, target="artifact"):
+    """Build the active per-section transform pipeline for a project.
+
+    ``target`` is the pipeline ("artifact" or "print"); a plugin whose
+    ``make_transform`` accepts a ``target`` parameter receives it (e.g.
+    parts-list emits web markdown for the artifact and nothing for print),
+    while pipeline-agnostic plugins (versioning) are called without it."""
     transforms = []
     for key, modpath in REGISTRY.items():
         cfg = (project_meta or {}).get(key)
         if cfg:
             mod = import_module(modpath)
             if hasattr(mod, "make_transform"):
-                transforms.append(mod.make_transform(cfg, project_dir))
+                fn = mod.make_transform
+                if "target" in inspect.signature(fn).parameters:
+                    transforms.append(fn(cfg, project_dir, target=target))
+                else:
+                    transforms.append(fn(cfg, project_dir))
     return transforms
 
 

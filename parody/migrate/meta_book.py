@@ -651,6 +651,7 @@ class MetaBookMigrator:
 
         yaml_chapters = []
         n_sections = 0
+        self._partslist_used = False
         for ch_slug, ch_title, ch_hash, is_appendix, entries in \
                 self.parse_chapters():
             if not entries:
@@ -702,6 +703,7 @@ class MetaBookMigrator:
                     self.src / "common" / "versioned",  # ../../common/... refs
                 ]
                 text = self.copy_figures(text, search_dirs, ch_dir, slug)
+                text = self._inject_partslist_marker(text)
                 sec_id, h_attr = header_attrs(text)
                 # chapter-tex lead-ins render under the chapter heading; the
                 # chapter owns the hash, so don't duplicate it on the section
@@ -733,6 +735,14 @@ class MetaBookMigrator:
             cfg["book"] = book  # enable the book-metadata plugin
         if has_videos:
             cfg["videos"] = True  # enable the videos plugin
+        if self._partslist_used and cfg.get("versioning"):
+            # the parts-list plugin regenerates the web hardware catalog from
+            # the same versions DB + tracks as the versioning plugin
+            ver = cfg["versioning"]
+            cfg["parts_list"] = {
+                "tracks": ver.get("tracks", {}),
+                "source": ver.get("source", "versions.yaml"),
+            }
         cfg_path.write_text(yaml.dump(cfg, sort_keys=False, allow_unicode=True))
 
         bib = self.src / "common" / "book.bib"
@@ -768,6 +778,24 @@ class MetaBookMigrator:
             yaml.dump(entries, sort_keys=False, allow_unicode=True))
         print(f"copied {len(entries)} apocrypha entries")
         return True
+
+    _PARTSLIST_INPUT_RE = re.compile(
+        r"```\{=latex\}\s*\n\\input\{(?P<ref>[^}]*versions-list[^}]*)\}\s*\n```")
+
+    def _inject_partslist_marker(self, text):
+        """After a localized print-only `{=latex}\\input{...versions-list-
+        <…>-T?/D?-general}` block (meta's general hardware catalog), append a
+        `[]{.parts-list .ts|.ds}` marker so the parts-list plugin regenerates
+        the web catalog for the artifact (print keeps the tex include)."""
+        def repl(m):
+            ref = m.group("ref")
+            mver = re.search(r"-(T|D)\w*-general$", ref)
+            if not mver:
+                return m.group(0)
+            self._partslist_used = True
+            track = "ts" if mver.group(1) == "T" else "ds"
+            return m.group(0) + f"\n\n[]{{.parts-list .{track}}}"
+        return self._PARTSLIST_INPUT_RE.sub(repl, text)
 
     def copy_videos(self):
         """Convert meta's common/book-json/videos.json (section hash ->

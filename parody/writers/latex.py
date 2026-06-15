@@ -136,7 +136,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     project = load_project(project_dir)
 
     from ..plugins import apply_transforms, content_transforms
-    transforms = content_transforms(project.meta, project.directory)
+    transforms = content_transforms(project.meta, project.directory, target="print")
     transform = (lambda text: apply_transforms(text, transforms)) \
         if transforms else None
 
