@@ -21,6 +21,7 @@ from importlib import import_module
 REGISTRY = {
     "versioning": "parody.plugins.versioning",
     "apocrypha": "parody.plugins.apocrypha",
+    "book": "parody.plugins.bookmeta",
 }
 
 

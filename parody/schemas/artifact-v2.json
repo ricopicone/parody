@@ -188,6 +188,68 @@
         }
       }
     },
+    "book": {
+      "description": "Bibliographic / editions metadata (meta's book-defs.json), emitted by the book plugin from the parody.yaml `book:` block. Carries the full title, short name, companion URL, and a list of editions (number, year, publisher, ISBN, publisher URL, series, and version-track bindings).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "short_name": {
+          "type": "string"
+        },
+        "companion_url": {
+          "type": "string"
+        },
+        "editions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "edition": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "year": {
+                "type": "string"
+              },
+              "publisher": {
+                "type": "string"
+              },
+              "isbn": {
+                "type": "string"
+              },
+              "series": {
+                "type": "string"
+              },
+              "series_name": {
+                "type": "string"
+              },
+              "url_companion": {
+                "type": "string"
+              },
+              "url_publisher": {
+                "type": "string"
+              },
+              "v_ts": {
+                "type": "string"
+              },
+              "v_ds": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "apocrypha": {
       "description": "Online-only sections — present on the website but not in this build (meta's book-json/apocrypha.json). The apocrypha plugin emits the subset whose hash is not an in-book section/anchor, so consumers can build a complete table of contents spanning in-book and online-only content.",
       "type": "array",

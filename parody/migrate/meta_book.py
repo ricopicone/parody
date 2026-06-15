@@ -727,6 +727,9 @@ class MetaBookMigrator:
         cfg["chapters"] = yaml_chapters
         if has_apocrypha:
             cfg["apocrypha"] = True  # enable the apocrypha plugin
+        book = self.book_metadata(cfg.get("title", ""))
+        if book:
+            cfg["book"] = book  # enable the book-metadata plugin
         cfg_path.write_text(yaml.dump(cfg, sort_keys=False, allow_unicode=True))
 
         bib = self.src / "common" / "book.bib"
@@ -762,6 +765,34 @@ class MetaBookMigrator:
             yaml.dump(entries, sort_keys=False, allow_unicode=True))
         print(f"copied {len(entries)} apocrypha entries")
         return True
+
+    def book_metadata(self, title):
+        """Normalize meta's common/book-defs.json (title/editions/ISBN/...)
+        into the parody.yaml `book:` block the book-metadata plugin surfaces.
+        Returns the dict, or None when absent or stale.
+
+        Several books carry a copied placeholder book-defs.json (the wrong
+        book's name + dummy ISBNs); guard with a title-prefix check so a
+        re-migration never injects another book's metadata."""
+        from ..plugins.bookmeta import normalize_book
+
+        src = self.src / "common" / "book-defs.json"
+        if not src.is_file():
+            return None
+        try:
+            raw = json.loads(src.read_text())
+        except (OSError, ValueError):
+            return None
+        name = raw.get("book-name") or raw.get("name") or ""
+        if title and not name.lower().startswith(title.strip().lower()):
+            print(f"note: book-defs name {name!r} doesn't match title "
+                  f"{title!r}; skipping book metadata (stale template?)")
+            return None
+        book = normalize_book(raw)
+        if not book:
+            return None
+        print(f"copied book metadata ({len(book.get('editions', []))} editions)")
+        return book
 
     def assign_generated_hashes(self):
         """Replace the converter's __pg<token> placeholders (headings the
