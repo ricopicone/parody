@@ -1186,6 +1186,23 @@ function Image(el)
   if el.classes:includes('pgf') or el.src:match('%.pgf$') then
     return imager(el)
   end
+  -- An identified figure image that pandoc left bare because its caption is
+  -- empty (![](src){#fig:x .figure}) renders as a plain \includegraphics
+  -- with no \label, so \cref{fig:x} dangles. Wrap it in a figure float so
+  -- it gets a number and label (bare + fig:-prefixed, like figurer).
+  if el.identifier and el.identifier ~= ''
+      and (el.classes:includes('figure') or el.classes:includes('standalone')) then
+    local graphics = imager(el)
+    local label = el.identifier
+    local extra = ''
+    if os.getenv('PARODY_PROJECT_DIR') and not label:match('^%a+:') then
+      extra = '\\label{' .. label .. '}'
+      label = 'fig:' .. label
+    end
+    return pandoc.RawInline('latex',
+      '\\begin{figure}[H]\\centering\n' .. graphics.text
+      .. '\n\\figcaption[]{' .. label .. '}{}\n' .. extra .. '\\end{figure}')
+  end
 end
 
 function Span(el)
