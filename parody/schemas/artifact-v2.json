@@ -250,6 +250,47 @@
         }
       }
     },
+    "videos": {
+      "description": "Lecture-video playlist links (meta's book-json/videos.json), emitted by the videos plugin. Per edition: a playlist id and the sections that have a video, each mapping a section hash to one or more 1-based positions in the playlist. Only sections present in this build (in-book or apocrypha) are emitted.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "edition",
+          "playlist",
+          "sections"
+        ],
+        "properties": {
+          "edition": {
+            "type": "string"
+          },
+          "playlist": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "hash",
+                "indices"
+              ],
+              "properties": {
+                "hash": {
+                  "type": "string"
+                },
+                "indices": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "apocrypha": {
       "description": "Online-only sections — present on the website but not in this build (meta's book-json/apocrypha.json). The apocrypha plugin emits the subset whose hash is not an in-book section/anchor, so consumers can build a complete table of contents spanning in-book and online-only content.",
       "type": "array",

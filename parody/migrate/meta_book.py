@@ -721,6 +721,7 @@ class MetaBookMigrator:
 
         self.assign_generated_hashes()
         has_apocrypha = self.copy_apocrypha()
+        has_videos = self.copy_videos()
 
         cfg_path = self.dst / "parody.yaml"
         cfg = yaml.safe_load(cfg_path.read_text())
@@ -730,6 +731,8 @@ class MetaBookMigrator:
         book = self.book_metadata(cfg.get("title", ""))
         if book:
             cfg["book"] = book  # enable the book-metadata plugin
+        if has_videos:
+            cfg["videos"] = True  # enable the videos plugin
         cfg_path.write_text(yaml.dump(cfg, sort_keys=False, allow_unicode=True))
 
         bib = self.src / "common" / "book.bib"
@@ -764,6 +767,39 @@ class MetaBookMigrator:
         (self.dst / "apocrypha.yaml").write_text(
             yaml.dump(entries, sort_keys=False, allow_unicode=True))
         print(f"copied {len(entries)} apocrypha entries")
+        return True
+
+    def copy_videos(self):
+        """Convert meta's common/book-json/videos.json (section hash ->
+        lecture-video playlist positions) into a videos.yaml the videos plugin
+        surfaces. Returns True if written.
+
+        math and systems ship a byte-identical copied videos.json (the systems
+        playlist + systems hashes); guard with a hash-overlap check so a stale
+        copy that points at another book's sections is skipped."""
+        from ..plugins.videos import normalize_videos, video_hashes
+        from .rehash import used_hashes
+
+        src = self.src / "common" / "book-json" / "videos.json"
+        if not src.is_file():
+            return False
+        try:
+            editions = normalize_videos(json.loads(src.read_text()))
+        except (OSError, ValueError):
+            return False
+        vhashes = video_hashes(editions)
+        if not vhashes:
+            return False
+        present = used_hashes(self.dst)
+        overlap = len(vhashes & present)
+        if overlap / len(vhashes) < 0.25:
+            print(f"note: only {overlap}/{len(vhashes)} video hashes are in "
+                  f"this book; skipping videos (stale copy?)")
+            return False
+        (self.dst / "videos.yaml").write_text(
+            yaml.dump(editions, sort_keys=False, allow_unicode=True))
+        n = sum(len(ed["sections"]) for ed in editions)
+        print(f"copied {n} video links")
         return True
 
     def book_metadata(self, title):
