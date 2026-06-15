@@ -96,8 +96,36 @@ def _slug_env(notebook_slug=None, chapter_slug=None, media_root=None):
                 os.environ[k] = v
 
 
-def build_project(project_dir, output_path, convert_jupytext=True, media_root=None):
-    """Build the JSON artifact for either layout. Returns the artifact dict."""
+def _filter_online_only(output):
+    """Reduce an artifact to the public web subset (e.g. rtcbook.org): keep
+    online-only section content in full, keep online-resources from any section
+    as a resource-only page (copyrighted body stripped — MIT-safe), drop the
+    rest and any now-empty chapters. Top-level book/videos/apocrypha stay."""
+    chapters = []
+    for ch in output.get("chapters", []):
+        kept = []
+        for s in ch.get("sections", []):
+            if s.get("online_only"):
+                kept.append(s)
+            elif s.get("online_resources"):
+                # resource page only — never publish the licensed body/anchors
+                kept.append({k: s[k] for k in
+                             ("title", "slug", "hash", "online_resources")
+                             if k in s})
+        if kept:
+            chapters.append({**{k: v for k, v in ch.items() if k != "sections"},
+                             "sections": kept})
+    return {**output, "chapters": chapters}
+
+
+def build_project(project_dir, output_path, convert_jupytext=True,
+                  media_root=None, online_only=False):
+    """Build the JSON artifact for either layout. Returns the artifact dict.
+
+    online_only: emit only the public web subset (online-only sections +
+    per-section online-resources) — the partial artifact a standalone book
+    host (rtcbook.org) imports; the full licensed book never leaves the build.
+    """
     project = load_project(project_dir)
 
     if project.layout == "legacy":
@@ -197,6 +225,9 @@ def build_project(project_dir, output_path, convert_jupytext=True, media_root=No
                     staged += 1
     if staged:
         print(f"✓ Staged {staged} figure assets into media/notebooks/{project.slug}/")
+
+    if online_only:
+        output = _filter_online_only(output)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

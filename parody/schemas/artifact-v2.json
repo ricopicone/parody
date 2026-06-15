@@ -175,6 +175,14 @@
                 },
                 "hash": {
                   "type": "string"
+                },
+                "online_only": {
+                  "description": "Section is licensed for the public web subset (e.g. rtcbook.org) but not the print book — meta's `.online-only` sections. Drives `parody build --online-only`.",
+                  "type": "boolean"
+                },
+                "online_resources": {
+                  "description": "Per-section web-only addenda (rendered HTML) authored in a sibling <slug>.online.md — meta's online-resources-editable content.",
+                  "type": "string"
                 }
               }
             }

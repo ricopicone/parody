@@ -647,7 +647,63 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None):
     if problems_html:
         result["problems"] = problems_html
 
+    # Schema v2: web-publication metadata (drives `parody preview --online-only`
+    # for a partial public site, e.g. rtcbook.org). online_only marks a section
+    # licensed for the public web subset; online_resources is per-section
+    # web-only addenda authored in a sibling <slug>.online.md.
+    if with_hashes:
+        if meta.get("online_only") or _heading_is_online_only(
+                content_without_solutions, section_hash):
+            result["online_only"] = True
+        online_resources = _load_online_resources(chapter_dir, section_slug)
+        if online_resources:
+            result["online_resources"] = online_resources
+
     return result
+
+
+_ONLINE_HEADING_RE = re.compile(
+    r'^#{1,6}\s+.*\{[^}]*\.online-only[^}]*\}\s*$', re.M)
+
+
+def _heading_is_online_only(content, section_hash=None):
+    """True if the section is marked `.online-only` (meta's marker for sections
+    published to the web but not the print book). Prefers the heading carrying
+    the section's own hash (robust when generated content, e.g. the parts-list
+    catalog, is injected ahead of it); falls back to the leading heading."""
+    if section_hash:
+        for line in content.splitlines():
+            s = line.strip()
+            if s.startswith("#") and ".online-only" in s and (
+                    f'h="{section_hash}"' in s or f'h={section_hash}' in s):
+                return True
+    for line in content.lstrip().splitlines():
+        s = line.strip()
+        if not s or s.startswith("<!--"):
+            continue
+        if s.startswith("#"):
+            return bool(_ONLINE_HEADING_RE.match(s))
+        # stop at the first non-heading content block
+        return False
+    return False
+
+
+def _load_online_resources(chapter_dir, section_slug):
+    """Render a sibling <slug>.online.md (per-section web-only addenda) to HTML.
+    Returns None when absent or a placeholder ('No online resources')."""
+    path = chapter_dir / f"{section_slug}.online.md"
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    if text.startswith("---"):
+        try:
+            _, _fm, text = text.split("---", 2)
+        except ValueError:
+            pass
+    text = text.strip()
+    if not text or text.lower().rstrip(".") == "no online resources":
+        return None
+    return convert_solution_to_html(text, chapter_dir)
 
 def convert_notebook(notebook_dir, output_path, convert_jupytext=True, media_root=None):
     notebook_dir = Path(notebook_dir)

@@ -712,6 +712,7 @@ class MetaBookMigrator:
                     title, slug, sec_id or f"sec-{ch_slug}-{slug}", sec_hash
                 )
                 (ch_dir / f"{slug}.md").write_text(fm + text.rstrip() + "\n")
+                self._copy_online_resources(sec_hash, ch_dir, slug)
                 slugs.append(slug)
                 n_sections += 1
             entry = {"slug": ch_slug, "title": ch_title, "sections": slugs}
@@ -829,6 +830,22 @@ class MetaBookMigrator:
         n = sum(len(ed["sections"]) for ed in editions)
         print(f"copied {n} video links")
         return True
+
+    def _copy_online_resources(self, sec_hash, ch_dir, slug):
+        """Import meta's per-section web-only addenda
+        (common/online-resources-editable/<hash>/source.md) into a sibling
+        <slug>.online.md the build surfaces as `online_resources`. Skips the
+        'No online resources.' placeholder."""
+        if not sec_hash:
+            return
+        src = (self.src / "common" / "online-resources-editable"
+               / sec_hash / "source.md")
+        if not src.is_file():
+            return
+        text = src.read_text().strip()
+        if not text or text.lower().rstrip(".") == "no online resources":
+            return
+        (ch_dir / f"{slug}.online.md").write_text(text + "\n")
 
     def book_metadata(self, title):
         """Normalize meta's common/book-defs.json (title/editions/ISBN/...)

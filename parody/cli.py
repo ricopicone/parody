@@ -23,6 +23,7 @@ def cmd_build(args):
         args.output,
         convert_jupytext=not args.no_execute,
         media_root=args.media_root,
+        online_only=getattr(args, "online_only", False),
     )
     return 0
 
@@ -207,6 +208,10 @@ def main(argv=None):
     p_build.add_argument("--media-root",
                          help="directory to receive the media/ tree (figures, code copies); "
                               "defaults to the project directory for content repos")
+    p_build.add_argument("--online-only", action="store_true",
+                         help="emit only the public web subset (online-only sections + "
+                              "per-section online-resources) — the partial artifact a "
+                              "standalone book host (e.g. rtcbook.org) imports")
     p_build.set_defaults(func=cmd_build)
 
     p_prev = sub.add_parser("preview", help="render a static HTML preview site")
