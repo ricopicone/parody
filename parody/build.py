@@ -10,10 +10,50 @@ slug context passed to the lua filter and figure mover via env vars
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+
+_MEDIA_REF_RE = re.compile(r"\{%\s*media\s+'([^']+)'\s*%\}")
+_STAGE_SKIP_DIRS = {"build", "node_modules", "__pycache__", ".git", "media"}
+_IMG_EXTS = (".svg", ".png", ".jpg", ".jpeg", ".pdf")
+
+
+def _stage_referenced_media(output, source_root, media_dir):
+    """Stage every file referenced by a ``{% media 'ref' %}`` tag into the
+    media tree at ``media_dir/<ref>``, so a consumer serving MEDIA_URL/<ref>
+    finds it. Handles the meta-migrated pattern where refs are bare,
+    extensionless figure names that resolve to ``<ref>.<ext>`` on disk: such a
+    ref is staged at ``<ref><source-ext>`` (the book-host's media tag resolves
+    the extension at render time). Returns (staged, missing)."""
+    refs = set(_MEDIA_REF_RE.findall(json.dumps(output)))
+    index = {}  # basename -> source path
+    for root, dirs, files in os.walk(source_root):
+        dirs[:] = [d for d in dirs
+                   if d not in _STAGE_SKIP_DIRS and not d.startswith(".")]
+        for f in files:
+            index.setdefault(f, Path(root) / f)
+    staged, missing = 0, []
+    for ref in refs:
+        base = os.path.basename(ref)
+        src = index.get(base)
+        if src is None and not os.path.splitext(ref)[1]:
+            for ext in _IMG_EXTS:
+                src = index.get(base + ext)
+                if src is not None:
+                    break
+        if src is None:
+            missing.append(ref)
+            continue
+        target = ref if os.path.splitext(ref)[1] else ref + src.suffix
+        dest = Path(media_dir) / target
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            staged += 1
+    return staged, missing
 
 from . import __version__
 from .config import load_project
@@ -225,6 +265,17 @@ def build_project(project_dir, output_path, convert_jupytext=True,
                     staged += 1
     if staged:
         print(f"✓ Staged {staged} figure assets into media/notebooks/{project.slug}/")
+
+    # General pass: stage every {% media %}-referenced file (covers meta-migrated
+    # books whose figure refs are bare/extensionless flat names, which the
+    # *_files staging above doesn't reach).
+    ref_staged, ref_missing = _stage_referenced_media(
+        output, project.directory, Path(media_root) / "media")
+    if ref_staged:
+        print(f"✓ Staged {ref_staged} referenced media files into media/")
+    if ref_missing:
+        print(f"warning: {len(ref_missing)} media refs not found "
+              f"(first: {sorted(ref_missing)[0]!r})")
 
     if online_only:
         output = _filter_online_only(output)
