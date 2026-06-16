@@ -121,11 +121,6 @@ def _ts_general(flat, ts_version):
         f"This section includes a definition of the general {k1} target "
         f"system. For specific hardware instances, see "
         f"[Specific {k1} target systems](#specific-target-systems-{k1}). "
-        f"The general {k1} target system diagram is shown in "
-        f"[@fig:system-diagram-0-target-system-{k1}].\n\n"
-        f"![The general {k1} target system diagram. Subsystems are in bold.]"
-        f"(figures/system-diagram-target-{k1}/system-diagram-target-{k1})"
-        f'{{#fig:system-diagram-0-target-system-{k1} .figure .standalone}}\n\n'
         f"We define the general {k1} target system as follows.\n",
     ]
     for slug, name, h in HEADINGS:
@@ -168,11 +163,6 @@ def _ds_general(flat, ds_version):
         f"This section includes a definition of the general {k1} development "
         f"system. For specific hardware instances, see "
         f"[Specific {k1} development systems](#specific-development-systems-{k1}). "
-        f"The general {k1} development system diagram is shown in "
-        f"[@fig:system-diagram-0-development-system-{k1}].\n\n"
-        f"![The general {k1} development system diagram.]"
-        f"(figures/system-diagram-development-{k1}/system-diagram-development-{k1})"
-        f'{{#fig:system-diagram-0-development-system-{k1} .figure .standalone}}\n\n'
         f"We define the general {k1} development system as follows. It consists "
         f"of a development computer, a virtual machine (VM), and {ide}.\n")
 
