@@ -21,13 +21,37 @@ _STAGE_SKIP_DIRS = {"build", "node_modules", "__pycache__", ".git", "media"}
 _IMG_EXTS = (".svg", ".png", ".jpg", ".jpeg", ".pdf")
 
 
+def _apply_media_rewrites(output, rewrites):
+    """Rewrite ``{% media 'old' %}`` -> ``{% media 'new' %}`` across the
+    artifact (section html, solutions, problems, online_resources)."""
+    def fix(blob):
+        for old, new in rewrites.items():
+            blob = blob.replace("{%% media '%s' %%}" % old,
+                                "{%% media '%s' %%}" % new)
+        return blob
+    for chapter in output.get("chapters", []):
+        for section in chapter.get("sections", []):
+            if section.get("html"):
+                section["html"] = fix(section["html"])
+            if section.get("online_resources"):
+                section["online_resources"] = fix(section["online_resources"])
+            for bucket in ("solutions", "problems"):
+                for entry in (section.get(bucket) or {}).values():
+                    if isinstance(entry, dict) and entry.get("content"):
+                        entry["content"] = fix(entry["content"])
+
+
 def _stage_referenced_media(output, source_root, media_dir):
-    """Stage every file referenced by a ``{% media 'ref' %}`` tag into the
-    media tree at ``media_dir/<ref>``, so a consumer serving MEDIA_URL/<ref>
-    finds it. Handles the meta-migrated pattern where refs are bare,
-    extensionless figure names that resolve to ``<ref>.<ext>`` on disk: such a
-    ref is staged at ``<ref><source-ext>`` (the book-host's media tag resolves
-    the extension at render time). Returns (staged, missing)."""
+    """Stage every ``{% media 'ref' %}`` file into the media tree so a consumer
+    serving ``MEDIA_URL/<ref>`` finds it, converting print figures to web form.
+
+    Meta-migrated figures are bare/extensionless refs resolving to ``<ref>.<ext>``
+    on disk, and most are ``.pdf`` (print) which browsers can't show in
+    ``<img>``. Such refs are converted to ``.svg`` (reusing the preview writer's
+    pdftocairo/lualatex converters) and the artifact ref is rewritten to the
+    served ``.svg``. Non-print images are copied. Returns (staged, missing)."""
+    from .writers.preview import _pdf_to_svg, _pgf_to_svg
+
     refs = set(_MEDIA_REF_RE.findall(json.dumps(output)))
     index = {}  # basename -> source path
     for root, dirs, files in os.walk(source_root):
@@ -35,7 +59,8 @@ def _stage_referenced_media(output, source_root, media_dir):
                    if d not in _STAGE_SKIP_DIRS and not d.startswith(".")]
         for f in files:
             index.setdefault(f, Path(root) / f)
-    staged, missing = 0, []
+
+    staged, missing, rewrites = 0, [], {}
     for ref in refs:
         base = os.path.basename(ref)
         src = index.get(base)
@@ -47,12 +72,31 @@ def _stage_referenced_media(output, source_root, media_dir):
         if src is None:
             missing.append(ref)
             continue
-        target = ref if os.path.splitext(ref)[1] else ref + src.suffix
-        dest = Path(media_dir) / target
-        if not dest.exists():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest)
-            staged += 1
+        stem = os.path.splitext(ref)[0]
+        if src.suffix.lower() in (".pdf", ".pgf"):
+            target = stem + ".svg"
+            dest = Path(media_dir) / target
+            if not dest.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                ok = (_pgf_to_svg(src, dest) if src.suffix.lower() == ".pgf"
+                      else _pdf_to_svg(src, dest))
+                if not ok:  # converter unavailable -> keep the source as-is
+                    target = ref if os.path.splitext(ref)[1] else ref + src.suffix
+                    dest = Path(media_dir) / target
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dest)
+        else:
+            target = ref if os.path.splitext(ref)[1] else ref + src.suffix
+            dest = Path(media_dir) / target
+            if not dest.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+        staged += 1
+        if target != ref:
+            rewrites[ref] = target
+
+    if rewrites:
+        _apply_media_rewrites(output, rewrites)
     return staged, missing
 
 from . import __version__
