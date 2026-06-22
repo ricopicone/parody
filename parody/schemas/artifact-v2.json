@@ -55,6 +55,30 @@
     "pdf_file": {
       "type": "string"
     },
+    "edition": {
+      "description": "Present on per-edition artifacts: the edition this artifact was built for (id, title, active version tracks, and whether it is the default/latest shown by the web switcher).",
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "tracks": {"type": "object"},
+        "default": {"type": "boolean"}
+      }
+    },
+    "editions": {
+      "description": "Present on per-edition artifacts: the full edition roster (id, title, default) so a renderer can build the edition switcher from any single artifact.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "default": {"type": "boolean"}
+        }
+      }
+    },
     "chapters": {
       "type": "array",
       "items": {

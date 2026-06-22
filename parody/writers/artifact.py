@@ -115,8 +115,8 @@ def extract_download_code_paths(markdown_content):
             paths.append(path_match.group(1))
     return paths
 
-def get_section_download_paths(chapter_dir, section_slug):
-    section_path = chapter_dir / f"{section_slug}.md"
+def get_section_download_paths(chapter_dir, section_slug, section_file=None):
+    section_path = chapter_dir / (section_file or f"{section_slug}.md")
     with open(section_path, "r", encoding="utf-8") as f:
         raw = f.read()
 
@@ -538,8 +538,12 @@ def convert_solution_to_html(solution_markdown, chapter_dir):
     html = _post_process_html_for_anchors(html)
     return html
 
-def load_section(chapter_dir, section_slug, with_hashes=False, transform=None):
-    section_path = chapter_dir / f"{section_slug}.md"
+def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
+                 section_file=None):
+    # section_file overrides the default <slug>.md filename so an edition can
+    # read a forked overlay (<slug>.<edition>.md) while the slug — the stable
+    # cross-ref/hash identity — stays the same across editions.
+    section_path = chapter_dir / (section_file or f"{section_slug}.md")
     with open(section_path, "r", encoding="utf-8") as f:
         raw = f.read()
 

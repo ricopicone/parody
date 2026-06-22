@@ -8,6 +8,7 @@ slug context passed to the lua filter and figure mover via env vars
 """
 
 import contextlib
+import copy
 import json
 import os
 import re
@@ -15,6 +16,8 @@ import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 _MEDIA_REF_RE = re.compile(r"\{%\s*media\s+'([^']+)'\s*%\}")
 _STAGE_SKIP_DIRS = {"build", "node_modules", "__pycache__", ".git", "media"}
@@ -202,13 +205,94 @@ def _filter_online_only(output):
     return {**output, "chapters": chapters}
 
 
+def _section_editions(path):
+    """A section's ``editions:`` frontmatter membership as a list of edition
+    ids, or None when unset (the single-source default: belongs to *every*
+    edition until it forks). Honors single string or list forms."""
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not raw.startswith("---"):
+        return None
+    try:
+        _, frontmatter, _ = raw.split("---", 2)
+        meta = yaml.safe_load(frontmatter.strip()) or {}
+    except ValueError:
+        return None
+    eds = meta.get("editions")
+    if eds is None:
+        return None
+    if isinstance(eds, str):
+        eds = [eds]
+    return [str(e) for e in eds]
+
+
+def _resolve_section_file(chapter_dir, section_slug, edition_id):
+    """Which file an edition reads for a section — the single-source-until-fork
+    overlay (decision 1a). A per-edition fork ``<slug>.<edition>.md`` shadows
+    the shared ``<slug>.md`` for that edition only; the shared source serves
+    every edition in its membership (default: all). Returns the filename to
+    read, or None when the section is absent from this edition."""
+    fork = chapter_dir / f"{section_slug}.{edition_id}.md"
+    if fork.is_file():
+        return fork.name
+    shared = chapter_dir / f"{section_slug}.md"
+    if shared.is_file():
+        members = _section_editions(shared)
+        if members is None or edition_id in members:
+            return shared.name
+    return None
+
+
+def _meta_for_edition(meta, edition):
+    """A copy of the project meta with the edition's active version tracks
+    injected into the version-aware plugins (versioning, parts_list), so each
+    edition's artifact substitutes its own (TX, DY)."""
+    m = copy.deepcopy(meta)
+    tracks = edition.get("tracks") or {}
+    if tracks:
+        for key in ("versioning", "parts_list"):
+            cfg = m.get(key)
+            if isinstance(cfg, dict):
+                cfg["tracks"] = dict(tracks)
+    return m
+
+
+def build_editions(project_dir, output_dir, **kwargs):
+    """Build one artifact per configured edition into ``output_dir``, named
+    ``<slug>.<edition>.json``. Returns the list of written paths. Raises if the
+    project declares no editions (use build_project for single-artifact books).
+    """
+    project = load_project(project_dir)
+    if not project.editions:
+        raise ValueError(
+            f"{project_dir} declares no editions: in parody.yaml; "
+            "use build_project for a single-artifact build")
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for edition in project.editions:
+        out = output_dir / f"{project.slug}.{edition['id']}.json"
+        build_project(project_dir, out, edition=edition, **kwargs)
+        paths.append(out)
+    return paths
+
+
 def build_project(project_dir, output_path, convert_jupytext=True,
-                  media_root=None, online_only=False):
+                  media_root=None, online_only=False, edition=None):
     """Build the JSON artifact for either layout. Returns the artifact dict.
 
     online_only: emit only the public web subset (online-only sections +
     per-section online-resources) — the partial artifact a standalone book
     host (rtcbook.org) imports; the full licensed book never leaves the build.
+
+    edition: a normalized edition dict (see config.normalize_editions). When
+    given, build that edition's artifact — substitute its active version
+    tracks and include only the sections that belong to it (single-source
+    overlay, decision 1a). None builds the unfiltered single artifact (also
+    the back-compat path for books without editions). Usually called via
+    build_editions, which loops over every configured edition.
     """
     project = load_project(project_dir)
 
@@ -230,8 +314,11 @@ def build_project(project_dir, output_path, convert_jupytext=True,
     schema_version = int(project.meta.get("schema", SCHEMA_VERSION))
     with_hashes = schema_version >= 2
 
+    active_meta = _meta_for_edition(project.meta, edition) if edition \
+        else project.meta
+
     from .plugins import apply_transforms, content_transforms
-    transforms = content_transforms(project.meta, project.directory)
+    transforms = content_transforms(active_meta, project.directory)
     transform = (lambda text: apply_transforms(text, transforms)) \
         if transforms else None
 
@@ -251,6 +338,16 @@ def build_project(project_dir, output_path, convert_jupytext=True,
         "chapters": [],
     }
 
+    # Edition metadata: this artifact's edition plus the full roster, so a
+    # renderer can build the edition switcher (default = latest) from any one
+    # edition's artifact.
+    if edition:
+        output["edition"] = {k: edition[k]
+                             for k in ("id", "title", "tracks", "default")}
+        output["editions"] = [
+            {"id": e["id"], "title": e["title"], "default": e["default"]}
+            for e in project.editions]
+
     requested_code_files = set()
 
     for chapter in project.chapters:
@@ -266,12 +363,23 @@ def build_project(project_dir, output_path, convert_jupytext=True,
             if with_hashes and chapter.appendix:
                 chapter_data["appendix"] = True
             for section_slug in chapter.section_slugs:
-                for path in get_section_download_paths(chapter.directory, section_slug):
+                section_file = None
+                if edition:
+                    section_file = _resolve_section_file(
+                        chapter.directory, section_slug, edition["id"])
+                    if section_file is None:
+                        continue  # section absent from this edition
+                for path in get_section_download_paths(
+                        chapter.directory, section_slug, section_file=section_file):
                     requested_code_files.add((chapter.directory.name, path))
                 chapter_data["sections"].append(load_section(
                     chapter.directory, section_slug,
-                    with_hashes=with_hashes, transform=transform))
+                    with_hashes=with_hashes, transform=transform,
+                    section_file=section_file))
 
+        # Drop a chapter that has no sections in this edition.
+        if edition and not chapter_data["sections"]:
+            continue
         output["chapters"].append(chapter_data)
 
     if with_hashes:

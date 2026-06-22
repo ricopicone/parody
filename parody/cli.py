@@ -16,15 +16,39 @@ def cmd_init(args):
 
 
 def cmd_build(args):
-    from .build import build_project
+    from .build import build_editions, build_project
+    from .config import load_project
 
-    build_project(
-        args.input_dir,
-        args.output,
+    kwargs = dict(
         convert_jupytext=not args.no_execute,
         media_root=args.media_root,
         online_only=getattr(args, "online_only", False),
     )
+
+    project = load_project(args.input_dir)
+    edition = getattr(args, "edition", None)
+
+    if project.editions and not edition:
+        # Edition-aware book, no --edition: build one artifact per edition into
+        # the output directory (a .json output path is treated as its parent).
+        out_dir = Path(args.output)
+        if out_dir.suffix == ".json":
+            out_dir = out_dir.parent
+        paths = build_editions(args.input_dir, out_dir, **kwargs)
+        print(f"Built {len(paths)} edition artifacts: "
+              f"{', '.join(p.name for p in paths)}")
+        return 0
+
+    ed = None
+    if edition:
+        ed = next((e for e in project.editions if e["id"] == edition), None)
+        if ed is None:
+            known = ", ".join(e["id"] for e in project.editions) or "none"
+            print(f"error: unknown edition {edition!r} (known: {known})",
+                  file=sys.stderr)
+            return 1
+
+    build_project(args.input_dir, args.output, edition=ed, **kwargs)
     return 0
 
 
@@ -208,6 +232,9 @@ def main(argv=None):
     p_build.add_argument("--media-root",
                          help="directory to receive the media/ tree (figures, code copies); "
                               "defaults to the project directory for content repos")
+    p_build.add_argument("--edition",
+                         help="build only this edition (by id); default builds "
+                              "every edition declared in parody.yaml")
     p_build.add_argument("--online-only", action="store_true",
                          help="emit only the public web subset (online-only sections + "
                               "per-section online-resources) — the partial artifact a "

@@ -42,6 +42,7 @@ class Project:
     meta: dict
     chapters: list = field(default_factory=list)
     bibliography: Path | None = None
+    editions: list = field(default_factory=list)  # edition-aware build (P1)
 
 
 class ProjectLayoutError(Exception):
@@ -58,6 +59,32 @@ def detect_layout(project_dir):
         f"{project_dir} is not a parody project: no parody.yaml (content repo) "
         "or __meta.yaml (legacy notebook) found"
     )
+
+
+def normalize_editions(raw):
+    """Parse the ``editions:`` list into ordered, normalized dicts.
+
+    Each edition declares an ``id`` and the active version ``tracks`` to build
+    with (e.g. ``{ts: T1, ds: D1}``); ``title`` labels the web switcher and
+    ``default`` marks the edition shown first (the latest). Order is
+    significant — when no edition flags ``default``, the last (latest) wins.
+    Returns ``[]`` for books that don't use editions (single-artifact build).
+    """
+    editions = []
+    for ed in raw or []:
+        if not isinstance(ed, dict) or "id" not in ed:
+            raise ProjectLayoutError(
+                "each entry under editions: needs an 'id' (e.g. "
+                "- id: ed1\\n    tracks: {ts: T1, ds: D1})")
+        editions.append({
+            "id": str(ed["id"]),
+            "title": ed.get("title", ""),
+            "tracks": dict(ed.get("tracks") or {}),
+            "default": bool(ed.get("default", False)),
+        })
+    if editions and not any(e["default"] for e in editions):
+        editions[-1]["default"] = True
+    return editions
 
 
 def _find_bibliography(project_dir):
@@ -118,4 +145,5 @@ def load_project(project_dir):
         directory=project_dir, layout="parody",
         slug=slug, meta=meta, chapters=chapters,
         bibliography=_find_bibliography(project_dir),
+        editions=normalize_editions(meta.get("editions")),
     )
