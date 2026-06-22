@@ -63,7 +63,8 @@
         "id": {"type": "string"},
         "title": {"type": "string"},
         "tracks": {"type": "object"},
-        "default": {"type": "boolean"}
+        "default": {"type": "boolean"},
+        "draft": {"type": "boolean"}
       }
     },
     "editions": {
@@ -75,7 +76,8 @@
         "properties": {
           "id": {"type": "string"},
           "title": {"type": "string"},
-          "default": {"type": "boolean"}
+          "default": {"type": "boolean"},
+          "draft": {"type": "boolean"}
         }
       }
     },

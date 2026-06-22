@@ -69,6 +69,28 @@ def test_normalize_requires_id():
         normalize_editions([{"tracks": {"ts": "T1"}}])
 
 
+def test_normalize_draft_flag():
+    eds = normalize_editions([
+        {"id": "ed1"}, {"id": "ed2", "draft": True}])
+    assert eds[0]["draft"] is False
+    assert eds[1]["draft"] is True
+
+
+def test_draft_flag_reaches_artifact(tmp_path):
+    project_dir = write_project(tmp_path, editions=[
+        {"id": "ed1", "tracks": {"ts": "T1", "ds": "D1"}},
+        {"id": "ed2", "tracks": {"ts": "T2", "ds": "D1"}, "draft": True},
+    ])
+    write_section(project_dir, "introduction", "overview", "x")
+    out_dir = tmp_path / "art"
+    build_editions(project_dir, out_dir, convert_jupytext=False)
+    ed2 = json.loads((out_dir / "ebook.ed2.json").read_text())
+    assert ed2["edition"]["draft"] is True
+    # the roster carries draft so the renderer can mark/hide siblings
+    roster = {e["id"]: e["draft"] for e in ed2["editions"]}
+    assert roster == {"ed1": False, "ed2": True}
+
+
 def test_load_project_exposes_editions(tmp_path):
     project_dir = write_project(tmp_path)
     project = load_project(project_dir)

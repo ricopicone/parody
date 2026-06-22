@@ -343,9 +343,11 @@ def build_project(project_dir, output_path, convert_jupytext=True,
     # edition's artifact.
     if edition:
         output["edition"] = {k: edition[k]
-                             for k in ("id", "title", "tracks", "default")}
+                             for k in ("id", "title", "tracks", "default",
+                                       "draft")}
         output["editions"] = [
-            {"id": e["id"], "title": e["title"], "default": e["default"]}
+            {"id": e["id"], "title": e["title"], "default": e["default"],
+             "draft": e["draft"]}
             for e in project.editions]
 
     requested_code_files = set()

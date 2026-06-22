@@ -81,6 +81,9 @@ def normalize_editions(raw):
             "title": ed.get("title", ""),
             "tracks": dict(ed.get("tracks") or {}),
             "default": bool(ed.get("default", False)),
+            # draft: build the edition but keep it owner-only on the web until
+            # released (parody-web hides it from the public + can flip it live).
+            "draft": bool(ed.get("draft", False)),
         })
     if editions and not any(e["default"] for e in editions):
         editions[-1]["default"] = True
