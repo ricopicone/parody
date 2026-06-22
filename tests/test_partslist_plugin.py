@@ -1,8 +1,6 @@
 """Parts-list plugin: general-catalog generation, marker parsing, and the
 pipeline-aware transform (expand for artifact, drop for print)."""
 
-import textwrap
-
 import yaml
 
 from parody.plugins import content_transforms

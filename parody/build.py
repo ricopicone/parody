@@ -19,6 +19,18 @@ from pathlib import Path
 
 import yaml
 
+from . import __version__
+from .config import load_project
+from .writers.artifact import (
+    SCHEMA_VERSION,
+    convert_jupytext_files_in_directory,
+    convert_notebook,
+    copy_selected_code_files_to_media,
+    get_section_download_paths,
+    get_source_commit,
+    load_section,
+)
+
 _MEDIA_REF_RE = re.compile(r"\{%\s*media\s+'([^']+)'\s*%\}")
 _STAGE_SKIP_DIRS = {"build", "node_modules", "__pycache__", ".git", "media"}
 _IMG_EXTS = (".svg", ".png", ".jpg", ".jpeg", ".pdf")
@@ -101,18 +113,6 @@ def _stage_referenced_media(output, source_root, media_dir):
     if rewrites:
         _apply_media_rewrites(output, rewrites)
     return staged, missing
-
-from . import __version__
-from .config import load_project
-from .writers.artifact import (
-    SCHEMA_VERSION,
-    convert_jupytext_files_in_directory,
-    convert_notebook,
-    copy_selected_code_files_to_media,
-    get_section_download_paths,
-    get_source_commit,
-    load_section,
-)
 
 
 def get_source_repo(path):

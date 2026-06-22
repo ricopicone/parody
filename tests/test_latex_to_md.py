@@ -41,7 +41,7 @@ def convert(tmp_path):
 def test_sectioning_and_markers(tmp_path):
     out = convert(tmp_path)
     lines = out.splitlines()
-    headers = [l for l in lines if l.startswith("#")]
+    headers = [ln for ln in lines if ln.startswith("#")]
     assert '# Memory and its contents {#memory-and-contents h="bk"}' in headers
     assert '## Memory organization {#memory-organization h="h7"}' in headers
     assert ('# Motor apparatus {#motor-apparatus .resource h="5l"}'
