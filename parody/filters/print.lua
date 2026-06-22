@@ -870,7 +870,13 @@ end
 -- Tables -----------------------------------------------------------------
 
 local function get_table_id(el)
+  -- Pandoc assigns a caption's trailing {#id} to the Table's own identifier;
+  -- prefer that, falling back to scraping a literal {#id} out of the caption
+  -- text for inputs where it survives there instead.
   if el.t == 'Table' then
+    if el.identifier ~= nil and el.identifier ~= '' then
+      return el.identifier
+    end
     el = pandoc.utils.to_simple_table(el)
   end
   local caption = pandoc.utils.stringify(el.caption)

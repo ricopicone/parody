@@ -343,6 +343,31 @@
           }
         }
       }
+    },
+    "references": {
+      "description": "Bibliography map (key -> citation), emitted by the references plugin from the book's BibTeX. The artifact consumer (parody-web) resolves `[@key]` citation spans to \"Author (Year)\" links and per-section reference lists from this map, so the bibliography travels with the artifact. Print builds use biblatex directly and never populate this.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "label",
+          "full"
+        ],
+        "properties": {
+          "label": {
+            "description": "Short in-text label, e.g. \"Picone (2024)\".",
+            "type": "string"
+          },
+          "full": {
+            "description": "Full reference string (author, title, venue, year).",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "errata": {
+      "description": "Rendered errata page (HTML), emitted by the errata plugin from the book's errata markdown. The consumer (parody-web) serves it at /errata; image refs are rewritten to /media/<basename> and math uses MathJax.",
+      "type": "string"
     }
   }
 }

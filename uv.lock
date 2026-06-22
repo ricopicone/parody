@@ -983,7 +983,7 @@ wheels = [
 
 [[package]]
 name = "parody"
-version = "0.5.1"
+version = "0.6.4"
 source = { editable = "." }
 dependencies = [
     { name = "ipykernel" },
