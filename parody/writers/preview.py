@@ -50,6 +50,15 @@ a.download-button { display: inline-block; font-family: system-ui, sans-serif;
                     font-size: .9rem; border: 1px solid #7a6ff0; border-radius: 4px;
                     padding: .25rem .7rem; text-decoration: none; }
 div#refs p { margin: .4rem 0; }
+/* margin version icon ([]{.tsicon} -> [T1]{.version-icon .ts}): a small badge
+   marking which version a passage applies to; pulled into the right margin on
+   wide screens, inline otherwise. ts = purple, ds = teal. */
+.version-icon { font-family: system-ui, sans-serif; font-size: .7rem;
+    font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+    color: #fff; background: #7a6ff0; border-radius: 4px; padding: .05rem .35rem;
+    float: right; clear: right; margin: .1rem 0 .2rem .5rem; }
+.version-icon.ds { background: #2a9d8f; }
+@media (min-width: 62rem) { .version-icon { margin-right: -3.6rem; } }
 """
 
 MATHJAX = (
