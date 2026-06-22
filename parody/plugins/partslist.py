@@ -197,6 +197,137 @@ def _marker_versions(attrs, default_ts, default_ds):
     return ts, ds
 
 
+# ---------------------------------------------------------------------------
+# Structured specific-variant catalog (P3): the parts DATA the web /systems
+# pages render — every component of the active ts/ds system with its scalar
+# specs and the specific/unspecific device choices (make/model + suppliers)
+# from versions.yaml. Distinct from the general <details> markdown above:
+# this is structured JSON on the artifact, one "system" per active version.
+# ---------------------------------------------------------------------------
+
+# keys that are structure/metadata, never rendered as a plain spec row
+_META_KEYS = {"hash", "emulation", "general", "name", "kind", "description",
+              "variants", "url", "parent", "children", "suppliers",
+              "specific", "unspecific", "variables", "variables-names",
+              "variables-descriptions"}
+
+
+def _suppliers(node):
+    out = []
+    for name, sup in (node.get("suppliers") or {}).items():
+        if isinstance(sup, dict) and sup.get("url"):
+            out.append({"name": name, "url": sup["url"]})
+    return out
+
+
+def _spec_rows(node):
+    """Scalar (label, value) rows for a node, excluding structural keys."""
+    rows = []
+    for k, v in node.items():
+        if k in _META_KEYS or k == "quantity":
+            continue
+        if isinstance(v, (str, int, float)):
+            rows.append([capfirst(str(k)), capfirst(str(v))])
+    return rows
+
+
+def _choices(node):
+    """The device options that satisfy a component: ``specific`` (fully
+    specified, owner-recommended) and ``unspecific`` (acceptable alternatives),
+    each with its own fields + suppliers."""
+    out = []
+    for bucket in ("specific", "unspecific"):
+        group = node.get(bucket)
+        if not isinstance(group, dict):
+            continue
+        for key, choice in group.items():
+            if not isinstance(choice, dict):
+                continue
+            out.append({
+                "kind": bucket,
+                "name": choice.get("name", str(key)),
+                "description": choice.get("description", ""),
+                "hash": choice.get("hash", ""),
+                "fields": _spec_rows(choice),
+                "suppliers": _suppliers(choice),
+            })
+    return out
+
+
+def _component(subsystem, subsystem_title, node):
+    return {
+        "subsystem": subsystem,
+        "subsystem_title": subsystem_title,
+        "name": node.get("name", ""),
+        "kind": node.get("kind", ""),
+        "description": node.get("description", ""),
+        "hash": node.get("hash", ""),
+        "quantity": str(node.get("quantity", "")),
+        "specs": _spec_rows(node),
+        "suppliers": _suppliers(node),
+        "choices": _choices(node),
+    }
+
+
+def _system_components(version_node):
+    """Flatten a version's subsystems into a component list. A subsystem that
+    carries its own ``name`` (target-computer) is one component; otherwise its
+    children (ui→keypad/display, prototyping→nand…) are the components."""
+    components = []
+    for slug, title, _h in HEADINGS:
+        sub = version_node.get(slug)
+        if not isinstance(sub, dict):
+            continue
+        if "name" in sub:
+            components.append(_component(slug, title, sub))
+        else:
+            for cslug, cnode in sub.items():
+                if isinstance(cnode, dict):
+                    components.append(
+                        _component(f"{slug}-{cslug}", title, cnode))
+    return components
+
+
+def generate_parts_data(flat, ts_version=None, ds_version=None):
+    """Structured systems catalog for the active versions: a list of systems
+    (the active ts target system, the active ds development system), each with
+    its components and their device choices + suppliers."""
+    systems = []
+    for track, version, kind in (("ts", ts_version, "target"),
+                                 ("ds", ds_version, "development")):
+        if not version:
+            continue
+        node = flat.get(version)
+        if not isinstance(node, dict):
+            continue
+        systems.append({
+            "track": track,
+            "version": version,
+            "title": f"{version} {kind} system",
+            "description": node.get("description", ""),
+            "components": _system_components(node),
+        })
+    return systems
+
+
+def make_artifact_hook(config, project_dir):
+    """Attach the structured per-edition systems catalog to the artifact as a
+    top-level ``parts`` key (the data parody-web's /systems pages render)."""
+    from pathlib import Path
+    cfg = config if isinstance(config, dict) else {}
+    tracks = cfg.get("tracks") or {}
+    src = Path(project_dir) / cfg.get("source", "versions.yaml")
+    flat = flatten_versions(load_versions(src)) if src.is_file() else {}
+    systems = generate_parts_data(flat, tracks.get("ts"), tracks.get("ds"))
+
+    def hook(artifact):
+        if systems:
+            artifact["parts"] = systems
+        return artifact
+
+    return hook
+
+
 def make_transform(config, project_dir, target="artifact"):
     """Pipeline-aware transform. In the artifact pipeline it expands a
     ``[]{.parts-list …}`` marker into the generated web catalog; in print it

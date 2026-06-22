@@ -8,6 +8,8 @@ import yaml
 from parody.plugins import content_transforms
 from parody.plugins.partslist import (
     generate_general_catalog,
+    generate_parts_data,
+    make_artifact_hook,
     make_transform,
 )
 
@@ -101,3 +103,101 @@ def test_content_transforms_passes_target(tmp_path):
     prn = content_transforms(_project_meta(), tmp_path, target="print")
     assert "General T1 target system" in art[0](text)
     assert prn[0](text).strip() == ""  # print drops it
+
+
+# --- structured systems catalog (P3) ---------------------------------------
+
+PARTS_DB = {
+    "ts": {
+        "T1": {
+            "description": "first target system",
+            "target-computer": {
+                "name": "NI myRIO 1900", "kind": "single-board computer",
+                "description": "An SBC.", "hash": "tc", "quantity": "1",
+                "System on a chip (SoC)": "Xilinx Z-7010",
+                "suppliers": {"NI": {"url": "https://ni.com"}},
+            },
+            "ui": {
+                "keypad": {
+                    "kind": "input", "name": "Keypad", "hash": "kp", "Keys": "16",
+                    "specific": {"0": {
+                        "name": "Grayhill 88BB2", "hash": "g8",
+                        "description": "A 16-key keypad.",
+                        "suppliers": {"Digi-Key": {"url": "https://digikey.com/x"},
+                                      "Mouser": {"url": "https://mouser.com/y"}},
+                    }},
+                },
+            },
+            "prototyping": {
+                "nand": {
+                    "kind": "NAND IC", "name": "A NAND IC", "hash": "nd",
+                    "unspecific": {"0": {
+                        "name": "TI SN7438N", "hash": "sn",
+                        "suppliers": {"Mouser": {"url": "https://mouser.com/z"}},
+                    }},
+                },
+            },
+        },
+        "T2": {"description": "second target",
+               "target-computer": {"name": "Raspberry Pi 5", "hash": "pi"}},
+    },
+    "ds": {"D1": {"description": "first dev"}, "D2": {"description": "second dev"}},
+}
+
+
+def _parts_flat():
+    from parody.plugins.versioning import flatten_versions
+    return flatten_versions(PARTS_DB)
+
+
+def test_generate_parts_data_shape():
+    systems = generate_parts_data(_parts_flat(), ts_version="T1", ds_version="D1")
+    assert [s["version"] for s in systems] == ["T1", "D1"]
+    ts = systems[0]
+    assert ts["track"] == "ts" and ts["title"] == "T1 target system"
+    comps = {c["subsystem"]: c for c in ts["components"]}
+    # subsystem-as-component (target-computer) carries name + specs + suppliers
+    tc = comps["target-computer"]
+    assert tc["name"] == "NI myRIO 1900"
+    assert ["System on a chip (SoC)", "Xilinx Z-7010"] in tc["specs"]
+    assert {"name": "NI", "url": "https://ni.com"} in tc["suppliers"]
+    # grouped component (ui-keypad) with a specific choice + its suppliers
+    kp = comps["ui-keypad"]
+    assert kp["name"] == "Keypad" and kp["subsystem_title"] == "user interface subsystem"
+    choice = kp["choices"][0]
+    assert choice["kind"] == "specific" and choice["name"] == "Grayhill 88BB2"
+    assert len(choice["suppliers"]) == 2
+    # unspecific choices are captured too
+    nand = comps["prototyping-nand"]
+    assert nand["choices"][0]["kind"] == "unspecific"
+
+
+def test_artifact_hook_attaches_parts(tmp_path):
+    (tmp_path / "versions.yaml").write_text(yaml.safe_dump(PARTS_DB))
+    hook = make_artifact_hook({"tracks": {"ts": "T1", "ds": "D1"}}, tmp_path)
+    artifact = hook({"chapters": []})
+    assert [s["version"] for s in artifact["parts"]] == ["T1", "D1"]
+
+
+def test_parts_are_per_edition(tmp_path):
+    """Each edition's artifact carries its own active version's parts."""
+    import json
+
+    from parody.build import build_editions
+    from parody.cli import main
+    project_dir = tmp_path / "pbook"
+    assert main(["init", str(project_dir), "--title", "P", "--author", "A"]) == 0
+    (project_dir / "versions.yaml").write_text(yaml.safe_dump(PARTS_DB))
+    meta = yaml.safe_load((project_dir / "parody.yaml").read_text())
+    meta["parts_list"] = {"source": "versions.yaml", "tracks": {"ts": "T1"}}
+    meta["editions"] = [
+        {"id": "ed1", "tracks": {"ts": "T1", "ds": "D1"}},
+        {"id": "ed2", "tracks": {"ts": "T2", "ds": "D2"}},
+    ]
+    (project_dir / "parody.yaml").write_text(yaml.safe_dump(meta))
+    out = tmp_path / "art"
+    build_editions(project_dir, out, convert_jupytext=False)
+    ed1 = json.loads((out / "pbook.ed1.json").read_text())
+    ed2 = json.loads((out / "pbook.ed2.json").read_text())
+    assert [s["version"] for s in ed1["parts"]] == ["T1", "D1"]
+    assert [s["version"] for s in ed2["parts"]] == ["T2", "D2"]

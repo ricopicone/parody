@@ -79,6 +79,38 @@
         }
       }
     },
+    "parts": {
+      "description": "Structured systems catalog (parts-list plugin) for the active version(s): one system per active ts/ds version, each with its components and the specific/unspecific device choices + suppliers. Rendered by parody-web's /systems pages.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "components"],
+        "properties": {
+          "track": {"type": "string"},
+          "version": {"type": "string"},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "subsystem": {"type": "string"},
+                "subsystem_title": {"type": "string"},
+                "name": {"type": "string"},
+                "kind": {"type": "string"},
+                "description": {"type": "string"},
+                "hash": {"type": "string"},
+                "quantity": {"type": "string"},
+                "specs": {"type": "array"},
+                "suppliers": {"type": "array"},
+                "choices": {"type": "array"}
+              }
+            }
+          }
+        }
+      }
+    },
     "chapters": {
       "type": "array",
       "items": {

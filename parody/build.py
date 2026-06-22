@@ -386,9 +386,11 @@ def build_project(project_dir, output_path, convert_jupytext=True,
         _check_duplicate_hashes(output)
 
     # Plugin artifact hooks augment the finished dict (e.g. apocrypha adds
-    # online-only TOC metadata). Run after dedup so they see the full build.
+    # online-only TOC metadata; parts-list adds the per-edition systems
+    # catalog). Run after dedup so they see the full build. Use active_meta so
+    # per-edition version tracks reach version-aware hooks.
     from .plugins import apply_artifact_hooks, artifact_hooks
-    hooks = artifact_hooks(project.meta, project.directory)
+    hooks = artifact_hooks(active_meta, project.directory)
     output = apply_artifact_hooks(output, hooks)
 
     if requested_code_files:
