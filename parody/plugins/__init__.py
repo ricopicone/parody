@@ -25,6 +25,8 @@ REGISTRY = {
     "book": "parody.plugins.bookmeta",
     "videos": "parody.plugins.videos",
     "parts_list": "parody.plugins.partslist",
+    "references": "parody.plugins.references",
+    "errata": "parody.plugins.errata",
 }
 
 

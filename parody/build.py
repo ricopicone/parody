@@ -310,6 +310,20 @@ def build_project(project_dir, output_path, convert_jupytext=True,
     if staged:
         print(f"✓ Staged {staged} figure assets into media/notebooks/{project.slug}/")
 
+    # Stage hand-placed static media (cover, errata figures, …) from the
+    # project's assets/ dir into the served media root, flat by basename.
+    assets_dir = project.directory / "assets"
+    asset_staged = 0
+    if assets_dir.is_dir():
+        media_dir = Path(media_root) / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        for asset in sorted(assets_dir.rglob("*")):
+            if asset.is_file() and not asset.name.startswith("."):
+                shutil.copy2(asset, media_dir / asset.name)
+                asset_staged += 1
+    if asset_staged:
+        print(f"✓ Staged {asset_staged} static assets into media/")
+
     # General pass: stage every {% media %}-referenced file (covers meta-migrated
     # books whose figure refs are bare/extensionless flat names, which the
     # *_files staging above doesn't reach).
