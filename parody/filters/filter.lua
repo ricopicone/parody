@@ -781,6 +781,12 @@ function Image(el, notebook_slug, chapter_slug, base_name)
     local subid = ""
     if el.classes and el.classes:includes("subfigure") and el.identifier ~= "" then
       subid = string.format(' data-subid="%s"', el.identifier)
+    elseif el.classes and el.identifier ~= ""
+        and (el.classes:includes("figure") or el.classes:includes("standalone")) then
+      -- a caption-less standalone figure ![](img){#fig:x .figure} is also a
+      -- Para>Image — keep its id on the img so cross-refs land and number_artifact
+      -- can promote it to a numbered <figure>.
+      subid = string.format(' id="%s"', el.identifier)
     end
     -- Create figure element with proper structure for numbering
     local figure_html = string.format([[<img src="{%% media '%s' %%}" alt="%s"%s%s%s class="figure-img">]], media_path, alt, width_attr, perm_attr, subid)
