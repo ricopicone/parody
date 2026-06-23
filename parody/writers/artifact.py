@@ -346,6 +346,13 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
             if idm and env_class:
                 div_matches.append((env_class, idm.group(1),
                                     _attr_hash(attr_text)))
+            elif env_class:
+                # hash-only env (::: {.exercise h="8y"}): no explicit #id, so key
+                # the anchor on its short hash. The filter renders the box with
+                # id=hash, so cross-refs ([8y]{.hashref}) resolve and scroll to it.
+                h = _attr_hash(attr_text)
+                if h:
+                    div_matches.append((env_class, h, h))
     else:
         div_matches = [(m.group(1), m.group(2), None)
                        for m in re.finditer(div_pattern, markdown_content)]

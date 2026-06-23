@@ -495,7 +495,11 @@ end
 local function exercise(el)
   -- Apply interior filter to the content, but remove exercise-solution divs
   local title = el.attr.attributes['title'] or "Exercise"
-  local identifier = el.identifier or ""
+  -- The cross-ref handle is the short hash (::: {.exercise h="8y"}); fall back to
+  -- it as the DOM id when there's no explicit identifier, so [8y]{.hashref} links
+  -- land on the box. Without this the hash was dropped and refs dangled.
+  local hash = el.attr.attributes['h'] or ""
+  local identifier = (el.identifier ~= "" and el.identifier) or hash
 
   -- Filter out exercise-solution divs from content
   local filtered_content = {}
@@ -515,8 +519,24 @@ local function exercise(el)
     }, {
       class = "exercise numbered-environment rounded border border-green-400 shadow-md my-4 bg-white scroll-mt-20",
       id = identifier,
+      ["data-h"] = hash,
       ["data-env-type"] = "exercise"
     })
+  else
+    return el
+  end
+end
+
+local function example(el)
+  -- Examples carry their cross-ref handle in the short hash (::: {.example
+  -- h="c4"}); pandoc emits data-h but no DOM id, so [c4]{.hashref} had nowhere to
+  -- land. Give the div an id from the hash (keeping its content/classes as-is).
+  local hash = el.attr.attributes['h'] or ""
+  local identifier = (el.identifier ~= "" and el.identifier) or hash
+  if FORMAT:match 'html' and identifier ~= "" then
+    el.attr.identifier = identifier
+    el.attr.attributes['data-env-type'] = "example"
+    return el
   else
     return el
   end
@@ -572,6 +592,8 @@ function Div(el)
     return theorem(el)
   elseif el.classes:includes("exercise") then
     return exercise(el)
+  elseif el.classes:includes("example") then
+    return example(el)
   elseif el.classes:includes("tabset") then
     return tabset(el)
   elseif el.classes:includes("editable-table") then

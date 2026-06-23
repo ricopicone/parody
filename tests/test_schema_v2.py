@@ -32,6 +32,10 @@ Exercise body.
 Example body.
 :::
 
+::: {.exercise h="ho"}
+Hash-only exercise (no explicit #id) — keyed on its short hash.
+:::
+
 ![A figure](fig.png){#fig:widget h=fw width=300}
 """
 
@@ -46,6 +50,11 @@ def test_v2_extraction_captures_hashes():
     }  # id-first div, invisible to the v1 patterns
     assert anchors["ex:demo"]["type"] == "example"
     assert anchors["ex:demo"]["hash"] == "x9"
+    # hash-only env (no #id): keyed on its hash so cross-refs can resolve it
+    assert anchors["ho"] == {
+        "id": "ho", "type": "exercise", "level": None, "title": None,
+        "hash": "ho",
+    }
     assert anchors["fig:widget"]["hash"] == "fw"
 
 
