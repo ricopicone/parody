@@ -542,6 +542,49 @@ local function example(el)
   end
 end
 
+local function subfigures(el)
+  -- ::: {#fig:main .figure .subfigures rows=N} with ![subcap](img){#fig:sub
+  -- .subfigure ...} panels and a trailing main-caption paragraph. Print is
+  -- handled by print.lua's figurediver; here we emit one outer <figure> holding
+  -- the panel <figure class="subfigure">s (already rendered by Figure() in this
+  -- bottom-up walk) plus the main caption as a <figcaption>. parody-web's
+  -- number_artifact assigns the shared figure number + per-panel letters.
+  if not FORMAT:match 'html' then return el end
+  -- inlines run before blocks, so each panel is a Figure(Plain(<img> RawInline))
+  -- with its sub-caption on Figure.caption; the trailing Para is the main caption.
+  local function blocks_html(blocks)
+    if not blocks or #blocks == 0 then return "" end
+    return (pandoc.write(pandoc.Pandoc(blocks), "html")
+      :gsub("^%s*<p>(.-)</p>%s*$", "%1"):gsub("%s+$", ""))
+  end
+  local panels, caption_blocks = {}, {}
+  for _, block in ipairs(el.content) do
+    if block.t == "Figure" then
+      local img = blocks_html(block.content)
+      local subcap = block.caption and blocks_html(block.caption.long) or ""
+      local cap_el = subcap ~= ""
+        and '<figcaption>' .. subcap .. '</figcaption>' or ""
+      panels[#panels + 1] = string.format(
+        '<figure id="%s" class="subfigure">%s%s</figure>',
+        block.identifier or "", img, cap_el)
+    elseif not (block.t == "Para" and #block.content == 0) then
+      caption_blocks[#caption_blocks + 1] = block
+    end
+  end
+  local cap_html = ""
+  if #caption_blocks > 0 then
+    cap_html = '<figcaption class="subfigures-caption">'
+      .. blocks_html(caption_blocks) .. '</figcaption>'
+  end
+  local rows = tonumber(el.attr.attributes['rows'] or "1") or 1
+  local cols = math.max(1, math.ceil(#panels / rows))
+  local out = string.format(
+    '<figure id="%s" class="figure subfigures" data-rows="%d" '
+      .. 'style="--sf-cols:%d">\n%s\n%s</figure>',
+    el.identifier or "", rows, cols, table.concat(panels, "\n"), cap_html)
+  return pandoc.RawBlock("html", out)
+end
+
 function CodeBlock(el)
   if el.classes:includes("mermaid") then
     -- Emit raw HTML so mermaid.js can parse the diagram text directly.
@@ -582,7 +625,9 @@ function CodeBlock(el)
 end
 
 function Div(el)
-  if el.classes:includes("infobox") then
+  if el.classes:includes("subfigures") then
+    return subfigures(el)
+  elseif el.classes:includes("infobox") then
     return infoboxer(el)
   elseif el.classes:includes("definition") then
     return definition(el)
