@@ -56,6 +56,35 @@ def _apply_media_rewrites(output, rewrites):
                         entry["content"] = fix(entry["content"])
 
 
+_RIGHTS_FIG_RE = re.compile(r'<figure\b[^>]*\bdata-permission="permission"')
+_FIG_DELIM_RE = re.compile(r'<figure\b|</figure>')
+_RIGHTS_IMG_RE = re.compile(r'<img\b[^>]*\bdata-permission="permission"[^>]*>')
+
+
+def _rights_withheld_refs(output):
+    """Media refs of permission=permission figures in non-preview (public)
+    sections — to be excluded from the public media tree. Covers single figures
+    (<img data-permission>) and subfigure floats (outer <figure data-permission>,
+    every panel <img>, via a balanced scan)."""
+    withheld = set()
+    for chapter in output.get("chapters", []):
+        for section in chapter.get("sections", []):
+            if section.get("preview"):
+                continue  # gated: owner sees the real figure
+            html = section.get("html") or ""
+            for m in _RIGHTS_FIG_RE.finditer(html):
+                depth, end = 0, len(html)
+                for d in _FIG_DELIM_RE.finditer(html, m.start()):
+                    depth += 1 if d.group(0) == "<figure" else -1
+                    if depth == 0:
+                        end = d.end()
+                        break
+                withheld.update(_MEDIA_REF_RE.findall(html[m.start():end]))
+            for im in _RIGHTS_IMG_RE.finditer(html):
+                withheld.update(_MEDIA_REF_RE.findall(im.group(0)))
+    return withheld
+
+
 def _stage_referenced_media(output, source_root, media_dir):
     """Stage every ``{% media 'ref' %}`` file into the media tree so a consumer
     serving ``MEDIA_URL/<ref>`` finds it, converting print figures to web form.
@@ -68,6 +97,11 @@ def _stage_referenced_media(output, source_root, media_dir):
     from .writers.preview import _pdf_to_svg, _pgf_to_svg
 
     refs = set(_MEDIA_REF_RE.findall(json.dumps(output)))
+    # Licensed third-party figures (permission=permission) are replaced by a
+    # print-only placeholder on public pages, so their image must not ship in the
+    # public media tree (it'd be reachable by URL). Drop those refs unless the
+    # section is gated (preview), where the figure shows normally to the owner.
+    refs -= _rights_withheld_refs(output)
     index = {}  # basename -> source path
     for root, dirs, files in os.walk(source_root):
         dirs[:] = [d for d in dirs
