@@ -30,7 +30,11 @@
 \RequirePackage{fontawesome5}
 \RequirePackage{imakeidx}
 \RequirePackage{hyperref}
-\RequirePackage[noabbrev,capitalise,nameinlink]{cleveref}
+% No `capitalise`: cross-ref labels follow the case of the reference key, so
+% [@fig:foo] -> \cref -> "figure 1" and [@Fig:foo] -> \Cref -> "Figure 1"
+% (task #296). `capitalise` would force \cref to capitalize too, defeating
+% the lowercase intent that print.lua's crossref/hashref handlers encode.
+\RequirePackage[noabbrev,nameinlink]{cleveref}
 
 \makeindex
 
