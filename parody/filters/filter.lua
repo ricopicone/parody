@@ -578,10 +578,13 @@ local function subfigures(el)
   end
   local rows = tonumber(el.attr.attributes['rows'] or "1") or 1
   local cols = math.max(1, math.ceil(#panels / rows))
+  local perm = el.attr.attributes['permission'] or ""
+  local perm_attr = perm ~= "" and string.format(' data-permission="%s"', perm) or ""
   local out = string.format(
     '<figure id="%s" class="figure subfigures" data-rows="%d" '
-      .. 'style="--sf-cols:%d">\n%s\n%s</figure>',
-    el.identifier or "", rows, cols, table.concat(panels, "\n"), cap_html)
+      .. 'style="--sf-cols:%d"%s>\n%s\n%s</figure>',
+    el.identifier or "", rows, cols, perm_attr,
+    table.concat(panels, "\n"), cap_html)
   return pandoc.RawBlock("html", out)
 end
 
@@ -751,8 +754,12 @@ function Image(el, notebook_slug, chapter_slug, base_name)
       fig_id = fig_id:gsub("[^%w]", "-"):lower()
     end
 
+    -- carry permission (licensed-art flag) onto the img so the renderer can
+    -- swap it for a print-only placeholder on public pages (permission=permission)
+    local perm = el.attributes and el.attributes['permission'] or ""
+    local perm_attr = perm ~= "" and string.format(' data-permission="%s"', perm) or ""
     -- Create figure element with proper structure for numbering
-    local figure_html = string.format([[<img src="{%% media '%s' %%}" alt="%s"%s class="figure-img">]], media_path, alt, width_attr)
+    local figure_html = string.format([[<img src="{%% media '%s' %%}" alt="%s"%s%s class="figure-img">]], media_path, alt, width_attr, perm_attr)
     return pandoc.RawInline("html", figure_html)
   end
 end
@@ -826,11 +833,15 @@ function Figure(el)
       -- This prevents duplication since we're replacing the entire Figure element
       local figcaption = caption ~= "" and caption or ""
       local figcaption_html = figcaption ~= "" and string.format('<figcaption class="figure-caption">%s</figcaption>', figcaption) or ""
+      -- carry permission (licensed-art flag) so the renderer can show a
+      -- print-only placeholder on public pages (permission=permission)
+      local perm = (image.attr and image.attr.attributes['permission']) or ""
+      local perm_attr = perm ~= "" and string.format(' data-permission="%s"', perm) or ""
       local figure_html = string.format([[
-<figure id="%s" class="figure">
+<figure id="%s" class="figure"%s>
   <img src="{%% media '%s' %%}" alt="%s" class="figure-img"%s>
   %s
-</figure>]], fig_id, media_path, caption, width_style, figcaption_html)
+</figure>]], fig_id, perm_attr, media_path, caption, width_style, figcaption_html)
 
       return pandoc.RawBlock("html", figure_html)
     end

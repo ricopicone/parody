@@ -833,8 +833,18 @@ local function figurediver(el)
       .. '{' .. graphics_command .. '}\n' .. filler_after
   end
   local caption_tex = pandoc.write(pandoc.Pandoc(caption), 'latex')
-  fig_tex = fig_tex .. '\\figcaption{' .. el.identifier .. '}{' .. caption_tex .. '}\n'
-    .. '\\end{figure}\n'
+  -- carry rights/credit metadata (color, permission, permissioncomment, …) from
+  -- the subfigures div onto its \figcaption, same as single figures (figurer)
+  local sf_options, j = '[', 0
+  for key, value in pairs(el.attr.attributes or {}) do
+    if has_value(figcaption_keys, key) then
+      sf_options = sf_options .. (j == 0 and '' or ',') .. key .. '={' .. value .. '}'
+      j = j + 1
+    end
+  end
+  sf_options = sf_options .. ']'
+  fig_tex = fig_tex .. '\\figcaption' .. sf_options .. '{' .. el.identifier
+    .. '}{' .. caption_tex .. '}\n' .. '\\end{figure}\n'
   return pandoc.RawBlock('latex', fig_tex)
 end
 
