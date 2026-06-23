@@ -542,6 +542,34 @@ local function example(el)
   end
 end
 
+local function caption_from_list(ol)
+  -- A subfigure main caption like "(a) … and (b) …" starts with "(a)", which
+  -- pandoc parses as a LowerAlpha ordered list. Rebuild it as one inline
+  -- paragraph (marker text + item content) so it renders as caption prose.
+  local la = ol.listAttributes or {}
+  local start = la.start or 1
+  local inlines = {}
+  for i, item in ipairs(ol.content) do
+    local n = start + i - 1
+    local m
+    if la.style == "LowerAlpha" then m = string.char(96 + n)
+    elseif la.style == "UpperAlpha" then m = string.char(64 + n)
+    else m = tostring(n) end
+    if la.delimiter == "TwoParens" then m = "(" .. m .. ")"
+    elseif la.delimiter == "OneParen" then m = m .. ")"
+    else m = m .. "." end
+    if i > 1 then table.insert(inlines, pandoc.Space()) end
+    table.insert(inlines, pandoc.Str(m))
+    table.insert(inlines, pandoc.Space())
+    for _, blk in ipairs(item) do
+      if blk.content then
+        for _, inl in ipairs(blk.content) do table.insert(inlines, inl) end
+      end
+    end
+  end
+  return pandoc.Para(inlines)
+end
+
 local function subfigures(el)
   -- ::: {#fig:main .figure .subfigures rows=N} with ![subcap](img){#fig:sub
   -- .subfigure ...} panels and a trailing main-caption paragraph. Print is
@@ -585,6 +613,9 @@ local function subfigures(el)
       panels[#panels + 1] = string.format(
         '<figure id="%s" class="subfigure">%s%s</figure>', pid, img, cap_el)
     elseif not (block.t == "Para" and #block.content == 0) then
+      if block.t == "OrderedList" then
+        block = caption_from_list(block)
+      end
       caption_blocks[#caption_blocks + 1] = block
     end
   end
