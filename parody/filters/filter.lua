@@ -557,9 +557,11 @@ local function subfigures(el)
     return (pandoc.write(pandoc.Pandoc(blocks), "html")
       :gsub("^%s*<p>(.-)</p>%s*$", "%1"):gsub("%s+$", ""))
   end
-  local panels, caption_blocks = {}, {}
+  local panels, caption_blocks, panel_n = {}, {}, 0
   for _, block in ipairs(el.content) do
     if block.t == "Figure" then
+      -- captioned panel: ![subcap](img){#fig:sub} → lettered subfigure
+      panel_n = panel_n + 1
       local img = blocks_html(block.content)
       local subcap = block.caption and blocks_html(block.caption.long) or ""
       local cap_el = subcap ~= ""
@@ -567,6 +569,15 @@ local function subfigures(el)
       panels[#panels + 1] = string.format(
         '<figure id="%s" class="subfigure">%s%s</figure>',
         block.identifier or "", img, cap_el)
+    elseif block.t == "Para" and blocks_html({block}):match("^%s*<img[^>]*>%s*$") then
+      -- caption-less panel (e.g. a converted tabular grid): pandoc leaves it a
+      -- Para>Image, not a Figure. Still a panel — no subcaption, so no letter.
+      -- Generate the id to match the converter's #fig:main-N so number_artifact
+      -- skips it in the figure count.
+      panel_n = panel_n + 1
+      panels[#panels + 1] = string.format(
+        '<figure id="%s-%d" class="subfigure">%s</figure>',
+        el.identifier or "fig", panel_n, blocks_html({block}))
     elseif not (block.t == "Para" and #block.content == 0) then
       caption_blocks[#caption_blocks + 1] = block
     end
