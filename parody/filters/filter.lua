@@ -570,14 +570,20 @@ local function subfigures(el)
         '<figure id="%s" class="subfigure">%s%s</figure>',
         block.identifier or "", img, cap_el)
     elseif block.t == "Para" and blocks_html({block}):match("^%s*<img[^>]*>%s*$") then
-      -- caption-less panel (e.g. a converted tabular grid): pandoc leaves it a
-      -- Para>Image, not a Figure. Still a panel — no subcaption, so no letter.
-      -- Generate the id to match the converter's #fig:main-N so number_artifact
-      -- skips it in the figure count.
+      -- caption-less panel (empty-subcaption \subcaptionbox or a tabular grid):
+      -- pandoc leaves it a Para>Image, not a Figure. Recover the panel id from
+      -- data-subid (else generate one matching the converter's #fig:main-N) so
+      -- number_artifact skips it in the figure count. A \subcaptionbox panel
+      -- still gets an (empty) <figcaption> so it receives an (a)/(b) letter;
+      -- tabular grids (.nosublabels) suppress it.
       panel_n = panel_n + 1
+      local img = blocks_html({block})
+      local pid = img:match('data%-subid="([^"]*)"')
+        or string.format("%s-%d", el.identifier or "fig", panel_n)
+      local cap_el = el.classes:includes("nosublabels") and ""
+        or "<figcaption></figcaption>"
       panels[#panels + 1] = string.format(
-        '<figure id="%s-%d" class="subfigure">%s</figure>',
-        el.identifier or "fig", panel_n, blocks_html({block}))
+        '<figure id="%s" class="subfigure">%s%s</figure>', pid, img, cap_el)
     elseif not (block.t == "Para" and #block.content == 0) then
       caption_blocks[#caption_blocks + 1] = block
     end
@@ -769,8 +775,15 @@ function Image(el, notebook_slug, chapter_slug, base_name)
     -- swap it for a print-only placeholder on public pages (permission=permission)
     local perm = el.attributes and el.attributes['permission'] or ""
     local perm_attr = perm ~= "" and string.format(' data-permission="%s"', perm) or ""
+    -- a caption-less subfigure panel ![](img){#fig:sub .subfigure} is a Para>Image
+    -- (no Figure wrapper), so its id is lost once converted here — stash it on the
+    -- img as data-subid for subfigures() to put back on the panel <figure>.
+    local subid = ""
+    if el.classes and el.classes:includes("subfigure") and el.identifier ~= "" then
+      subid = string.format(' data-subid="%s"', el.identifier)
+    end
     -- Create figure element with proper structure for numbering
-    local figure_html = string.format([[<img src="{%% media '%s' %%}" alt="%s"%s%s class="figure-img">]], media_path, alt, width_attr, perm_attr)
+    local figure_html = string.format([[<img src="{%% media '%s' %%}" alt="%s"%s%s%s class="figure-img">]], media_path, alt, width_attr, perm_attr, subid)
     return pandoc.RawInline("html", figure_html)
   end
 end
