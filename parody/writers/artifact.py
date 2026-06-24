@@ -513,6 +513,15 @@ def extract_exercise_problems(content):
     return problems
 
 
+def _unwrap_web_markdown_blocks(md):
+    """The web half of a {=latex}/{=markdown} dual-source pair is a raw
+    ```{=markdown} block, which pandoc DROPS in html output. Unwrap such blocks
+    so their content is parsed as ordinary markdown (and renders); the {=latex}
+    half still drops on the web. Print does the reverse via print.lua."""
+    return re.sub(r'^```\{=markdown\}[ \t]*\n(.*?)\n```[ \t]*$',
+                  lambda m: m.group(1), md, flags=re.S | re.M)
+
+
 def convert_solution_to_html(solution_markdown, chapter_dir):
     """Convert solution markdown content to HTML using pypandoc."""
     import tempfile
@@ -522,7 +531,7 @@ def convert_solution_to_html(solution_markdown, chapter_dir):
     # Create a temporary file for the solution content
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False,
                                      dir=chapter_dir) as temp_file:
-        temp_file.write(solution_markdown)
+        temp_file.write(_unwrap_web_markdown_blocks(solution_markdown))
         temp_file.flush()
 
         try:
@@ -618,7 +627,7 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
     import tempfile
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False,
                                      dir=chapter_dir) as temp_file:
-        temp_file.write(content_without_solutions.strip())
+        temp_file.write(_unwrap_web_markdown_blocks(content_without_solutions.strip()))
         temp_file.flush()
 
         filter_path = Path(__file__).parent.parent / "filters" / "filter.lua"

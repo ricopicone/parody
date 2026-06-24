@@ -58,6 +58,18 @@ def test_v2_extraction_captures_hashes():
     assert anchors["fig:widget"]["hash"] == "fw"
 
 
+def test_unwrap_web_markdown_blocks():
+    from parody.writers.artifact import _unwrap_web_markdown_blocks
+    md = ("Intro.\n\n"
+          "```{=latex}\n\\begin{table}...\\end{table}\n```\n\n"
+          "```{=markdown}\n| a | b |\n|:-:|:-:|\n| 1 | 2 |\n\n: Cap {#tbl:x}\n```\n\n"
+          "Outro.\n")
+    out = _unwrap_web_markdown_blocks(md)
+    assert "```{=markdown}" not in out          # the web half is unwrapped
+    assert "| a | b |" in out and "{#tbl:x}" in out
+    assert "```{=latex}" in out                 # the print half is left for pandoc to drop
+
+
 def test_raw_html_table_and_figure_ids_anchored():
     # single-source complex tables/figures written directly as HTML must still
     # be anchored (so they number and cross-refs resolve), in document order.
