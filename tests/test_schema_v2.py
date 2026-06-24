@@ -58,6 +58,24 @@ def test_v2_extraction_captures_hashes():
     assert anchors["fig:widget"]["hash"] == "fw"
 
 
+def test_raw_html_table_and_figure_ids_anchored():
+    # single-source complex tables/figures written directly as HTML must still
+    # be anchored (so they number and cross-refs resolve), in document order.
+    md = (
+        "Intro.\n\n"
+        "![A figure](f.png){#fig:a}\n\n"
+        '<table id="tbl:demo" class="notes-table"><caption>X</caption>\n'
+        "<tbody><tr><td>1</td></tr></tbody></table>\n\n"
+        '<figure id="fig:b"><img src="b.svg"></figure>\n'
+    )
+    anchors = extract_anchor_ids(md)
+    by_id = {a["id"]: a for a in anchors}
+    assert by_id["tbl:demo"]["type"] == "table"
+    assert by_id["fig:b"]["type"] == "figure"
+    # document order is preserved (numbering relies on it)
+    assert [a["id"] for a in anchors] == ["fig:a", "tbl:demo", "fig:b"]
+
+
 def test_v1_extraction_unchanged():
     anchors = {a["id"]: a for a in extract_anchor_ids(SECTION_MD)}
     # attr-laden headings and id-first divs stay invisible (golden parity)

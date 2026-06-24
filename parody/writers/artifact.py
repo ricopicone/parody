@@ -291,25 +291,26 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
                 anchors.append(anchor)
                 found_ids.add(anchor_id)
 
-    # Extract typed anchors (figures, tables, equations, definitions, comments, theorems)
-    for match in re.finditer(typed_pattern, markdown_content):
-        prefix = match.group(1)  # fig, tbl, eq, def, cmt, or thm
-        sep = match.group(2)     # ':' or '-'
-        anchor_label = match.group(3)
-
-        # Preserve the prefix + separator for all typed anchors
-        anchor_id = f"{prefix}{sep}{anchor_label}"
+    # Extract typed anchors, from markdown {#tbl:..} AND from raw-HTML
+    # <table>/<figure id="tbl:.."> blocks (single-source complex tables written
+    # directly as HTML). Scanned together so they stay in document order, which
+    # the per-chapter numbering relies on.
+    type_map = {
+        'fig': 'figure', 'tbl': 'table', 'eq': 'equation', 'def': 'definition',
+        'cmt': 'comment', 'thm': 'theorem', 'exe': 'exercise',
+    }
+    typed_or_html = re.compile(
+        typed_pattern
+        + r'|<(?:table|figure)\b[^>]*\bid="((?:fig|tbl)[:\-][A-Za-z0-9_-]+)"')
+    for match in typed_or_html.finditer(markdown_content):
+        if match.group(1):                       # markdown {#prefix:label}
+            anchor_id = f"{match.group(1)}{match.group(2)}{match.group(3)}"
+            prefix, attr = match.group(1), match.group(4)
+        else:                                    # raw-HTML id="tbl:.."
+            anchor_id = match.group(5)
+            prefix, attr = re.split(r'[:\-]', anchor_id, 1)[0], ''
 
         if anchor_id not in found_ids:
-            type_map = {
-                'fig': 'figure',
-                'tbl': 'table',
-                'eq': 'equation',
-                'def': 'definition',
-                'cmt': 'comment',
-                'thm': 'theorem',
-                'exe': 'exercise'
-            }
             anchor = {
                 'id': anchor_id,
                 'type': type_map.get(prefix, 'anchor'),
@@ -317,7 +318,7 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
                 'title': None
             }
             if with_hashes:
-                h = _attr_hash(match.group(4))
+                h = _attr_hash(attr)
                 if h:
                     anchor['hash'] = h
             anchors.append(anchor)
