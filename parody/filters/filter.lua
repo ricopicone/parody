@@ -662,9 +662,11 @@ local function subtables(el)
   end
   local rows = tonumber(el.attr.attributes['rows'] or "1") or 1
   local cols = math.max(1, math.ceil(#panels / rows))
+  -- table captions sit ABOVE the tables (table convention), so the main caption
+  -- comes first in the float; each panel table's own <caption> is top-side too.
   local out = string.format(
     '<figure id="%s" class="subtables" style="--st-cols:%d">\n%s\n%s</figure>',
-    el.identifier or "", cols, table.concat(panels, "\n"), cap_html)
+    el.identifier or "", cols, cap_html, table.concat(panels, "\n"))
   return pandoc.RawBlock("html", out)
 end
 

@@ -889,14 +889,16 @@ local function subtablesdiver(el)
       caption = block
     end
   end
-  local tex = '\\begin{table}[htbp]\\centering\n\\hfil\n'
+  -- table caption goes above (the original \tabcaption preceded the subtables)
+  local tex = '\\begin{table}[htbp]\\centering\n\\tabcaption{'
+    .. (el.identifier or '') .. '}{'
+    .. pandoc.write(pandoc.Pandoc({caption}), 'latex'):gsub('%s+$', '')
+    .. '}\n\\hfil\n'
   for _, s in ipairs(subs) do
     tex = tex .. '\\subcaptionbox{' .. s.cap .. '\\label{' .. s.id .. '}}{'
       .. s.tabular .. '}\n\\hfil\n'
   end
-  tex = tex .. '\\tabcaption{' .. (el.identifier or '') .. '}{'
-    .. pandoc.write(pandoc.Pandoc({caption}), 'latex'):gsub('%s+$', '')
-    .. '}\n\\end{table}\n'
+  tex = tex .. '\\end{table}\n'
   return pandoc.RawBlock('latex', tex)
 end
 
