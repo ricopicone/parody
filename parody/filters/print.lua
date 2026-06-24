@@ -848,6 +848,58 @@ local function figurediver(el)
   return pandoc.RawBlock('latex', fig_tex)
 end
 
+local function table_to_tabular(tbl)
+  -- pandoc's table writer emits a page-breaking longtable; for a \subcaptionbox
+  -- we want a plain {tabular}. Rebuild it cell-by-cell from the AST.
+  local ncol = #tbl.colspecs
+  local function row_latex(row)
+    local cells = {}
+    for _, cell in ipairs(row.cells) do
+      cells[#cells + 1] = (pandoc.write(pandoc.Pandoc(cell.contents), 'latex')
+        :gsub('\n', ' '):gsub('%s+$', ''))
+    end
+    return table.concat(cells, ' & ')
+  end
+  local lines = {}
+  for _, row in ipairs(tbl.head and tbl.head.rows or {}) do
+    lines[#lines + 1] = row_latex(row)
+  end
+  for _, body in ipairs(tbl.bodies or {}) do
+    for _, row in ipairs(body.body) do lines[#lines + 1] = row_latex(row) end
+  end
+  return '\\begin{tabular}{' .. string.rep('l', ncol) .. '}\n'
+    .. table.concat(lines, ' \\\\\n') .. ' \\\\\n\\end{tabular}'
+end
+
+local function subtablesdiver(el)
+  -- ::: {#tbl:main .subtables} of markdown tables (each with a sub-caption) →
+  -- one \begin{table} of side-by-side \subcaptionbox{subcap}{tabular}, mirroring
+  -- the print book's table-of-tables. The web build has its own .subtables path.
+  if not FORMAT:match 'latex' then return el end
+  local subs, caption = {}, pandoc.Para {}
+  for _, block in ipairs(el.content) do
+    if block.t == 'Table' then
+      local subcap = block.caption and block.caption.long or {}
+      subs[#subs + 1] = {
+        cap = pandoc.write(pandoc.Pandoc(subcap), 'latex'):gsub('%s+$', ''),
+        id = block.identifier or '',
+        tabular = table_to_tabular(block),
+      }
+    elseif block.t ~= 'Para' or #block.content > 0 then
+      caption = block
+    end
+  end
+  local tex = '\\begin{table}[htbp]\\centering\n\\hfil\n'
+  for _, s in ipairs(subs) do
+    tex = tex .. '\\subcaptionbox{' .. s.cap .. '\\label{' .. s.id .. '}}{'
+      .. s.tabular .. '}\n\\hfil\n'
+  end
+  tex = tex .. '\\tabcaption{' .. (el.identifier or '') .. '}{'
+    .. pandoc.write(pandoc.Pandoc({caption}), 'latex'):gsub('%s+$', '')
+    .. '}\n\\end{table}\n'
+  return pandoc.RawBlock('latex', tex)
+end
+
 local function algorithmer_latex(el)
   -- Figure whose image is a standalone .tex algorithm: splice in the body.
   -- The build converts from build/print/sections/<ch>/, so resolve the
@@ -1180,6 +1232,10 @@ function Div(el)
     return outputer(el)
   elseif el.classes:includes('exercise') then
     return exerciser(el)
+  elseif el.classes:includes('subtables') then
+    -- untested-in-CI LaTeX path: never let a bug here break the print build
+    local ok, res = pcall(subtablesdiver, el)
+    return ok and res or el
   elseif el.classes:includes('figure') then
     return figurediver(el)
   elseif el.classes:includes('example') then

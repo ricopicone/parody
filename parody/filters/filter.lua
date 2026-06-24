@@ -636,6 +636,38 @@ local function subfigures(el)
   return pandoc.RawBlock("html", out)
 end
 
+local function subtables(el)
+  -- ::: {#tbl:main .subtables rows=N} with markdown tables (each ': subcap
+  -- {#tbl:sub}') laid out side by side + a trailing main caption — the table
+  -- analogue of .subfigures. number_artifact shares the "Table C.n" number and
+  -- letters the panels (a)/(b). (Print: print.lua handles .subtables for LaTeX.)
+  if not FORMAT:match 'html' then return el end
+  local function blocks_html(blocks)
+    if not blocks or #blocks == 0 then return "" end
+    return (pandoc.write(pandoc.Pandoc(blocks), "html")
+      :gsub("^%s*<p>(.-)</p>%s*$", "%1"):gsub("%s+$", ""))
+  end
+  local panels, caption_blocks = {}, {}
+  for _, block in ipairs(el.content) do
+    if block.t == "Table" then
+      panels[#panels + 1] = '<div class="subtable">' .. blocks_html({block}) .. '</div>'
+    elseif not (block.t == "Para" and #block.content == 0) then
+      caption_blocks[#caption_blocks + 1] = block
+    end
+  end
+  local cap_html = ""
+  if #caption_blocks > 0 then
+    cap_html = '<figcaption class="subtables-caption">'
+      .. blocks_html(caption_blocks) .. '</figcaption>'
+  end
+  local rows = tonumber(el.attr.attributes['rows'] or "1") or 1
+  local cols = math.max(1, math.ceil(#panels / rows))
+  local out = string.format(
+    '<figure id="%s" class="subtables" style="--st-cols:%d">\n%s\n%s</figure>',
+    el.identifier or "", cols, table.concat(panels, "\n"), cap_html)
+  return pandoc.RawBlock("html", out)
+end
+
 function CodeBlock(el)
   if el.classes:includes("mermaid") then
     -- Emit raw HTML so mermaid.js can parse the diagram text directly.
@@ -678,6 +710,8 @@ end
 function Div(el)
   if el.classes:includes("subfigures") then
     return subfigures(el)
+  elseif el.classes:includes("subtables") then
+    return subtables(el)
   elseif el.classes:includes("infobox") then
     return infoboxer(el)
   elseif el.classes:includes("definition") then
