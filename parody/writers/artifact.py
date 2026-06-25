@@ -205,6 +205,22 @@ def _post_process_html_for_anchors(html):
     # Remove all remaining {#tbl:id} placeholders
     html = re.sub(r'\{#tbl:[A-Za-z0-9_-]+\}', '', html)
 
+    # Display equations carrying a raw \label{eq:..} (migrated from LaTeX
+    # equation/align environments, which pandoc keeps inside the math) get an
+    # empty anchor span after the math — the same scroll/cross-ref carrier the
+    # {#eq:..} attribute form produces above. The \label is stripped so MathJax
+    # doesn't choke on it. A block may carry several labels (one per aligned
+    # line); each gets its own anchor.
+    def _anchor_math_labels(mo):
+        block = mo.group(0)
+        ids = re.findall(r'\\label\{(eq:[A-Za-z0-9_:-]+)\}', block)
+        if not ids:
+            return block
+        block = re.sub(r'\\label\{eq:[A-Za-z0-9_:-]+\}', '', block)
+        return block + ''.join(f'<span id="{i}"></span>' for i in ids)
+    html = re.sub(r'<span class="math display">.*?</span>',
+                  _anchor_math_labels, html, flags=re.S)
+
     return html
 
 # Short-hash attribute on headings/divs: h=xx, h="xx", hash='xx' (meta/rtc
@@ -301,14 +317,18 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
     }
     typed_or_html = re.compile(
         typed_pattern
-        + r'|<(?:table|figure)\b[^>]*\bid="((?:fig|tbl)[:\-][A-Za-z0-9_-]+)"')
+        + r'|<(?:table|figure)\b[^>]*\bid="((?:fig|tbl)[:\-][A-Za-z0-9_-]+)"'
+        + r'|\\label\{(eq:[A-Za-z0-9_:-]+)\}')
     for match in typed_or_html.finditer(markdown_content):
         if match.group(1):                       # markdown {#prefix:label}
             anchor_id = f"{match.group(1)}{match.group(2)}{match.group(3)}"
             prefix, attr = match.group(1), match.group(4)
-        else:                                    # raw-HTML id="tbl:.."
+        elif match.group(5):                     # raw-HTML id="tbl:.."
             anchor_id = match.group(5)
-            prefix, attr = re.split(r'[:\-]', anchor_id, 1)[0], ''
+            prefix, attr = re.split(r'[:\-]', anchor_id, maxsplit=1)[0], ''
+        else:                                    # \label{eq:..} in display math
+            anchor_id = match.group(6)
+            prefix, attr = 'eq', ''
 
         if anchor_id not in found_ids:
             anchor = {
@@ -335,7 +355,7 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
     }
     if with_hashes:
         class_type_map = dict(class_type_map, exercise='exercise',
-                              example='example')
+                              example='example', infobox='infobox')
         div_matches = []
         for m in re.finditer(r'^:{3,}\s*\{([^}]*)\}', markdown_content,
                              flags=re.MULTILINE):
@@ -344,21 +364,25 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
             env_class = next(
                 (c for c in re.findall(r'\.([A-Za-z0-9_-]+)', attr_text)
                  if c in class_type_map), None)
+            # infoboxes are cross-referenced by their title, not a number, so
+            # carry it through to the anchor (see numbering.py).
+            tm = re.search(r'title="([^"]*)"', attr_text)
+            title = tm.group(1) if tm else None
             if idm and env_class:
                 div_matches.append((env_class, idm.group(1),
-                                    _attr_hash(attr_text)))
+                                    _attr_hash(attr_text), title))
             elif env_class:
                 # hash-only env (::: {.exercise h="8y"}): no explicit #id, so key
                 # the anchor on its short hash. The filter renders the box with
                 # id=hash, so cross-refs ([8y]{.hashref}) resolve and scroll to it.
                 h = _attr_hash(attr_text)
                 if h:
-                    div_matches.append((env_class, h, h))
+                    div_matches.append((env_class, h, h, title))
     else:
-        div_matches = [(m.group(1), m.group(2), None)
+        div_matches = [(m.group(1), m.group(2), None, None)
                        for m in re.finditer(div_pattern, markdown_content)]
 
-    for env_class, full_id, div_hash in div_matches:
+    for env_class, full_id, div_hash, div_title in div_matches:
         anchor_id = full_id
         anchor_type = class_type_map.get(env_class, 'anchor')
 
@@ -378,7 +402,7 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
                 'id': anchor_id,
                 'type': anchor_type,
                 'level': None,
-                'title': None
+                'title': div_title
             }
             if div_hash:
                 anchor['hash'] = div_hash

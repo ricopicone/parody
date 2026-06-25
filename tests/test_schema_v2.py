@@ -88,6 +88,42 @@ def test_raw_html_table_and_figure_ids_anchored():
     assert [a["id"] for a in anchors] == ["fig:a", "tbl:demo", "fig:b"]
 
 
+def test_label_equations_anchored_in_document_order():
+    # display equations migrated from LaTeX keep a raw \label{eq:..} inside the
+    # math (pandoc doesn't turn it into an id); they must still be registered as
+    # equation anchors so they number and cross-refs resolve — interleaved with
+    # the {#eq:..} attribute form in document order.
+    md = (
+        "First $$ x = 1 $$ {#eq:attr-form}\n\n"
+        "Then $$\\label{eq:label-form}\n  y = 2.$$\n\n"
+        "An aligned block $$\\begin{aligned} a &= b \\label{eq:in-aligned} \\\\\n"
+        "  c &= d. \\end{aligned}$$\n"
+    )
+    anchors = extract_anchor_ids(md, with_hashes=True)
+    eqs = [a for a in anchors if a["type"] == "equation"]
+    assert [a["id"] for a in eqs] == [
+        "eq:attr-form", "eq:label-form", "eq:in-aligned"]
+
+
+def test_post_process_anchors_and_strips_math_labels():
+    from parody.writers.artifact import _post_process_html_for_anchors
+    html = ('<span class="math display">\\[\\label{eq:foo}\n x = 1\\]</span>'
+            ' rest')
+    out = _post_process_html_for_anchors(html)
+    assert '<span id="eq:foo"></span>' in out   # scroll/cross-ref carrier
+    assert "\\label" not in out                  # stripped so MathJax is happy
+    assert "x = 1" in out
+
+
+def test_infobox_div_anchored_with_title():
+    md = ('::: {#box:design .infobox h=vg title="Control System Design Problem"}\n'
+          "Body.\n:::\n")
+    by_id = {a["id"]: a for a in extract_anchor_ids(md, with_hashes=True)}
+    assert by_id["box:design"]["type"] == "infobox"
+    assert by_id["box:design"]["title"] == "Control System Design Problem"
+    assert by_id["box:design"]["hash"] == "vg"
+
+
 def test_v1_extraction_unchanged():
     anchors = {a["id"]: a for a in extract_anchor_ids(SECTION_MD)}
     # attr-laden headings and id-first divs stay invisible (golden parity)
