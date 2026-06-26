@@ -90,6 +90,21 @@ def test_latex_sources_generated_without_tex(tiny_project, monkeypatch):
     section = (build_dir / "sections" / "one" / "a-section.tex").read_text()
     assert "\\begin{exercise}[ID=exe:warmup,hash=exe:warmup]" in section
     assert "\\begin{definition}{Thing}{def:thing}" in section
+    # default chapter numbering (start 1): no counter seed emitted
+    assert "\\setcounter{chapter}" not in main
+
+
+def test_chapter_start_seeds_chapter_counter(tiny_project, monkeypatch):
+    # chapter_start: 0 → seed the LaTeX chapter counter to -1 so the first
+    # \chapter prints "0". The seed precedes the first section input.
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    meta = tiny_project / "parody.yaml"
+    meta.write_text(meta.read_text() + "chapter_start: 0\n")
+    build_pdf(tiny_project)
+    main = (tiny_project / "build" / "print" / "main.tex").read_text()
+    assert "\\setcounter{chapter}{-1}" in main
+    assert main.index("\\setcounter{chapter}{-1}") < main.index(
+        "\\input{sections/one/a-section.tex}")
 
 
 CODE_IN_EXERCISE_MD = """\

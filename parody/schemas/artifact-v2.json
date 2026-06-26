@@ -55,6 +55,10 @@
     "pdf_file": {
       "type": "string"
     },
+    "chapter_start": {
+      "description": "The number of the first (non-appendix) chapter. Omitted when the default of 1 applies; set to 0 for books whose first chapter is 'Chapter 0' (e.g. RTC). Section/figure/equation numbers inherit it (0.1, Figure 0.4, ...).",
+      "type": "integer"
+    },
     "edition": {
       "description": "Present on per-edition artifacts: the edition this artifact was built for (id, title, active version tracks, and whether it is the default/latest shown by the web switcher).",
       "type": "object",

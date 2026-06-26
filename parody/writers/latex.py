@@ -165,6 +165,14 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
     os.environ["PARODY_SVG_CACHE"] = str(build_dir / "svg-cache")
     chapters_tex = []
+    # chapter_start: the number of the first (non-appendix) chapter (default 1).
+    # \chapter increments the counter before printing, so seed it one below the
+    # wanted start. \appendix later resets to letter numbering, so this only
+    # shifts the main-matter arabic chapters. Skipped for single-section builds
+    # (section=...), which emit no \chapter at all.
+    chapter_start = int(project.meta.get("chapter_start", 1))
+    if chapter_start != 1 and not section:
+        chapters_tex.append(f"\\setcounter{{chapter}}{{{chapter_start - 1}}}")
     appendix_started = False
     try:
         for chapter in project.chapters:

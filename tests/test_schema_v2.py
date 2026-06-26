@@ -226,6 +226,25 @@ def test_v1_omits_appendix_flag(tmp_path):
     assert "appendix" not in artifact["chapters"][0]
 
 
+def test_chapter_start_emitted_when_set(v2_project, tmp_path):
+    # chapter_start: 0 (RTC's "Chapter 0") rides along on the artifact so the
+    # web renderer can offset its numbering; default 1 is omitted (next test).
+    meta = yaml.safe_load((v2_project / "parody.yaml").read_text())
+    meta["chapter_start"] = 0
+    (v2_project / "parody.yaml").write_text(yaml.safe_dump(meta))
+    out = tmp_path / "artifact.json"
+    artifact = build_project(v2_project, out, convert_jupytext=False)
+    assert artifact["chapter_start"] == 0
+    assert main(["check", str(out)]) == 0  # schema accepts it
+
+
+def test_chapter_start_omitted_at_default(v2_project, tmp_path):
+    # No chapter_start (or the default of 1) → key absent; renderer defaults to 1.
+    artifact = build_project(v2_project, tmp_path / "artifact.json",
+                             convert_jupytext=False)
+    assert "chapter_start" not in artifact
+
+
 def test_v2_duplicate_hashes_are_a_build_error(v2_project, tmp_path):
     dup = SECTION_MD.replace("hash: w1", "hash: w2") \
                     .replace('{#widgets h="w1"}', '{#gadgets h="w2"}') \

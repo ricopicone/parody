@@ -372,6 +372,14 @@ def build_project(project_dir, output_path, convert_jupytext=True,
         "chapters": [],
     }
 
+    # chapter_start: the number of the first (non-appendix) chapter. Default 1;
+    # emit only when overridden (e.g. RTC's `chapter_start: 0`) so artifacts of
+    # books that don't care stay byte-identical and the renderer's own default
+    # of 1 covers them. Section/figure/equation numbers inherit it downstream.
+    chapter_start = int(project.meta.get("chapter_start", 1))
+    if chapter_start != 1:
+        output["chapter_start"] = chapter_start
+
     # Edition metadata: this artifact's edition plus the full roster, so a
     # renderer can build the edition switcher (default = latest) from any one
     # edition's artifact.
