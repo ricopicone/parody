@@ -91,6 +91,12 @@ def test_environments_snippet_matches_golden(request):
     "\\toprule",
     "\\section{Print Environments}",
     "\\label{sec:envs}",
+    # inline code in a heading: escaped \texttt (moving-arg safe), NOT \mintinline.
+    # underscore is escaped; \texorpdfstring keeps the PDF bookmark text plain
+    "\\texorpdfstring{\\texttt{fgets\\_keypad()}}{fgets_keypad()}",
+    "\\texorpdfstring{\\texttt{main}}{main}}",
+    # same safe form inside a figure caption (also a moving argument)
+    "naming \\texorpdfstring{\\texttt{a.out}}{a.out}",
 ])
 def test_environment_emission(needle):
     out = render(FIXTURES / "environments.md")

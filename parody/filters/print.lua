@@ -43,6 +43,7 @@ end
 
 -- Forward declarations so the interior filter late-binds to the handlers.
 local coder_latex, citer, pandoccrossrefer
+local moving_code_to_latex -- safe rendering of inline code in moving arguments
 local resolve_asset -- defined in the notebook-includes section below
 
 -- Walks content nested inside environments so spans/code/cites inside
@@ -104,10 +105,38 @@ end
 
 local function inlines_to_latex(content)
   local walked = pandoc.Para(content)
+  -- inline code in a moving argument (section title, figure/table caption)
+  -- can't be verbatim \mintinline; swap it for a \texttt form first
+  walked = pandoc.walk_block(walked, { Code = moving_code_to_latex })
   walked = pandoc.walk_block(walked, inline_filter)
   local doc = pandoc.Pandoc(walked)
   local tex = pandoc.write(doc, 'latex')
   return (tex:gsub("\n$", ""))
+end
+
+-- Inline code in a moving argument (section title, figure/table caption) must
+-- not use verbatim \mintinline: those arguments are written to the .toc/.lof
+-- and re-read by hyperref's \pdfstringdef for PDF bookmarks, and verbatim
+-- catcodes break there ("Argument of \FV@... has an extra }" -> Emergency
+-- stop). Render it as an escaped \texttt instead, with a plain \texorpdfstring
+-- fallback for the bookmark text. Body inline code keeps \mintinline (minted
+-- highlighting). Assigned to the forward-declared upvalue so inlines_to_latex,
+-- defined above, can reach it.
+local function latex_escape_tt(s)
+  local repl = {
+    ['\\'] = '\\textbackslash{}',
+    ['{'] = '\\{', ['}'] = '\\}', ['$'] = '\\$', ['&'] = '\\&',
+    ['#'] = '\\#', ['_'] = '\\_', ['%'] = '\\%',
+    ['~'] = '\\textasciitilde{}', ['^'] = '\\textasciicircum{}',
+  }
+  return (s:gsub('[\\{}%$&#_%%~%^]', repl))
+end
+
+moving_code_to_latex = function(el)
+  local content = pandoc.utils.stringify(el.text)
+  local safe = '\\texttt{' .. latex_escape_tt(content) .. '}'
+  return pandoc.RawInline('latex',
+    '\\texorpdfstring{' .. safe .. '}{' .. content .. '}')
 end
 
 -- Headers: standard LaTeX sectioning (the ancestor's custom
@@ -604,6 +633,8 @@ local function listinger(el)
   if not is_latex() then return el end
   if caption then
     local caption_pre = pandoc.read(caption, 'markdown').blocks[1]
+    -- listing captions float (moving argument): keep inline code out of verbatim
+    caption_pre = pandoc.walk_block(caption_pre, { Code = moving_code_to_latex })
     local caption_walked = pandoc.walk_block(caption_pre, interior_filter)
     local caption_doc = pandoc.Pandoc(caption_walked)
     caption = pandoc.write(caption_doc, 'latex')
@@ -1365,6 +1396,14 @@ return {
   { Header = Header },
   { RawBlock = RawBlock },
   { OrderedList = OrderedList },
+  -- Figure runs before Code (like Header) so figurer sees its caption's
+  -- inline code as a Code element and routes it through inlines_to_latex,
+  -- which renders it moving-argument-safe (\texttt, not verbatim
+  -- \mintinline — fatal in a \figcaption, a moving argument). If Code ran
+  -- first, the caption would already hold a \mintinline RawInline and the
+  -- print build would die with an "Emergency stop". figurer self-converts
+  -- all its caption inlines, so it does not depend on the later passes.
+  { Figure = Figure },
   { Code = Code },
   { CodeBlock = CodeBlock },
   { RawInline = RawInline },
@@ -1372,7 +1411,6 @@ return {
   { Span = Span },
   { Link = Link },
   { Math = Math },
-  { Figure = Figure },
   -- After Figure: Figure consumes its own images via figurer; this pass
   -- catches only bare images that no block handler claimed.
   { Image = Image },

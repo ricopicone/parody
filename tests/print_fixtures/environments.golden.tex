@@ -7,6 +7,12 @@ A citation \autocite[ p. 3]{doe2020} and a plain cite {\textcite[{cf.}][{ch. 2}
 
 A url link: \myurl[][]{https://example.org}{ab} and inline \myurlinline{https://example.org}{cd}.
 
+\subsection{Working with \texorpdfstring{\texttt{fgets\_keypad()}}{fgets_keypad()}
+and \texorpdfstring{\texttt{main}}{main}}
+\label{sec:codehead}
+
+Heading code spans must not emit verbatim \mintinline{text}|\mintinline| (fragile in moving arguments); body inline code like \mintinline{py}|x = 1| still does.
+
 \begin{definition}{Limit}{def:limit}
 A definition body with math $x \to 0$.
 \end{definition}
@@ -80,7 +86,7 @@ a & b \\
 \begin{figure}[H]%
 \centering
 \noindent\includegraphics[width=3in]{figures/plot.png}
-\figcaption[][]{fig:plot}{A figure caption.}
+\figcaption[][]{fig:plot}{A figure caption naming \texorpdfstring{\texttt{a.out}}{a.out}.}
 \end{figure}%
 
 \gdef\graphicslist{}%

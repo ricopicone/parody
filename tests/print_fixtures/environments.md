@@ -12,6 +12,11 @@ and capitalized [sec:envs]{.Hashref} and a line ref [line:5]{.lref}.
 A url link: [](https://example.org){.myurl h="ab"} and inline
 [](https://example.org){.myurl .inline hash="cd"}.
 
+## Working with `fgets_keypad()` and `main` {#sec-code-head shortid="sec:codehead"}
+
+Heading code spans must not emit verbatim `\mintinline` (fragile in moving
+arguments); body inline code like `x = 1`{.py} still does.
+
 ::: {.definition #def:limit title="Limit"}
 A definition body with math $x \to 0$.
 :::
@@ -77,7 +82,7 @@ def f():
 
 : A caption {#tbl:demo}
 
-![A figure caption.](figures/plot.png){#fig:plot figwidth="3in"}
+![A figure caption naming `a.out`.](figures/plot.png){#fig:plot figwidth="3in"}
 
 ![A pgf figure, rtc-style extensionless src.](figures/wave){#fig:wave .pgf}
 
