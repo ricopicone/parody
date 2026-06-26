@@ -64,6 +64,8 @@ def test_environments_snippet_matches_golden(request):
     "\\begin{formattedoutput}",
     "\\begin{mintedwrapper}",
     "\\begin{minted}[autogobble,samepage]{python}",
+    # 'arm' has no Pygments lexer; remapped to nasm so the print build compiles
+    "\\begin{minted}[autogobble,samepage]{nasm}",
     "\\keyword{important term}",
     "\\myindex[][][][]{convolution}",
     "\\indexc[][][cfun][true][]{c}{printf}",

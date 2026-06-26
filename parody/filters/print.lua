@@ -499,6 +499,12 @@ local function code_shorthand(el)
   return el
 end
 
+-- Pygments has no lexer for some language tags authors use; map them to the
+-- closest lexer minted/pygments knows so the print build doesn't abort with
+-- "Pygments lexer ... is unknown". (Mirrors the migrate step, which already
+-- rewrites inline \mintinline{arm} -> nasm.)
+local lexer_alias = { arm = 'nasm' }
+
 coder_latex = function(el)
   local language
   if not isempty(el.classes) then
@@ -506,6 +512,7 @@ coder_latex = function(el)
   else
     language = 'text'
   end
+  language = lexer_alias[language] or language
   if el.t == 'CodeBlock' then
     local content = pandoc.utils.stringify(el.text)
     local samepage = el.classes:includes('nosamepage') and '' or ',samepage'

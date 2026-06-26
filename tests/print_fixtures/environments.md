@@ -76,6 +76,10 @@ def f():
     return 1
 ```
 
+```arm
+MOV r0, #1
+```
+
 | Left | Right |
 |------|-------|
 | a    | b     |
