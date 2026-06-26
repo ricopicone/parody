@@ -105,14 +105,58 @@ def test_label_equations_anchored_in_document_order():
         "eq:attr-form", "eq:label-form", "eq:in-aligned"]
 
 
-def test_post_process_anchors_and_strips_math_labels():
+def test_post_process_anchors_and_keeps_math_label():
     from parody.writers.artifact import _post_process_html_for_anchors
     html = ('<span class="math display">\\[\\label{eq:foo}\n x = 1\\]</span>'
             ' rest')
     out = _post_process_html_for_anchors(html)
     assert '<span id="eq:foo"></span>' in out   # scroll/cross-ref carrier
-    assert "\\label" not in out                  # stripped so MathJax is happy
+    assert "\\label{eq:foo}" in out             # kept; renderer turns it into \tag
     assert "x = 1" in out
+
+
+def test_post_process_keeps_labels_in_multi_label_block():
+    # a multi-label aligned block keeps its \label{eq:..}s in place so the web
+    # renderer can drop a per-line \tag at each numbered row; it still emits one
+    # trailing anchor per label (in document order) as scroll/cross-ref carriers.
+    from parody.writers.artifact import _post_process_html_for_anchors
+    html = ('<span class="math display">\\[\\begin{align}'
+            ' a &= b \\label{eq:a}\\\\ c &= d \\label{eq:b} \\end{align}\\]</span>')
+    out = _post_process_html_for_anchors(html)
+    assert "\\label{eq:a}" in out and "\\label{eq:b}" in out   # kept for \tag
+    assert out.index('<span id="eq:a"></span>') < out.index('<span id="eq:b"></span>')
+
+
+def test_unwrap_subequations_to_fenced_div():
+    # \begin{subequations} is dropped by pandoc; rewrite it as a fenced div the
+    # web renderer numbers. A labelled group keeps its parent label as the id; an
+    # unlabelled group gets a synthetic id (Nth unlabelled group, in order).
+    from parody.writers.artifact import _unwrap_subequations
+    md = ("\\begin{subequations}\\label{eq:grp}\n\\begin{align}\n"
+          "a &= b\n\\end{align}\n\\end{subequations}\n\n"
+          "\\begin{subequations}\n\\begin{align}\nc &= d\n\\end{align}\n"
+          "\\end{subequations}\n")
+    out = _unwrap_subequations(md)
+    assert "::: {.subequations #eq:grp}" in out
+    assert "::: {.subequations #eq:subeqs-1}" in out
+    assert "\\begin{subequations}" not in out          # wrapper gone (renders now)
+    assert "\\begin{align}" in out                      # inner math kept
+
+
+def test_subequations_parent_anchored_in_document_order():
+    # the subequations parent is ONE equation anchor, placed in document order
+    # between the surrounding plain equations; its inner \label is a member.
+    md = ("First $$ x = 1 $$ {#eq:pre}\n\n"
+          "\\begin{subequations}\\label{eq:grp}\n\\begin{align}\n"
+          "a &= b \\\\\n c &= d \\label{eq:row}\n\\end{align}\n"
+          "\\end{subequations}\n\n"
+          "Last $$ y = 2 $$ {#eq:post}\n")
+    eqs = [a["id"] for a in extract_anchor_ids(md, with_hashes=True)
+           if a["type"] == "equation"]
+    assert eqs == ["eq:pre", "eq:grp", "eq:row", "eq:post"]
+    # the parent \label is consumed by the subequations branch, not also taken as
+    # a separate plain equation (which would double-count it).
+    assert eqs.count("eq:grp") == 1
 
 
 def test_infobox_div_anchored_with_title():

@@ -208,15 +208,19 @@ def _post_process_html_for_anchors(html):
     # Display equations carrying a raw \label{eq:..} (migrated from LaTeX
     # equation/align environments, which pandoc keeps inside the math) get an
     # empty anchor span after the math — the same scroll/cross-ref carrier the
-    # {#eq:..} attribute form produces above. The \label is stripped so MathJax
-    # doesn't choke on it. A block may carry several labels (one per aligned
-    # line); each gets its own anchor.
+    # {#eq:..} attribute form produces above. A block may carry several labels
+    # (one per aligned line); each gets its own anchor.
+    #
+    # The \label{eq:..}s are KEPT in place so the web renderer can drop a \tag at
+    # the right row (one per numbered line of an aligned/subequations block); the
+    # book's MathJax config maps \label to a no-op, so a leftover never breaks
+    # typesetting. Each label also gets a trailing anchor as a scroll/cross-ref
+    # carrier, emitted in document order.
     def _anchor_math_labels(mo):
         block = mo.group(0)
         ids = re.findall(r'\\label\{(eq:[A-Za-z0-9_:-]+)\}', block)
         if not ids:
             return block
-        block = re.sub(r'\\label\{eq:[A-Za-z0-9_:-]+\}', '', block)
         return block + ''.join(f'<span id="{i}"></span>' for i in ids)
     html = re.sub(r'<span class="math display">.*?</span>',
                   _anchor_math_labels, html, flags=re.S)
@@ -315,10 +319,20 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         'fig': 'figure', 'tbl': 'table', 'eq': 'equation', 'def': 'definition',
         'cmt': 'comment', 'thm': 'theorem', 'exe': 'exercise',
     }
-    typed_or_html = re.compile(
+    typed_re = (
         typed_pattern
         + r'|<(?:table|figure)\b[^>]*\bid="((?:fig|tbl)[:\-][A-Za-z0-9_-]+)"'
         + r'|\\label\{(eq:[A-Za-z0-9_:-]+)\}')
+    if with_hashes:
+        # a \begin{subequations} group is ONE equation anchor (the parent number),
+        # registered here so it counts in document order with the plain equations;
+        # its rows are lettered by the renderer. An unlabelled group gets the same
+        # synthetic id _unwrap_subequations assigns (Nth unlabelled group). The
+        # parent \label is consumed here so it is not also taken as a plain eq.
+        typed_re += (r'|\\begin\{subequations\}'
+                     r'(?:[ \t]*\\label\{(eq:[A-Za-z0-9_:-]+)\})?')
+    typed_or_html = re.compile(typed_re)
+    subeq_n = [0]
     for match in typed_or_html.finditer(markdown_content):
         if match.group(1):                       # markdown {#prefix:label}
             anchor_id = f"{match.group(1)}{match.group(2)}{match.group(3)}"
@@ -326,9 +340,15 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         elif match.group(5):                     # raw-HTML id="tbl:.."
             anchor_id = match.group(5)
             prefix, attr = re.split(r'[:\-]', anchor_id, maxsplit=1)[0], ''
-        else:                                    # \label{eq:..} in display math
+        elif match.group(6):                     # \label{eq:..} in display math
             anchor_id = match.group(6)
             prefix, attr = 'eq', ''
+        else:                                    # \begin{subequations}[\label{..}]
+            parent = match.group(7)
+            if not parent:
+                subeq_n[0] += 1
+                parent = f"eq:subeqs-{subeq_n[0]}"
+            anchor_id, prefix, attr = parent, 'eq', ''
 
         if anchor_id not in found_ids:
             anchor = {
@@ -546,6 +566,35 @@ def _unwrap_web_markdown_blocks(md):
                   lambda m: m.group(1), md, flags=re.S | re.M)
 
 
+def _unwrap_subequations(md):
+    r"""LaTeX \begin{subequations} groups a run of aligned equations under one
+    number with lettered rows (3.5a, 3.5b, …). pandoc drops the environment in
+    html output (the math vanishes), so rewrite each group as a fenced div the
+    web renderer understands:
+
+        ::: {.subequations #eq:parent}
+        \begin{align} … \end{align}
+        :::
+
+    The parent \label (if any) becomes the div id — the whole-group cross-ref
+    target ("equation (3.5)"); the inner \label{eq:..}s stay in the math for the
+    renderer to turn into per-row \tags. An unlabelled group still gets a
+    synthetic id so it numbers in document order (it is just never referenced)."""
+    n = [0]
+
+    def repl(mo):
+        parent, inner = mo.group(1), mo.group(2)
+        if not parent:
+            n[0] += 1
+            parent = f"eq:subeqs-{n[0]}"
+        return f"\n::: {{.subequations #{parent}}}\n{inner.strip()}\n:::\n"
+
+    return re.sub(
+        r'\\begin\{subequations\}(?:[ \t]*\\label\{(eq:[A-Za-z0-9_:-]+)\})?'
+        r'(.*?)\\end\{subequations\}',
+        repl, md, flags=re.S)
+
+
 def convert_solution_to_html(solution_markdown, chapter_dir):
     """Convert solution markdown content to HTML using pypandoc."""
     import tempfile
@@ -555,7 +604,8 @@ def convert_solution_to_html(solution_markdown, chapter_dir):
     # Create a temporary file for the solution content
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False,
                                      dir=chapter_dir) as temp_file:
-        temp_file.write(_unwrap_web_markdown_blocks(solution_markdown))
+        temp_file.write(_unwrap_subequations(
+            _unwrap_web_markdown_blocks(solution_markdown)))
         temp_file.flush()
 
         try:
@@ -651,7 +701,8 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
     import tempfile
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False,
                                      dir=chapter_dir) as temp_file:
-        temp_file.write(_unwrap_web_markdown_blocks(content_without_solutions.strip()))
+        temp_file.write(_unwrap_subequations(
+            _unwrap_web_markdown_blocks(content_without_solutions.strip())))
         temp_file.flush()
 
         filter_path = Path(__file__).parent.parent / "filters" / "filter.lua"

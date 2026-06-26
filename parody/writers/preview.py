@@ -62,6 +62,10 @@ div#refs p { margin: .4rem 0; }
 """
 
 MATHJAX = (
+    # \label is mapped to a no-op so a multi-label aligned block (whose raw
+    # \label{eq:..}s the artifact keeps for the web renderer to turn into per-line
+    # \tags) typesets cleanly in the build-side preview, which does no numbering.
+    "<script>window.MathJax={tex:{macros:{label:['',1]}}};</script>"
     '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async>'
     "</script>"
 )
