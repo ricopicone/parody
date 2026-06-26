@@ -97,7 +97,18 @@ def test_environments_snippet_matches_golden(request):
     "\\texorpdfstring{\\texttt{main}}{main}}",
     # same safe form inside a figure caption (also a moving argument)
     "naming \\texorpdfstring{\\texttt{a.out}}{a.out}",
+    # a subfigure caption pandoc misread as a "(a)" list flattens to plain
+    # text, never a list environment inside \figcaption (fatal in print)
+    "{fig:subs}{(a) The left plot and (b) the right plot.}",
 ])
 def test_environment_emission(needle):
     out = render(FIXTURES / "environments.md")
     assert needle in out, f"missing from print.lua LaTeX output: {needle}"
+
+
+def test_subfigure_list_caption_not_an_environment():
+    # the "(a) ... (b) ..." caption must not become \begin{enumerate} inside
+    # the \figcaption moving argument (breaks lualatex with Incomplete \iffalse)
+    out = render(FIXTURES / "environments.md")
+    _, _, tail = out.partition("{fig:subs}{")
+    assert "\\begin{enumerate}" not in tail.split("}\n")[0]

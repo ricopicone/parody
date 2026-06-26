@@ -139,6 +139,48 @@ moving_code_to_latex = function(el)
     '\\texorpdfstring{' .. safe .. '}{' .. content .. '}')
 end
 
+-- A subfigures div's caption is a block. When the source caption starts with a
+-- fancy-list marker like "(a) ...", pandoc parses the whole paragraph as a
+-- one-item OrderedList; emitting it verbatim yields \figcaption{\begin{enumerate}
+-- ...}, and a list environment inside that moving argument breaks lualatex
+-- ("Incomplete \iffalse ... Emergency stop"). Flatten any list caption back to
+-- a single Plain, re-prefixing each item with its reconstructed marker.
+local function list_marker(style, delim, n)
+  local num
+  if style == 'LowerAlpha' and n >= 1 and n <= 26 then
+    num = string.char(96 + n)
+  elseif style == 'UpperAlpha' and n >= 1 and n <= 26 then
+    num = string.char(64 + n)
+  else
+    num = tostring(n) -- Decimal / Roman / Example all fall back to the number
+  end
+  if delim == 'TwoParens' then return '(' .. num .. ')' end
+  if delim == 'OneParen' then return num .. ')' end
+  return num .. '.'
+end
+
+local function delist_caption(block)
+  if block.t ~= 'OrderedList' and block.t ~= 'BulletList' then
+    return block
+  end
+  local la = block.listAttributes or {}
+  local style = la.style and tostring(la.style) or 'Decimal'
+  local delim = la.delimiter and tostring(la.delimiter) or 'Period'
+  local start = la.start or 1
+  local out = {}
+  for i, item in ipairs(block.content) do
+    if #out > 0 then out[#out + 1] = pandoc.Space() end
+    if block.t == 'OrderedList' then
+      out[#out + 1] = pandoc.Str(list_marker(style, delim, start + i - 1))
+      out[#out + 1] = pandoc.Space()
+    end
+    for _, x in ipairs(pandoc.utils.blocks_to_inlines(item, { pandoc.Space() })) do
+      out[#out + 1] = x
+    end
+  end
+  return pandoc.Plain(out)
+end
+
 -- Headers: standard LaTeX sectioning (the ancestor's custom
 -- \section[][v][wherein]{shortid}{hash} commands are MIT-class-private).
 local function headerer_latex(el)
@@ -807,7 +849,9 @@ local function figurediver(el)
     caption = pandoc.Para {}
   else
     n_subfigures = #el.content - 1
-    caption = el.content[#el.content]
+    -- a "(a) ... (b) ..." caption pandoc misread as a list would otherwise
+    -- emit \figcaption{\begin{enumerate}...}, fatal in a moving argument
+    caption = delist_caption(el.content[#el.content])
   end
   local subfigures = {}
   for i = 1, n_subfigures do

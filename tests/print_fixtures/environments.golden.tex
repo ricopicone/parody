@@ -110,6 +110,19 @@ a & b \\
 \figcaption[][]{}{A bare pgf image outside a figure div, classless.}
 \end{figure}%
 
+\begin{figure}[H]
+\centering
+% Row 1
+\hspace*{\fill}%
+\subcaptionbox{Left.\label{fig:sub-a}}[0.45\linewidth]
+{\noindent\includegraphics{figures/plot.png}}
+\hspace*{\fill}%
+\subcaptionbox{Right.\label{fig:sub-b}}[0.45\linewidth]
+{\noindent\includegraphics{figures/plot.png}}
+\hspace*{\fill}%
+\figcaption[]{fig:subs}{(a) The left plot and (b) the right plot.}
+\end{figure}
+
 \begin{enumerate}
 \def\labelenumi{\arabic{enumi}.}
 \tightlist
