@@ -1,0 +1,243 @@
+% parody print environments — the profile contract (see ../PROFILE-CONTRACT.md).
+% Implements the environments and commands emitted by parody/filters/print.lua.
+% Ported from the generic `print` profile's parody-print.sty, with literal
+% colours abstracted to the theme's named colours (parody{thm,info,ex,out}*) so
+% the look is themeable, and with body/math fonts left to the class + theme.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-environments}[2026/06/26 parody print environments (profile contract)]
+
+\RequirePackage{mathtools}
+\RequirePackage{cancel}
+\RequirePackage{pgf} % matplotlib-exported figures via \inputpgf
+% matplotlib's pgf backend wraps math in \mathdefault; identity is the
+% upstream-recommended definition outside matplotlib's own preamble.
+\providecommand{\mathdefault}[1]{#1}
+\RequirePackage{graphicx}
+\RequirePackage{float}
+\RequirePackage{booktabs}
+\RequirePackage{longtable} % pandoc emits it for pipe tables
+\RequirePackage{caption}
+\RequirePackage{subcaption}
+\RequirePackage{xcolor}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage{minted}
+\RequirePackage{xsim}
+\RequirePackage{menukeys}
+\RequirePackage{xurl}
+\RequirePackage{fontawesome5}
+\RequirePackage{imakeidx}
+\RequirePackage{etoolbox}
+\RequirePackage{hyperref}
+% No `capitalise`: cross-ref labels follow the case of the reference key, so
+% [@fig:foo] -> \cref -> "figure 1" and [@Fig:foo] -> \Cref -> "Figure 1"
+% (task #296). `capitalise` would force \cref to capitalize too, defeating
+% the lowercase intent that print.lua's crossref/hashref handlers encode.
+\RequirePackage[noabbrev,nameinlink]{cleveref}
+
+\makeindex
+
+% ---- conditional build flags (set by the writer via \def before \input) ----
+% \issolution  : solutions manual build (print solutions)
+% \ispartial   : partial/sample build
+% \nocropmarks : no crop marks
+
+% ---- exercises (xsim) ----
+\DeclareExerciseProperty{hash}
+\ifdefined\issolution
+  \xsimsetup{solution/print=true}
+\else
+  \xsimsetup{solution/print=false}
+\fi
+\DeclareExerciseType{labexercise}{
+  exercise-env=labexercise,
+  solution-env=labsolution,
+  exercise-name=Lab Exercise,
+  solution-name=Lab Solution,
+  exercise-template=default,
+  solution-template=default,
+}
+\ifdefined\issolution
+  \xsimsetup{labsolution/print=true}
+\fi
+
+% ---- theorem-like environments: \begin{<env>}{title}{label} ----
+\newcounter{thmctr}
+\newtcolorbox{parodythmbox}[2]{%
+  enhanced, breakable, colback=parodythmback, colframe=parodythmframe,
+  title={\textbf{#1}\if\relax\detokenize{#2}\relax\else\quad\textit{#2}\fi},
+}
+\newenvironment{definition}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Definition~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{theorem}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Theorem~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{lemma}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Lemma~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{corollary}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Corollary~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\newenvironment{proposition}[2]
+  {\refstepcounter{thmctr}%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \begin{parodythmbox}{Proposition~\thethmctr}{#1}}
+  {\end{parodythmbox}}
+\crefname{thmctr}{result}{results}
+
+% ---- infobox: \begin{infobox}[label=...]{title} ----
+\newcounter{infoboxctr}
+\newenvironment{infobox}[2][]
+  {\refstepcounter{infoboxctr}%
+   \begin{tcolorbox}[enhanced, breakable, colback=parodyinfoback,
+     colframe=parodyinfoframe,
+     title={\textbf{Box~\theinfoboxctr}%
+       \if\relax\detokenize{#2}\relax\else: #2\fi}, #1]}
+  {\end{tcolorbox}}
+\crefname{infoboxctr}{box}{boxes}
+
+% ---- examples: \begin{myexample}[version]{id}{hash} ----
+\newcounter{examplectr}
+\newenvironment{myexample}[3][]
+  {\refstepcounter{examplectr}%
+   \begin{tcolorbox}[enhanced, breakable, colback=parodyexback,
+     colframe=parodyexframe,
+     title={\textbf{Example~\theexamplectr}}]%
+   \if\relax\detokenize{#2}\relax\else\label{#2}\fi%
+   \ifstrequal{#2}{#3}{}{\if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
+  {\end{tcolorbox}}
+\crefname{examplectr}{example}{examples}
+
+% ---- listings: \begin{listingsbox(float)}{minted-style}{caption}{id}({pos})
+% The style name encodes the language (clisting*, pythonlisting,
+% armlisting, textlisting). minted scans for the *outermost* environment's
+% \end, which \VerbatimEnvironment arranges when called in begin-code.
+\newcounter{listingctr}
+\newenvironment{mintedwrapper}{\par\medskip}{\par\medskip}
+\makeatletter
+\newcommand{\parody@listinghead}[2]{%
+  \par\medskip\refstepcounter{listingctr}%
+  \noindent\textbf{Listing~\thelistingctr}%
+  \if\relax\detokenize{#1}\relax\else: #1\fi
+  \if\relax\detokenize{#2}\relax\else\label{#2}\fi\par\nopagebreak}
+\newcommand{\parody@stylelang}[1]{%
+  \def\parody@lang{text}%
+  \in@{clisting}{#1}\ifin@\def\parody@lang{c}\fi
+  \in@{pythonlisting}{#1}\ifin@\def\parody@lang{python}\fi
+  \in@{armlisting}{#1}\ifin@\def\parody@lang{nasm}\fi}
+\newenvironment{listingsbox}[3]
+  {\parody@listinghead{#2}{#3}%
+   \parody@stylelang{#1}%
+   \VerbatimEnvironment
+   \begin{minted}[autogobble,fontsize=\small,frame=leftline]{\parody@lang}}
+  {\end{minted}\par\medskip}
+\newenvironment{listingsboxfloat}[4]
+  {\parody@listinghead{#2}{#3}%
+   \parody@stylelang{#1}%
+   \VerbatimEnvironment
+   \begin{minted}[autogobble,fontsize=\small,frame=leftline]{\parody@lang}}
+  {\end{minted}\par\medskip}
+\makeatother
+\crefname{listingctr}{listing}{listings}
+
+% ---- algorithms ----
+\newcounter{algorithmctr}
+\newenvironment{algorithmcenter}{\par\medskip\begin{center}}{\end{center}\par\medskip}
+\newenvironment{algorithm}[1][H]{\par}{\par}
+\newcommand{\algcaption}[2]{%
+  \refstepcounter{algorithmctr}%
+  \noindent\textbf{Algorithm~\thealgorithmctr}%
+  \if\relax\detokenize{#2}\relax\else: #2\fi
+  \if\relax\detokenize{#1}\relax\else\label{#1}\fi\par}
+\crefname{algorithmctr}{algorithm}{algorithms}
+
+% ---- captions for figures/tables: \figcaption[opts][]{label}{caption} ----
+% \figcaption[short][float|nofloat]{id}{caption}: nofloat (de-floated
+% assets) wraps \captionof in a minipage, legal outside floats
+\NewDocumentCommand{\figcaption}{O{}O{float}mm}{%
+  \ifstrequal{#2}{nofloat}{%
+    \noindent\begin{minipage}{\linewidth}\captionof{figure}{#4}%
+    \if\relax\detokenize{#3}\relax\else\label{#3}\fi\end{minipage}\par}{%
+    \caption{#4}\if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
+% \tabcaption[short][float|nofloat]{id}{caption} (ancestor semantics):
+% nofloat wraps \captionof in a minipage (legal outside floats)
+\NewDocumentCommand{\tabcaption}{O{}O{float}mm}{%
+  \ifstrequal{#2}{nofloat}{%
+    \noindent\begin{minipage}{\linewidth}\captionof{table}{#4}%
+    \if\relax\detokenize{#3}\relax\else\label{#3}\fi\end{minipage}\par}{%
+    \if\relax\detokenize{#1}\relax\caption{#4}\else\caption[#1]{#4}\fi
+    \if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
+\gdef\graphicslist{}
+\newcommand{\inputpgf}[1]{\input{#1.pgf}}
+\providecommand{\includestandalone}[2][]{\includegraphics[#1]{#2}}
+
+% ---- formatted execution output ----
+\newenvironment{formattedoutput}
+  {\begin{tcolorbox}[colback=parodyoutback, colframe=parodyoutframe, boxrule=0.4pt,
+     breakable]\small}
+  {\end{tcolorbox}}
+
+% ---- semantic inline commands ----
+\newcommand{\keyword}[1]{\textbf{#1}\index{#1}}
+\newcommand{\mykeys}[1]{\keys{#1}}
+\newcommand{\unicoder}[1]{\texttt{#1}}
+\newcommand{\lref}[1]{\cref{#1}}
+% \myindex*[start|stop][lab][show][under]{term}
+\NewDocumentCommand{\myindex}{sO{}O{}O{}O{}m}{\index{#6}}
+% \indexc*[start|stop][lab][post][fun][under]{lang}{term}
+% \detokenize: code index entries carry specials (#include)
+\NewDocumentCommand{\indexc}{sO{}O{}O{}O{}O{}mm}{\index{\detokenize{#8}@\texttt{#8}}}
+% \myurl(*)[punctuation][safety]{url}{hash}; QR codes are a private-profile
+% concern — the generic profile renders a plain URL.
+\NewDocumentCommand{\myurl}{sO{}O{}mm}{\url{#4}#2}
+\NewDocumentCommand{\myurlbottom}{sO{}O{}mm}{\url{#4}#2}
+\NewDocumentCommand{\myurlinline}{smm}{\url{#2}}
+\newcommand{\numberthis}{\addtocounter{equation}{1}\tag{\theequation}}
+
+% Pandoc emits \tightlist in itemize/enumerate output; define it (standard
+% pandoc-template definition) so generic-profile builds compile.
+\providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% Pandoc >= 3.2 wraps images in \pandocbounded (scale down to fit the text
+% area); definition from pandoc's default template, needed because the
+% profile supplies its own main.tex.
+\makeatletter
+\@ifundefined{pandocbounded}{%
+  \newsavebox\pandoc@box
+  \newcommand*\pandocbounded[1]{%
+    \sbox\pandoc@box{#1}%
+    \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+    \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+    \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi
+    \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+    \else\usebox{\pandoc@box}%
+    \fi%
+  }
+}{}
+\makeatother
+
+% ---- \maxwidth: natural image width, capped at \linewidth (pandoc idiom);
+% used by the print filter for notebook figures so raster/converted images
+% never overflow the text block.
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\makeatother
+% pandoc writes .underline spans as \ul (assumes soul); shim it
+\providecommand{\ul}[1]{\underline{#1}}
+% pandoc's image-width idiom (width capped at natural size)
+\makeatletter
+\providecommand{\maxwidth}{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\makeatother
+% hashref targets: exercises are cref'd by their hash labels
+\crefname{exercise}{exercise}{exercises}
+\crefname{labexercise}{lab exercise}{lab exercises}
+
+\endinput

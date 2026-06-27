@@ -84,7 +84,9 @@ def test_latex_sources_generated_without_tex(tiny_project, monkeypatch):
     assert result is None
     build_dir = tiny_project / "build" / "print"
     main = (build_dir / "main.tex").read_text()
-    assert "\\usepackage{parody-print}" in main
+    # default profile is now memoir
+    assert "\\documentclass[11pt]{parody-memoir}" in main
+    assert "\\usepackage{parody-environments}" in main
     assert "\\input{sections/one/a-section.tex}" in main
     assert "\\addbibresource{book.bib}" in main
     section = (build_dir / "sections" / "one" / "a-section.tex").read_text()
@@ -92,6 +94,15 @@ def test_latex_sources_generated_without_tex(tiny_project, monkeypatch):
     assert "\\begin{definition}{Thing}{def:thing}" in section
     # default chapter numbering (start 1): no counter seed emitted
     assert "\\setcounter{chapter}" not in main
+
+
+def test_generic_print_profile_still_selectable(tiny_project, monkeypatch):
+    # The portable stock-book profile remains available via --profile print.
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    build_pdf(tiny_project, profile_dir="print")
+    main = (tiny_project / "build" / "print" / "main.tex").read_text()
+    assert "\\documentclass[11pt]{book}" in main
+    assert "\\usepackage{parody-print}" in main
 
 
 def test_chapter_start_seeds_chapter_counter(tiny_project, monkeypatch):

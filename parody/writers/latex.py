@@ -123,6 +123,30 @@ def strip_frontmatter(md_path, dest_path, transform=None):
     return dest_path
 
 
+BUNDLED_PROFILES = Path(__file__).parent.parent / "profiles"
+# memoir is the foundational house style; `print` remains as the portable
+# stock-book fallback, selectable via --profile print.
+DEFAULT_PROFILE = "memoir"
+
+
+def resolve_profile(profile):
+    """Resolve a profile selector to a directory.
+
+    None -> the bundled default profile. A bare name (e.g. "memoir") that
+    matches a bundled profile dir under parody/profiles/ resolves to it; any
+    value containing a path separator (or not matching a bundled name) is
+    treated as a filesystem path so book-private profiles still work.
+    """
+    if profile is None:
+        return BUNDLED_PROFILES / DEFAULT_PROFILE
+    name = str(profile)
+    if os.sep not in name and (os.altsep or os.sep) not in name:
+        candidate = BUNDLED_PROFILES / name
+        if candidate.is_dir():
+            return candidate
+    return Path(profile)
+
+
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
               profile_dir=None, keep_build=False, build_dir=None):
     """Build the print PDF. Returns the path to the produced PDF.
@@ -140,9 +164,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     transform = (lambda text: apply_transforms(text, transforms)) \
         if transforms else None
 
-    if profile_dir is None:
-        profile_dir = Path(__file__).parent.parent / "profiles" / "print"
-    profile_dir = Path(profile_dir)
+    profile_dir = resolve_profile(profile_dir)
 
     if build_dir is None:
         build_dir = project_dir / "build" / ("solutions" if solutions else "print")

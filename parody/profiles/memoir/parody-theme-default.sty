@@ -1,0 +1,41 @@
+% parody default print theme — the swappable colour + font layer.
+%
+% A book re-skins by dropping in its own parody-theme-<name>.sty (real Palatino,
+% a house palette) and pointing main.tex.template at it; parody-memoir.cls and
+% parody-environments.sty stay untouched. The environments reference only the
+% named colours defined here, so colour is fully themeable.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-theme-default}[2026/06/26 parody default print theme]
+
+% ---- palette ----------------------------------------------------------
+\RequirePackage{xcolor}
+\definecolor{parodyaccent}{HTML}{1F4E79}   % primary accent (deep blue)
+\definecolor{parodyaccent2}{HTML}{2E7D5B}  % secondary accent (green)
+\definecolor{parodythmframe}{gray}{0.60}
+\definecolor{parodythmback}{gray}{0.97}
+\definecolor{parodyinfoframe}{HTML}{2F5C86}
+\definecolor{parodyinfoback}{HTML}{EAF1F8}
+\definecolor{parodyexframe}{HTML}{3F7D5E}
+\definecolor{parodyexback}{HTML}{ECF5EF}
+\definecolor{parodyoutframe}{gray}{0.85}
+\definecolor{parodyoutback}{gray}{0.98}
+\definecolor{parodycode}{gray}{0.35}
+
+% ---- fonts: Palatino family (free clones), Palatino-matched math -------
+% newpx = TeX Gyre Pagella, the metric-compatible free Palatino; newpxmath is
+% the matching math font. Gives the published book's Palatino feel without the
+% licensed faces (which belong in a book-private theme). Loaded under lualatex.
+\RequirePackage{amsmath}      % before newpxmath, per its docs
+\RequirePackage{newpxtext}
+\RequirePackage{newpxmath}
+\RequirePackage{bm}
+% Monospace: parody's filter pulls in fontspec (via fontawesome5), so the TU
+% encoding is active and a fontspec \setmonofont is the reliable way to set the
+% code face. DejaVu Sans Mono ships with every TeX Live and pairs cleanly with
+% Pagella; fall back to Latin Modern Mono if it is ever absent.
+\RequirePackage{fontspec}
+\IfFontExistsTF{DejaVu Sans Mono}
+  {\setmonofont{DejaVu Sans Mono}[Scale=MatchLowercase]}
+  {\setmonofont{Latin Modern Mono}[Scale=MatchLowercase]}
+
+\endinput
