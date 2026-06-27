@@ -277,11 +277,18 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         cwd=build_dir, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
+    produced = build_dir / "main.pdf"
     if result.returncode != 0:
         tail = "\n".join(result.stdout.splitlines()[-30:])
-        raise RuntimeError(f"latexmk failed (exit {result.returncode}):\n{tail}")
-
-    produced = build_dir / "main.pdf"
+        # A profile may run latexmk in force_mode to push past benign non-fatal
+        # errors a custom class emits (e.g. MIT Press's NewMath_MIT), so latexmk
+        # can exit nonzero yet still produce a complete PDF. Treat that as a
+        # warning; only a missing PDF is fatal.
+        if not produced.exists():
+            raise RuntimeError(
+                f"latexmk failed (exit {result.returncode}):\n{tail}")
+        print(f"⚠️  latexmk exited {result.returncode} but produced a PDF; "
+              f"continuing. Last output:\n{tail}")
     if output_pdf is None:
         suffix = "-solutions" if solutions else ""
         output_pdf = project_dir / f"{project.slug}{suffix}.pdf"
