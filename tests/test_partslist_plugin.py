@@ -6,6 +6,7 @@ import yaml
 from parody.plugins import content_transforms
 from parody.plugins.partslist import (
     generate_general_catalog,
+    generate_general_catalog_tex,
     generate_parts_data,
     make_artifact_hook,
     make_transform,
@@ -101,6 +102,41 @@ def test_content_transforms_passes_target(tmp_path):
     prn = content_transforms(_project_meta(), tmp_path, target="print")
     assert "General T1 target system" in art[0](text)
     assert prn[0](text).strip() == ""  # print drops it
+
+
+# --- LaTeX (print) general catalog -----------------------------------------
+
+
+def test_generate_general_catalog_tex_structure():
+    tex = generate_general_catalog_tex(_flat(), "T1")
+    # standard sectioning with hashref labels for cross-refs (not meta's 3-arg)
+    assert r"\section{General T1 target system}" in tex
+    assert r"\label{general-target-system-T1}" in tex and r"\label{wp}" in tex
+    assert r"\label{a6}" in tex  # target-computer subsystem hashref
+    # component specs become \item rows; suppliers/quantity are skipped
+    assert r"\item System on a chip (SoC): Xilinx Z-7010" in tex
+    assert "ni.com" not in tex and "Total quantity" not in tex
+    # every \begin{enumerate} is matched (an imbalance would break the build)
+    assert tex.count(r"\begin{enumerate}") == tex.count(r"\end{enumerate}")
+
+
+def test_generate_general_catalog_tex_ds_blurb():
+    tex = generate_general_catalog_tex(_flat(), "D1")
+    assert r"\section{General D1 development system}" in tex
+    assert "Eclipse" in tex
+    assert r"\begin{enumerate}" not in tex  # DS general is a blurb, no enumeration
+
+
+def test_transform_expands_input_for_print(tmp_path):
+    (tmp_path / "versions.yaml").write_text(yaml.safe_dump(DB))
+    md = "intro\n\n```{=latex}\n\\input{sec-versions-list-ed1-T1-general}\n```\n"
+    prn = make_transform(_project_meta()["parts_list"], tmp_path, target="print")
+    out = prn(md)
+    assert "\\input{" not in out  # the include is replaced...
+    assert r"\section{General T1 target system}" in out  # ...with the catalog
+    # the same include is left untouched for the web pipeline
+    art = make_transform(_project_meta()["parts_list"], tmp_path, target="artifact")
+    assert "\\input{sec-versions-list-ed1-T1-general}" in art(md)
 
 
 # --- structured systems catalog (P3) ---------------------------------------
