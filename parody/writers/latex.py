@@ -22,7 +22,11 @@ from string import Template
 
 from ..config import load_project
 
-PANDOC_FROM = "markdown-markdown_in_html_blocks+raw_tex+tex_math_dollars"
+# tex_math_single_backslash: parse \(...\)/\[...\] as math too (some raw-HTML
+# tables write math that way, e.g. \(r(t)\) in cells — without it pandoc escapes
+# the backslashes to \textbackslash( and the math leaks as literal text).
+PANDOC_FROM = ("markdown-markdown_in_html_blocks+raw_tex+tex_math_dollars"
+               "+tex_math_single_backslash")
 TEXBIN_FALLBACKS = ["/Library/TeX/texbin", "/usr/local/texlive/bin"]
 
 
