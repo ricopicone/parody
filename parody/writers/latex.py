@@ -251,11 +251,23 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     if solutions:
         flags.append("\\def\\issolution{1}")
 
+    # Front matter (title/copyright/dedication pages): on by default when the
+    # profile ships a front-matter.tex; opt out with `front_matter: false` in
+    # parody.yaml. It ends with \tableofcontents; without it we still emit the
+    # TOC so the document is never left without one.
+    frontmatter = "\\tableofcontents"
+    if project.meta.get("front_matter") is not False:
+        fm_src = profile_dir / "front-matter.tex"
+        if fm_src.exists():
+            shutil.copy2(fm_src, build_dir / fm_src.name)
+            frontmatter = "\\input{front-matter}"
+
     template = Template((profile_dir / "main.tex.template").read_text(encoding="utf-8"))
     main_tex = template.safe_substitute(
         flags="\n".join(flags),
         title=project.meta.get("title", project.slug),
         author=" \\and ".join(project.meta.get("author", [])),
+        frontmatter=frontmatter,
         chapters="\n".join(chapters_tex),
         bibresource=bibresource,
         bibliography=bibliography,
