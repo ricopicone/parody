@@ -193,7 +193,14 @@ local function headerer_latex(el)
   local cmds = { 'section', 'subsection', 'subsubsection' }
   local star = el.classes:includes('unnumbered') and '*' or ''
   local label = el.attr.attributes['shortid'] or el.identifier
-  local sec_tex = '\\' .. cmds[l] .. star .. '{' .. content .. '}'
+  -- Lab sections render via the MIT-class-private \lab command (each print
+  -- profile styles it); other levels/sections use the standard sectioning.
+  local sec_tex
+  if el.classes:includes('lab') then
+    sec_tex = '\\lab{' .. content .. '}'
+  else
+    sec_tex = '\\' .. cmds[l] .. star .. '{' .. content .. '}'
+  end
   if label and label ~= '' then
     sec_tex = sec_tex .. '\n\\label{' .. label .. '}'
   end
