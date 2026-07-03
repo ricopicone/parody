@@ -199,6 +199,13 @@ def cmd_parity(args):
     return 0
 
 
+def cmd_gaps(args):
+    from .gaps import format_gaps, scan
+
+    print(format_gaps(scan(Path(args.project_dir)), limit=args.limit))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="parody",
@@ -301,6 +308,14 @@ def main(argv=None):
                           help="also render each aligned section's page in both "
                                "PDFs and report image differences (needs Pillow)")
     p_parity.set_defaults(func=cmd_parity)
+
+    p_gaps = sub.add_parser(
+        "gaps",
+        help="scan source for structural-labeling gaps (unnumbered listings/eqs)")
+    p_gaps.add_argument("project_dir", help="project directory")
+    p_gaps.add_argument("--limit", type=int, default=25,
+                        help="max files to list per category")
+    p_gaps.set_defaults(func=cmd_gaps)
 
     args = parser.parse_args(argv)
     return args.func(args)
