@@ -42,6 +42,26 @@ def test_heading_heuristic_rejects_body_noise():
     assert "00 F0 20 E3" in secs[1].body
 
 
+def test_page_tracking_across_form_feeds():
+    # pdftotext separates pages with a form feed; headings get the right page
+    text = "front\n1.1 First\nbody\x0cmore\n1.2 Second\nbody two\n"
+    secs = split_sections(text)
+    pages = {s.title: s.page for s in secs}
+    assert pages["First"] == 1
+    assert pages["Second"] == 2
+
+
+def test_page_diff_identical_vs_different():
+    from PIL import Image
+    from parody.parity import _page_diff
+    white = Image.new("L", (200, 260), 255)
+    black = Image.new("L", (200, 260), 0)
+    half = Image.new("L", (200, 260), 128)
+    assert _page_diff(white, white) == 0.0
+    assert _page_diff(white, black) > 0.99
+    assert 0.4 < _page_diff(white, half) < 0.6
+
+
 def test_similarity_bounds():
     assert similarity("the quick brown fox", "the quick brown fox") == 1.0
     assert similarity("", "") == 1.0

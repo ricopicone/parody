@@ -87,6 +87,7 @@ class Section:
     number: str
     title: str
     body: str = ""
+    page: int = 1  # 1-based page the heading falls on (for the visual pass)
 
     @property
     def key(self) -> str:
@@ -110,15 +111,18 @@ def _looks_like_title(title: str) -> bool:
 
 
 def split_sections(text: str) -> list[Section]:
-    """Split *text* into sections at numbered headings. Text before the first
-    heading is attached to a synthetic front section."""
+    """Split *text* into sections at numbered headings, tracking the page each
+    heading falls on (pdftotext separates pages with form feeds). Text before
+    the first heading is attached to a synthetic front section."""
     sections: list[Section] = [Section("", "(front matter)")]
-    for line in text.splitlines():
-        m = _HEADING.match(line.rstrip())
-        if m and _looks_like_title(m.group(2)):
-            sections.append(Section(m.group(1), m.group(2).strip()))
-        else:
-            sections[-1].body += line + "\n"
+    for pageno, page_text in enumerate(text.split("\f"), start=1):
+        for line in page_text.splitlines():
+            m = _HEADING.match(line.rstrip())
+            if m and _looks_like_title(m.group(2)):
+                sections.append(Section(m.group(1), m.group(2).strip(),
+                                        page=pageno))
+            else:
+                sections[-1].body += line + "\n"
     return sections
 
 
@@ -137,12 +141,46 @@ def similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, ta, tb, autojunk=False).ratio()
 
 
+# ----- visual pass: section-aligned page rendering + coarse image diff -------
+# Robust to pagination shifts because pages are compared per aligned *section*
+# (its heading page), not by absolute page number. Catches layout/figure
+# differences that a text diff misses (and vice-versa).
+
+def _render_page(pdf: Path, page: int, dpi: int = 80):
+    """Render one PDF page to a PIL grayscale image via pdftoppm."""
+    from PIL import Image  # local import: only needed for --visual
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        stem = str(Path(td) / "pg")
+        subprocess.run(
+            ["pdftoppm", "-r", str(dpi), "-f", str(page), "-l", str(page),
+             "-gray", "-png", "-singlefile", str(pdf), stem],
+            capture_output=True, check=True,
+        )
+        return Image.open(stem + ".png").convert("L")
+
+
+def _page_diff(img_a, img_b) -> float:
+    """Mean absolute pixel difference in [0, 1] after scaling both to a common
+    small size (structure over detail)."""
+    from PIL import Image, ImageChops
+    size = (120, 160)
+    a = img_a.resize(size, Image.BILINEAR)
+    b = img_b.resize(size, Image.BILINEAR)
+    hist = ImageChops.difference(a, b).histogram()
+    total = sum(value * count for value, count in enumerate(hist))
+    return total / (size[0] * size[1] * 255)
+
+
 @dataclass
 class SectionDiff:
     number: str
     title: str
     status: str            # "matched" | "missing" | "extra"
     similarity: float = 1.0
+    ref_page: int = 0
+    cand_page: int = 0
+    visual: float | None = None   # 0 (identical) .. 1 (very different); None if not run
 
 
 @dataclass
@@ -165,9 +203,11 @@ class ParityReport:
         return sum(s.similarity for s in m) / len(m) if m else 0.0
 
 
-def compare(reference: Path, candidate: Path, low: float = 0.90) -> ParityReport:
+def compare(reference: Path, candidate: Path, low: float = 0.90,
+            visual: bool = False) -> ParityReport:
     """Compare *candidate* against *reference*; ``low`` is the similarity below
-    which a matched section is flagged for review."""
+    which a matched section is flagged. With ``visual``, also render each aligned
+    section's heading page in both PDFs and record a coarse image difference."""
     ref_text, cand_text = extract_text(reference), extract_text(candidate)
     ref_secs, cand_secs = split_sections(ref_text), split_sections(cand_text)
 
@@ -187,8 +227,17 @@ def compare(reference: Path, candidate: Path, low: float = 0.90) -> ParityReport
             cs = exact[0] if exact else pool[0]
             pool.remove(cs)
             matched_cand.add(id(cs))
+            vis = None
+            if visual:
+                try:
+                    vis = _page_diff(_render_page(reference, rs.page),
+                                     _render_page(candidate, cs.page))
+                except Exception:
+                    vis = None
             diffs.append(SectionDiff(rs.number, rs.title, "matched",
-                                     similarity(rs.body, cs.body)))
+                                     similarity(rs.body, cs.body),
+                                     ref_page=rs.page, cand_page=cs.page,
+                                     visual=vis))
         else:
             diffs.append(SectionDiff(rs.number, rs.title, "missing"))
     for cs in cand_secs:
@@ -236,6 +285,18 @@ def format_report(r: ParityReport, low: float = 0.90) -> str:
         if len(flagged) > 40:
             a(f"  ... and {len(flagged) - 40} more")
         a("")
+    visual = [s for s in r.matched if s.visual is not None]
+    if visual:
+        mean_vis = sum(s.visual for s in visual) / len(visual)
+        a(f"mean section visual difference: {mean_vis*100:5.1f}%  "
+          f"(0% = identical page image)")
+        hi = sorted(visual, key=lambda s: -s.visual)
+        a("most visually different sections (page layout/figures differ):")
+        for s in hi[:20]:
+            a(f"  {s.visual*100:5.1f}%  txt {s.similarity*100:4.0f}%  "
+              f"p{s.ref_page}/{s.cand_page:<4} {s.number:<8} {s.title[:50]}")
+        a("")
+
     miss = [s for s in r.sections if s.status == "missing"]
     if miss:
         a("sections in reference but not found in candidate:")

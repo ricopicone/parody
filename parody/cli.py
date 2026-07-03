@@ -193,7 +193,8 @@ def cmd_rehash(args):
 def cmd_parity(args):
     from .parity import compare, format_report
 
-    report = compare(Path(args.reference), Path(args.candidate), low=args.low)
+    report = compare(Path(args.reference), Path(args.candidate),
+                     low=args.low, visual=args.visual)
     print(format_report(report, low=args.low))
     return 0
 
@@ -296,6 +297,9 @@ def main(argv=None):
     p_parity.add_argument("candidate", help="candidate (parody-built) PDF")
     p_parity.add_argument("--low", type=float, default=0.90,
                           help="flag matched sections below this similarity (0..1)")
+    p_parity.add_argument("--visual", action="store_true",
+                          help="also render each aligned section's page in both "
+                               "PDFs and report image differences (needs Pillow)")
     p_parity.set_defaults(func=cmd_parity)
 
     args = parser.parse_args(argv)
