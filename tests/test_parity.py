@@ -42,6 +42,14 @@ def test_heading_heuristic_rejects_body_noise():
     assert "00 F0 20 E3" in secs[1].body
 
 
+def test_lab_headers_are_detected():
+    text = "1.10 Something\nbody\nLab Exercise 1: Programming the High-Level UI\nlab body\n"
+    secs = split_sections(text)
+    titles = {s.number: s.title for s in secs}
+    assert titles["1.10"] == "Something"
+    assert titles["lab1"] == "Programming the High-Level UI"
+
+
 def test_page_tracking_across_form_feeds():
     # pdftotext separates pages with a form feed; headings get the right page
     text = "front\n1.1 First\nbody\x0cmore\n1.2 Second\nbody two\n"

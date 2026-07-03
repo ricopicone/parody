@@ -34,6 +34,10 @@ from pathlib import Path
 # catching cross-references or prose that merely begins with a number.
 _HEADING = re.compile(r"^(L?\d+(?:\.\d+){0,3})\s+([A-Z][^\n]{0,75})$")
 
+# Lab-exercise headers carry no section number ("Lab Exercise 1: <title>"), so
+# they need their own pattern; the number is synthesized as "lab<N>".
+_LAB_HEADING = re.compile(r"^Lab Exercise (\d+):\s*(.+)$")
+
 # Caption / labelled-object patterns for the structural counts. Figures and
 # tables are counted by their caption ("Figure 3.2 ..." / "Table 3.2 ..."); the
 # xsim/theorem-like objects by their run-in label.
@@ -117,8 +121,13 @@ def split_sections(text: str) -> list[Section]:
     sections: list[Section] = [Section("", "(front matter)")]
     for pageno, page_text in enumerate(text.split("\f"), start=1):
         for line in page_text.splitlines():
-            m = _HEADING.match(line.rstrip())
-            if m and _looks_like_title(m.group(2)):
+            stripped = line.rstrip()
+            lab = _LAB_HEADING.match(stripped)
+            m = _HEADING.match(stripped)
+            if lab:
+                sections.append(Section("lab" + lab.group(1),
+                                        lab.group(2).strip(), page=pageno))
+            elif m and _looks_like_title(m.group(2)):
                 sections.append(Section(m.group(1), m.group(2).strip(),
                                         page=pageno))
             else:
@@ -214,18 +223,31 @@ def compare(reference: Path, candidate: Path, low: float = 0.90,
     # Align by title. A title can repeat (e.g. "Summary", "Problems" — one per
     # chapter); among same-title candidates pick the one whose section number
     # matches (both books number similarly), so repeats don't cross-pair.
+    # Align number-first — the same book numbers sections the same, so this is
+    # robust to prose/title edits (incl. run-in subsubsection titles that
+    # pdftotext merges with their first sentence) — then fall back to title,
+    # which catches sections whose number shifted and the numberless lab headers.
+    cand_by_num: dict[str, list[Section]] = {}
     cand_by_key: dict[str, list[Section]] = {}
     for s in cand_secs:
+        if s.number:
+            cand_by_num.setdefault(s.number, []).append(s)
         cand_by_key.setdefault(s.key, []).append(s)
 
     diffs: list[SectionDiff] = []
     matched_cand: set[int] = set()
+
+    def _take(pools):
+        for pool in pools:
+            for c in pool or ():
+                if id(c) not in matched_cand:
+                    return c
+        return None
+
     for rs in ref_secs:
-        pool = cand_by_key.get(rs.key)
-        if pool:
-            exact = [c for c in pool if c.number == rs.number]
-            cs = exact[0] if exact else pool[0]
-            pool.remove(cs)
+        cs = _take([cand_by_num.get(rs.number) if rs.number else None,
+                    cand_by_key.get(rs.key)])
+        if cs is not None:
             matched_cand.add(id(cs))
             vis = None
             if visual:
@@ -241,7 +263,7 @@ def compare(reference: Path, candidate: Path, low: float = 0.90,
         else:
             diffs.append(SectionDiff(rs.number, rs.title, "missing"))
     for cs in cand_secs:
-        if id(cs) not in matched_cand and cs.key:
+        if id(cs) not in matched_cand and (cs.key or cs.number):
             diffs.append(SectionDiff(cs.number, cs.title, "extra"))
 
     return ParityReport(
