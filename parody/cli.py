@@ -190,6 +190,14 @@ def cmd_rehash(args):
     return 0
 
 
+def cmd_parity(args):
+    from .parity import compare, format_report
+
+    report = compare(Path(args.reference), Path(args.candidate), low=args.low)
+    print(format_report(report, low=args.low))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="parody",
@@ -280,6 +288,15 @@ def main(argv=None):
     p_check.add_argument("--toolchain", action="store_true",
                          help="check local toolchain versions against the pins")
     p_check.set_defaults(func=cmd_check)
+
+    p_parity = sub.add_parser(
+        "parity",
+        help="compare a built PDF against a reference/original PDF (triage aid)")
+    p_parity.add_argument("reference", help="reference (original) PDF")
+    p_parity.add_argument("candidate", help="candidate (parody-built) PDF")
+    p_parity.add_argument("--low", type=float, default=0.90,
+                          help="flag matched sections below this similarity (0..1)")
+    p_parity.set_defaults(func=cmd_parity)
 
     args = parser.parse_args(argv)
     return args.func(args)
