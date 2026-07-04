@@ -23,8 +23,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})\s*([A-Za-z][\w+-]*)?\s*$")
-# a fenced code block already promoted to a listing (a div wrapper or raw env)
-_LISTING_MARK = re.compile(r"listingsbox|\{\.listing\b|\{=latex\}")
+# a fenced code block already promoted to a listing: a raw listingsbox env, or a
+# fenced div carrying the .listing class (attrs may precede it: "{#lst:x .listing ...}")
+_LISTING_MARK = re.compile(r"listingsbox|(?::::+\s*\{[^}]*|\s)\.listing\b|\{=latex\}")
 _DISPLAY_MATH = re.compile(r"\$\$")
 _INFOBOX = re.compile(r"\{[^}]*\.infobox\b")
 _FREADING = re.compile(r"\\freadinglist\b")
