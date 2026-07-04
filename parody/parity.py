@@ -45,7 +45,7 @@ _STRUCTURAL = {
     "figure": re.compile(r"\bFigure\s+\d+\.\d+\b"),
     "table": re.compile(r"\bTable\s+\d+\.\d+\b"),
     "problem": re.compile(r"\bProblem\s+L?\d+\.\d+\b"),
-    "algorithm": re.compile(r"\bAlgorithm\s+\d+\.\d+\b"),
+    "algorithm": re.compile(r"\bAlgorithm\s+\d+(?:\.\d+)?\b"),  # sequential OR N.M,
     "listing": re.compile(r"\bListing\s+\d+\.\d+\b"),
     "box": re.compile(r"\bBox\s+\d+\.\d+\b"),
     "example": re.compile(r"\bExample\s+\d+\.\d+\b"),
