@@ -35,6 +35,7 @@ class Hit:
     path: str
     line: int
     detail: str = ""
+    code: str = ""   # code-block body (for matching against reference listings)
 
 
 @dataclass
@@ -78,8 +79,9 @@ def _scan_file(path: Path, rel: str, rep: GapReport) -> None:
                 # a code block just closed: is it already a listing?
                 context = "\n".join(lines[max(0, fence_start - 4): fence_start])
                 if not _LISTING_MARK.search(context + "\n" + window):
+                    body = "\n".join(lines[fence_start: i - 1])
                     rep.code_fences.append(
-                        Hit(rel, fence_start, fence_lang or "text"))
+                        Hit(rel, fence_start, fence_lang or "text", code=body))
         if in_fence:
             continue
         if _INFOBOX.search(line):
@@ -95,6 +97,88 @@ def _scan_file(path: Path, rel: str, rep: GapReport) -> None:
     for k in range(0, len(offs) - 1, 2):  # opener of each $$...$$ pair
         line_no = text_nocode.count("\n", 0, offs[k]) + 1
         rep.display_math.append(Hit(rel, line_no))
+
+
+# --------------------------------------------------------------------------
+# Triage against a reference PDF: which candidates did the original number?
+# --------------------------------------------------------------------------
+
+_REF_LISTING = re.compile(r"^Listing (\d+\.\d+)\s+(.*)$")
+_NEXT_LABEL = re.compile(r"^(Listing|Figure|Table|Algorithm|Box|Example)\s+\d")
+_TOKEN = re.compile(r"[A-Za-z_]\w{2,}")
+
+
+@dataclass
+class ListingMatch:
+    number: str
+    caption: str
+    path: str = ""
+    line: int = 0
+    lang: str = ""
+    score: float = 0.0
+
+
+def _tokset(text: str) -> set[str]:
+    # code identifiers, minus a few ubiquitous keywords that don't discriminate
+    stop = {"int", "for", "the", "return", "void", "and", "char", "std"}
+    return {t for t in _TOKEN.findall(text.lower())} - stop
+
+
+def reference_listings(ref_text: str) -> list[tuple[str, str, str]]:
+    """(number, caption, following-code-text) for each numbered listing caption
+    in the reference PDF text."""
+    out: list[tuple[str, str, str]] = []
+    lines = ref_text.splitlines()
+    seen: set[str] = set()
+    for i, line in enumerate(lines):
+        m = _REF_LISTING.match(line.strip())
+        # a caption, not a cross-reference ("... see Listing 2.1 ...")
+        if not m or m.group(1) in seen:
+            continue
+        cap = m.group(2).strip()
+        if not cap or cap[0].islower():
+            continue
+        seen.add(m.group(1))
+        code = []
+        for nxt in lines[i + 1: i + 45]:
+            if _NEXT_LABEL.match(nxt.strip()):
+                break
+            code.append(nxt)
+        out.append((m.group(1), cap, "\n".join(code)))
+    return out
+
+
+def triage_listings(rep: GapReport, ref_text: str) -> list[ListingMatch]:
+    """Match each reference numbered listing to the best source code block by
+    code-token overlap, so only the blocks the original numbered are flagged."""
+    blocks = [(h, _tokset(h.code)) for h in rep.code_fences if h.code]
+    matches: list[ListingMatch] = []
+    used: set[int] = set()
+    for num, cap, code in reference_listings(ref_text):
+        want = _tokset(code)
+        best, best_score = None, 0.0
+        for idx, (h, toks) in enumerate(blocks):
+            if idx in used or not toks or not want:
+                continue
+            score = len(want & toks) / len(want | toks)
+            if score > best_score:
+                best, best_score, best_idx = h, score, idx
+        mm = ListingMatch(num, cap)
+        if best is not None and best_score >= 0.15:
+            used.add(best_idx)
+            mm.path, mm.line, mm.lang, mm.score = (
+                best.path, best.line, best.detail, best_score)
+        matches.append(mm)
+    return matches
+
+
+def _numbered_eq_by_section(text: str) -> dict[str, int]:
+    """Count numbered equations "(N.M)" grouped by chapter, from PDF text."""
+    from collections import Counter
+    c: Counter[str] = Counter()
+    for m in re.finditer(r"\((\d+)\.\d+\)", text):
+        c[m.group(1)] += 1
+    return dict(c)
 
 
 def scan(project_dir: Path) -> GapReport:
@@ -138,4 +222,34 @@ def format_gaps(rep: GapReport, limit: int = 25) -> str:
 
     _dump("plain code blocks", rep.code_fences, show_detail=True)
     _dump("display equations", rep.display_math)
+    return "\n".join(lines)
+
+
+def format_triage(matches: list[ListingMatch], eq_ref: dict[str, int],
+                  eq_cand: dict[str, int] | None) -> str:
+    """Report only the candidates the *original* numbered: matched source code
+    blocks to promote to listings, and per-chapter equation-numbering gaps."""
+    lines: list[str] = []
+    a = lines.append
+    found = [m for m in matches if m.path]
+    a(f"Listings to promote — code blocks the original numbered ({len(found)}"
+      f"/{len(matches)} matched to source):")
+    for m in matches:
+        if m.path:
+            a(f"  Listing {m.number:<5} {m.caption[:44]:<44} "
+              f"-> {m.path}:{m.line} ({m.lang}, {m.score*100:.0f}% code match)")
+        else:
+            a(f"  Listing {m.number:<5} {m.caption[:44]:<44} -> (no source match)")
+    a("")
+    if eq_cand is not None:
+        a("Equation-numbering gaps by chapter (reference numbered - candidate):")
+        total = 0
+        for ch in sorted(eq_ref, key=lambda x: int(x)):
+            gap = eq_ref.get(ch, 0) - eq_cand.get(ch, 0)
+            if gap > 0:
+                total += gap
+                a(f"  chapter {ch}: reference {eq_ref[ch]:>3}  candidate "
+                  f"{eq_cand.get(ch, 0):>3}   +{gap} to number")
+        a(f"  total unnumbered vs original: {total} "
+          f"(see the display-equation locations above)")
     return "\n".join(lines)

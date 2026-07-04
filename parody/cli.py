@@ -200,9 +200,25 @@ def cmd_parity(args):
 
 
 def cmd_gaps(args):
-    from .gaps import format_gaps, scan
+    from .gaps import (
+        _numbered_eq_by_section,
+        format_gaps,
+        format_triage,
+        scan,
+        triage_listings,
+    )
 
-    print(format_gaps(scan(Path(args.project_dir)), limit=args.limit))
+    rep = scan(Path(args.project_dir))
+    print(format_gaps(rep, limit=args.limit))
+    if args.against:
+        from .parity import extract_text
+        ref_text = extract_text(Path(args.against))
+        matches = triage_listings(rep, ref_text)
+        eq_ref = _numbered_eq_by_section(ref_text)
+        eq_cand = (_numbered_eq_by_section(extract_text(Path(args.candidate)))
+                   if args.candidate else None)
+        print()
+        print(format_triage(matches, eq_ref, eq_cand))
     return 0
 
 
@@ -315,6 +331,11 @@ def main(argv=None):
     p_gaps.add_argument("project_dir", help="project directory")
     p_gaps.add_argument("--limit", type=int, default=25,
                         help="max files to list per category")
+    p_gaps.add_argument("--against", metavar="REFERENCE.pdf",
+                        help="triage: flag only the listings the original "
+                             "numbered, matched to source blocks")
+    p_gaps.add_argument("--candidate", metavar="CANDIDATE.pdf",
+                        help="parody-built PDF, for the per-chapter equation gap")
     p_gaps.set_defaults(func=cmd_gaps)
 
     args = parser.parse_args(argv)
