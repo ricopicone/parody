@@ -560,6 +560,23 @@ local function infoboxer(el)
     '\\begin{infobox}' .. identifier .. title .. '\n' .. content .. '\n\\end{infobox}')
 end
 
+-- A ::: {.freadinglist} div is a comma-separated list of cited further-reading
+-- items ([key]{.plaincite ...} spans). The profile's \freadinglist macro wraps
+-- them in a numbered "Further Reading" infobox via \docsvlist, so route the
+-- walked content (plaincite already \textcite, each brace-grouped so its inner
+-- commas don't split the list) through the macro — matching raw \freadinglist{}
+-- blocks already in the source.
+local function freadinglister(el)
+  if not is_latex() then return el end
+  local content = walk_to_latex(el):gsub('%s+$', '')
+  local identifier = ''
+  if el.identifier ~= nil and el.identifier ~= '' then
+    identifier = '[' .. el.identifier .. ']'
+  end
+  return pandoc.RawBlock('latex',
+    '\\freadinglist' .. identifier .. '{' .. content .. '}')
+end
+
 -- pandoc-crossref reference prefix per environment; a div whose id lacks
 -- the prefix (e.g. {#magnitude-criterion .definition} referenced as
 -- def:magnitude-criterion) needs the prefixed label emitted too.
@@ -1317,6 +1334,8 @@ function Div(el)
   end
   if el.classes:includes('infobox') then
     return infoboxer(el)
+  elseif el.classes:includes('freadinglist') then
+    return freadinglister(el)
   elseif el.classes:includes('listing') then
     return listinger(el)
   elseif el.classes:includes('output') then

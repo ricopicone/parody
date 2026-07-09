@@ -54,6 +54,10 @@ def test_environments_snippet_matches_golden(request):
     "\\begin{lemma}{}{lem:small}",
     "\\begin{corollary}{}{cor:tiny}",
     "\\begin{infobox}[label=box:note]{A Note}",
+    # a .freadinglist div routes through the \freadinglist macro (numbered
+    # "Further Reading" box); its .plaincite items become brace-grouped
+    # \textcite so their inner commas don't split the \docsvlist
+    "\\freadinglist{{\\textcite[{}][{ch. 1, an overview}]{doe2020}}",
     "\\begin{exercise}[ID=e1,hash=e1]",
     "\\end{exercise}",
     "\\begin{solution}",

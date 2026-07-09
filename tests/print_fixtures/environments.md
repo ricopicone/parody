@@ -37,6 +37,11 @@ Corollary body.
 Infobox body.
 :::
 
+::: {.freadinglist}
+[doe2020]{.plaincite post="ch. 1, an overview"},
+[doe2020]{.plaincite post="ch. 2, in depth"}
+:::
+
 ::: {.exercise #exe:one h="e1" title="First Exercise"}
 Exercise statement.
 
