@@ -133,6 +133,38 @@ BUNDLED_PROFILES = Path(__file__).parent.parent / "profiles"
 DEFAULT_PROFILE = "memoir"
 
 
+_MYURL_HASH = re.compile(
+    r"\\myurl(?:bottom)?\*?(?:\[[^\]]*\])*\{[^}]*\}\{([A-Za-z0-9]+)\}")
+
+
+def _render_qr_codes(build_dir, companion_url):
+    """Pre-render a QR image per external-URL hash used by \\myurl / \\myurlbottom.
+
+    The qrcode LaTeX package conflicts with hyperref, so instead of drawing the
+    QR in TeX we generate a PNG per hash (encoding the companion short link
+    ``companion_url/<hash>``) into the build dir; a profile can then place them
+    with ``\\includegraphics{qr-<hash>}``. No-op (with a warning) if segno is
+    absent, so print builds never hard-fail on a missing optional dependency.
+    """
+    hashes = set()
+    for tex in (build_dir / "sections").rglob("*.tex"):
+        hashes.update(_MYURL_HASH.findall(
+            tex.read_text(encoding="utf-8", errors="replace")))
+    if not hashes:
+        return
+    try:
+        import segno
+    except ImportError:
+        print("⚠️  segno not installed — printed QR codes omitted "
+              "(pip install segno)")
+        return
+    base = companion_url.rstrip("/")
+    for h in sorted(hashes):
+        segno.make(f"{base}/{h}", error="m").save(
+            str(build_dir / f"qr-{h}.png"), scale=8, border=2)
+    print(f"  qr: rendered {len(hashes)} QR code(s)")
+
+
 def resolve_profile(profile):
     """Resolve a profile selector to a directory.
 
@@ -250,6 +282,14 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     flags = []
     if solutions:
         flags.append("\\def\\issolution{1}")
+
+    # Companion-site base URL (book.companion_url in parody.yaml). A profile
+    # can use it to build printed QR codes / short links (\companionurl/<hash>).
+    book = project.meta.get("book") or {}
+    companion_url = book.get("companion_url")
+    if companion_url:
+        flags.append("\\def\\companionurl{%s}" % companion_url)
+        _render_qr_codes(build_dir, companion_url)
 
     # Front matter (title/copyright/dedication pages): on by default when the
     # profile ships a front-matter.tex; opt out with `front_matter: false` in
