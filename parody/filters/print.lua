@@ -906,7 +906,11 @@ local function figurediver(el)
   for i = 1, n_subfigures do
     subfigures[i] = el.content[i].content[1]
   end
-  local caps, srcs, labels, classes = {}, {}, {}, {}
+  -- Subfigures default to native size; a div- or image-level scale=/width=
+  -- opts a figure into scaling (e.g. third-party art too wide to sit side by
+  -- side at 1:1 — a uniform scale= preserves the panels' relative sizes).
+  local div_attrs = el.attr.attributes or {}
+  local caps, srcs, labels, classes, sizes = {}, {}, {}, {}, {}
   for i = 1, #subfigures do
     local img = subfigures[i].t == 'Image' and subfigures[i] or subfigures[i].content[1]
     local cap = img.caption
@@ -930,6 +934,9 @@ local function figurediver(el)
       labels[i] = 'fig:sub-' .. i
     end
     classes[i] = img.classes or {}
+    local a = (img.attr and img.attr.attributes) or {}
+    sizes[i] = { width = a['width'] or div_attrs['width'],
+                 scale = a['scale'] or div_attrs['scale'] }
   end
   local fig_tex = '\\begin{figure}[H]\n\\centering\n'
   local cols = math.ceil(n_subfigures / rows)
@@ -940,11 +947,19 @@ local function figurediver(el)
       current_row = current_row + 1
       fig_tex = fig_tex .. '\\\\\n% Row ' .. current_row .. '\n'
     end
+    -- optional scale=/width= (native when neither is set)
+    local w, s = sizes[i].width, sizes[i].scale
+    local opt = ''
+    if w and w ~= '' then opt = '[width=' .. w .. ']'
+    elseif s and s ~= '' then opt = '[scale=' .. s .. ']' end
     local graphics_command
     if classes[i]:includes('pgf') or srcs[i]:match('%.pgf$') then
-      graphics_command = '\\noindent\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
+      local pgf = '\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
+      if w and w ~= '' then pgf = '\\resizebox{' .. w .. '}{!}{' .. pgf .. '}'
+      elseif s and s ~= '' then pgf = '\\scalebox{' .. s .. '}{' .. pgf .. '}' end
+      graphics_command = '\\noindent' .. pgf
     else
-      graphics_command = '\\noindent\\includegraphics{' .. srcs[i] .. '}'
+      graphics_command = '\\noindent\\includegraphics' .. opt .. '{' .. srcs[i] .. '}'
     end
     local filler_after = ''
     if math.fmod(i, cols) == 0 then
