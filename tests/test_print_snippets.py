@@ -94,6 +94,9 @@ def test_environments_snippet_matches_golden(request):
     # classless .pgf outside a figure div must not reach \includegraphics
     "\\inputpgf{figures/spike}",
     "\\tabcaption[][nofloat]{tbl:demo}{A caption}",
+    # a top-level section with a companion hash drops a heading QR (profile
+    # renders \parodyqr if defined; guarded so other profiles no-op)
+    "\\ifcsname parodyqr\\endcsname\\parodyqr{hd}\\fi",
     # an image whose id is tbl:* is a table in the book numbering -> genuine
     # table float (caption above), not a figure, even though it's an image
     "\\begin{table}[H]%\n\\tabcaption[][nofloat]{tbl:asimage}{A table that is "

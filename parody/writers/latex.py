@@ -133,23 +133,28 @@ BUNDLED_PROFILES = Path(__file__).parent.parent / "profiles"
 DEFAULT_PROFILE = "memoir"
 
 
-_MYURL_HASH = re.compile(
-    r"\\myurl(?:bottom)?\*?(?:\[[^\]]*\])*\{[^}]*\}\{([A-Za-z0-9]+)\}")
+# QR hash sources: external-URL \myurl/\myurlbottom, and \parodyqr{hash} that
+# print.lua/build_pdf drop at each chapter/section heading (companion QR).
+_QR_HASH = re.compile(
+    r"\\myurl(?:bottom)?\*?(?:\[[^\]]*\])*\{[^}]*\}\{([A-Za-z0-9]+)\}"
+    r"|\\parodyqr\{([A-Za-z0-9]+)\}")
 
 
 def _render_qr_codes(build_dir, companion_url):
-    """Pre-render a QR image per external-URL hash used by \\myurl / \\myurlbottom.
+    """Pre-render a QR image per companion hash used in the build.
 
-    The qrcode LaTeX package conflicts with hyperref, so instead of drawing the
-    QR in TeX we generate a PNG per hash (encoding the companion short link
-    ``companion_url/<hash>``) into the build dir; a profile can then place them
-    with ``\\includegraphics{qr-<hash>}``. No-op (with a warning) if segno is
-    absent, so print builds never hard-fail on a missing optional dependency.
+    Covers external-URL \\myurl/\\myurlbottom and the per-chapter/section
+    \\parodyqr{hash} headings. The qrcode LaTeX package conflicts with hyperref,
+    so instead of drawing the QR in TeX we generate a PNG per hash (encoding the
+    companion short link ``companion_url/<hash>``) into the build dir; a profile
+    places them with ``\\includegraphics{qr-<hash>}``. No-op (with a warning) if
+    segno is absent, so print builds never hard-fail on a missing optional dep.
     """
     hashes = set()
-    for tex in (build_dir / "sections").rglob("*.tex"):
-        hashes.update(_MYURL_HASH.findall(
-            tex.read_text(encoding="utf-8", errors="replace")))
+    for tex in build_dir.rglob("*.tex"):
+        for m in _QR_HASH.finditer(
+                tex.read_text(encoding="utf-8", errors="replace")):
+            hashes.add(m.group(1) or m.group(2))
     if not hashes:
         return
     try:
@@ -250,6 +255,10 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                 if chapter.hash and chapter.hash != chapter.slug:
                     # chapter-level hashref target
                     chapter_tex += f"\\label{{{chapter.hash}}}"
+                if chapter.hash:
+                    # companion QR at the chapter opening (profile renders it)
+                    chapter_tex += ("\\ifcsname parodyqr\\endcsname"
+                                    f"\\parodyqr{{{chapter.hash}}}\\fi")
                 chapters_tex.append(chapter_tex)
             os.environ["PARODY_CHAPTER_DIR"] = str(Path(chapter.directory).resolve())
             for sec_slug in sections:
@@ -289,7 +298,6 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     companion_url = book.get("companion_url")
     if companion_url:
         flags.append("\\def\\companionurl{%s}" % companion_url)
-        _render_qr_codes(build_dir, companion_url)
 
     # Front matter (title/copyright/dedication pages): on by default when the
     # profile ships a front-matter.tex; opt out with `front_matter: false` in
@@ -313,6 +321,11 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         bibliography=bibliography,
     )
     (build_dir / "main.tex").write_text(main_tex, encoding="utf-8")
+
+    # Pre-render companion QR images now that every .tex (sections + main.tex
+    # chapter openings) exists to scan for \myurl / \parodyqr hashes.
+    if companion_url:
+        _render_qr_codes(build_dir, companion_url)
 
     # latexmk
     env = _tool_env()
