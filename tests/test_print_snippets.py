@@ -94,6 +94,10 @@ def test_environments_snippet_matches_golden(request):
     # classless .pgf outside a figure div must not reach \includegraphics
     "\\inputpgf{figures/spike}",
     "\\tabcaption[][nofloat]{tbl:demo}{A caption}",
+    # an image whose id is tbl:* is a table in the book numbering -> genuine
+    # table float (caption above), not a figure, even though it's an image
+    "\\begin{table}[H]%\n\\tabcaption[][nofloat]{tbl:asimage}{A table that is "
+    "rendered as an image.}",
     "\\toprule",
     "\\section{Print Environments}",
     "\\label{sec:envs}",

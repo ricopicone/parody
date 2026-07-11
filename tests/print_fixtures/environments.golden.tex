@@ -98,6 +98,13 @@ a & b \\
 \end{figure}%
 
 \gdef\graphicslist{}%
+\begin{table}[H]%
+\tabcaption[][nofloat]{tbl:asimage}{A table that is rendered as an image.}%
+\centering
+\noindent\includestandalone[]{figures/plot.png}
+\end{table}%
+
+\gdef\graphicslist{}%
 \begin{figure}[H]%
 \centering
 \noindent\inputpgf{figures/wave}

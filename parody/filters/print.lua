@@ -853,6 +853,16 @@ function figurer(el, nofloat)
   else
     caption = inlines_to_latex(caption)
   end
+  -- A tbl:-prefixed identifier marks an image that is a *table* in the book's
+  -- numbering (e.g. a rendered execution grid or instruction breakdown). Emit a
+  -- genuine table float so it counts and captions as "Table N.M" (caption above,
+  -- table convention), not a figure — even though the content is an image.
+  if el.identifier:match('^[Tt]bl:') then
+    return pandoc.RawInline('latex',
+      graphics_list_reset .. '\\begin{table}[H]%\n'
+      .. '\\tabcaption[][nofloat]{' .. el.identifier .. '}{' .. caption .. '}%\n'
+      .. '\\centering\n' .. content .. '\n\\end{table}%\n\n')
+  end
   -- Notebook sources use unprefixed figure ids (#foo) but reference them
   -- either way ([foo]{.hashref} -> \cref{foo} OR @fig:foo). Emit both the
   -- bare and fig:-prefixed labels so either resolves.
@@ -1375,6 +1385,12 @@ function Image(el)
   if el.identifier and el.identifier ~= ''
       and (el.classes:includes('figure') or el.classes:includes('standalone')) then
     local graphics = imager(el)
+    -- tbl:-prefixed id -> genuine table float (see figurer), even bare
+    if el.identifier:match('^[Tt]bl:') then
+      return pandoc.RawInline('latex',
+        '\\begin{table}[H]%\n\\tabcaption[][nofloat]{' .. el.identifier .. '}{}%\n'
+        .. '\\centering\n' .. graphics.text .. '\n\\end{table}%\n\n')
+    end
     local label = el.identifier
     local extra = ''
     if os.getenv('PARODY_PROJECT_DIR') and not label:match('^%a+:') then

@@ -93,6 +93,8 @@ MOV r0, #1
 
 ![A figure caption naming `a.out`.](figures/plot.png){#fig:plot figwidth="3in"}
 
+![A table that is rendered as an image.](figures/plot.png){#tbl:asimage .figure .standalone}
+
 ![A pgf figure, rtc-style extensionless src.](figures/wave){#fig:wave .pgf}
 
 ![A pgf figure, src carrying the extension.](figures/pulse.pgf){#fig:pulse .pgf}
