@@ -934,7 +934,6 @@ local function figurediver(el)
   local fig_tex = '\\begin{figure}[H]\n\\centering\n'
   local cols = math.ceil(n_subfigures / rows)
   local current_row = 1
-  local subcaption_width = 1 / cols - 0.05
   fig_tex = fig_tex .. '% Row 1\n'
   for i = 1, #subfigures do
     if math.fmod(i - 1, cols) == 0 and i ~= 1 then
@@ -943,23 +942,21 @@ local function figurediver(el)
     end
     local graphics_command
     if classes[i]:includes('pgf') or srcs[i]:match('%.pgf$') then
-      graphics_command = '\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
+      graphics_command = '\\noindent\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
     else
-      graphics_command = '\\includegraphics{' .. srcs[i] .. '}'
+      graphics_command = '\\noindent\\includegraphics{' .. srcs[i] .. '}'
     end
-    -- Constrain each subfigure to its column width so oversized art can't spill
-    -- into the margin or collide with its neighbour. max width only scales
-    -- *down* (a subfigure already narrower than its column keeps its size), so
-    -- correctly-sized art is untouched.
-    graphics_command = '\\noindent\\adjustbox{max width=\\linewidth}{'
-      .. graphics_command .. '}'
     local filler_after = ''
     if math.fmod(i, cols) == 0 then
       filler_after = '\\hspace*{\\fill}%\n'
     end
+    -- Each subfigure keeps its NATIVE size (the art is drawn to fit the text
+    -- measure at 1:1 — no scaling, so its internal fonts stay correct); the
+    -- \hspace*{\fill}s distribute the row across the text width. Forcing a fixed
+    -- 1/cols column instead made wide subfigures overflow the column (spilling
+    -- into the margin or onto their neighbour).
     fig_tex = fig_tex .. '\\hspace*{\\fill}%\n'
-      .. '\\subcaptionbox{' .. caps[i] .. '\\label{' .. labels[i] .. '}}'
-      .. '[' .. string.format('%.2f', subcaption_width) .. '\\linewidth]\n'
+      .. '\\subcaptionbox{' .. caps[i] .. '\\label{' .. labels[i] .. '}}\n'
       .. '{' .. graphics_command .. '}\n' .. filler_after
   end
   local caption_tex = pandoc.write(pandoc.Pandoc(caption), 'latex')
