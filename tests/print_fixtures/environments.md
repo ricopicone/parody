@@ -1,4 +1,4 @@
-# Print Environments {#sec-env shortid="sec:envs"}
+# Print Environments {#sec-env shortid="sec:envs" h="hd"}
 
 Prose with inline math $E = mc^2$, a keyword [important term]{.keyword},
 an index entry [convolution]{.index}, a code index entry [printf]{.index .cfun},

@@ -210,6 +210,14 @@ local function headerer_latex(el)
   if h and h ~= '' and h ~= label then
     sec_tex = sec_tex .. '\n\\label{' .. h .. '}'
   end
+  -- Companion QR at each top-level section heading: the profile's \parodyqr
+  -- (if defined) drops a QR of companion_url/<hash> in the margin, matching the
+  -- original book. Guarded so profiles without it (and books without a
+  -- companion_url, whose build pre-renders no qr-<hash>.png) simply no-op.
+  if l == 1 and h and h ~= '' and not el.classes:includes('lab') then
+    sec_tex = sec_tex ..
+      '\n\\ifcsname parodyqr\\endcsname\\parodyqr{' .. h .. '}\\fi'
+  end
   return { pandoc.RawBlock('latex', sec_tex) }
 end
 
