@@ -943,10 +943,16 @@ local function figurediver(el)
     end
     local graphics_command
     if classes[i]:includes('pgf') or srcs[i]:match('%.pgf$') then
-      graphics_command = '\\noindent\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
+      graphics_command = '\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
     else
-      graphics_command = '\\noindent\\includegraphics{' .. srcs[i] .. '}'
+      graphics_command = '\\includegraphics{' .. srcs[i] .. '}'
     end
+    -- Constrain each subfigure to its column width so oversized art can't spill
+    -- into the margin or collide with its neighbour. max width only scales
+    -- *down* (a subfigure already narrower than its column keeps its size), so
+    -- correctly-sized art is untouched.
+    graphics_command = '\\noindent\\adjustbox{max width=\\linewidth}{'
+      .. graphics_command .. '}'
     local filler_after = ''
     if math.fmod(i, cols) == 0 then
       filler_after = '\\hspace*{\\fill}%\n'
