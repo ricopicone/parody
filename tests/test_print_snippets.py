@@ -101,6 +101,10 @@ def test_environments_snippet_matches_golden(request):
     # table float (caption above), not a figure, even though it's an image
     "\\begin{table}[H]%\n\\tabcaption[][nofloat]{tbl:asimage}{A table that is "
     "rendered as an image.}",
+    # subfigures are native size by default...
+    "\\noindent\\includegraphics{figures/plot.png}",
+    # ...unless a scale=/width= opts them into scaling (third-party art)
+    "\\noindent\\includegraphics[scale=0.8]{figures/plot.png}",
     "\\toprule",
     "\\section{Print Environments}",
     "\\label{sec:envs}",

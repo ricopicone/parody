@@ -104,7 +104,7 @@ MOV r0, #1
 ::: {#fig:subs .figure .subfigures rows=1}
 ![Left.](figures/plot.png){#fig:sub-a .subfigure}
 
-![Right.](figures/plot.png){#fig:sub-b .subfigure}
+![Right.](figures/plot.png){#fig:sub-b .subfigure scale=0.8}
 
 (a) The left plot and (b) the right plot.
 :::
