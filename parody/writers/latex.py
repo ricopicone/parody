@@ -137,7 +137,7 @@ DEFAULT_PROFILE = "memoir"
 # print.lua/build_pdf drop at each chapter/section heading (companion QR).
 _QR_HASH = re.compile(
     r"\\myurl(?:bottom)?\*?(?:\[[^\]]*\])*\{[^}]*\}\{([A-Za-z0-9]+)\}"
-    r"|\\parodyqr\{([A-Za-z0-9]+)\}")
+    r"|\\parodyqr(?:ch|url)?\{([A-Za-z0-9]+)\}")
 
 
 def _render_qr_codes(build_dir, companion_url):
@@ -256,9 +256,10 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                     # chapter-level hashref target
                     chapter_tex += f"\\label{{{chapter.hash}}}"
                 if chapter.hash:
-                    # companion QR at the chapter opening (profile renders it)
-                    chapter_tex += ("\\ifcsname parodyqr\\endcsname"
-                                    f"\\parodyqr{{{chapter.hash}}}\\fi")
+                    # companion QR at the chapter opening (profile renders it;
+                    # \parodyqrch aligns to the tall chapter title, vs sections)
+                    chapter_tex += ("\\ifcsname parodyqrch\\endcsname"
+                                    f"\\parodyqrch{{{chapter.hash}}}\\fi")
                 chapters_tex.append(chapter_tex)
             os.environ["PARODY_CHAPTER_DIR"] = str(Path(chapter.directory).resolve())
             for sec_slug in sections:
