@@ -1,0 +1,48 @@
+# Builds the reproducible print image (Dockerfile.print — pinned full TeX Live)
+# and smoke-tests a full `parody pdf` of tests/smoke-book with the memoir
+# profile. Kept off the every-push path (the image is ~5 GB); runs on demand,
+# when the image inputs change, and weekly to catch upstream drift.
+name: print-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile.print
+      - .dockerignore
+      - .github/workflows/print-image.yml
+      - tests/smoke-book/**
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build print image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.print
+          platforms: linux/amd64
+          tags: parody-print:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-build the sample book (memoir profile)
+        run: |
+          docker run --rm -v "$PWD":/book -w /book parody-print:ci \
+            pdf tests/smoke-book --profile memoir -o /book/smoke.pdf
+          test -s smoke.pdf || { echo "smoke.pdf missing or empty"; exit 1; }
+          echo "smoke.pdf: $(du -h smoke.pdf | cut -f1)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-pdf
+          path: smoke.pdf

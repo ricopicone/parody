@@ -1,0 +1,18 @@
+# Minimal book used to smoke-test a full `parody pdf` build end to end
+# (pandoc -> print.lua -> lualatex -> minted -> pandoc-crossref). Kept tiny so
+# it compiles in seconds inside the reproducible print image; see
+# Dockerfile.print and .github/workflows/print-image.yml.
+title: Parody Print Smoke Test
+slug: parody-print-smoke-test
+authors:
+  - Parody CI
+description: ""
+acronym: ""
+cover_image: ""
+pdf_file: ""
+targets: [artifact]
+chapters:
+  - slug: intro
+    title: Introduction
+    sections:
+      - hello

@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1
+#
+# Reproducible print-build image for `parody pdf`.
+#
+# The base ./Dockerfile provisions only the JSON/web pipeline (Python + pandoc +
+# pandoc-crossref) and deliberately omits TeX. This image adds a *pinned* full
+# TeX Live so `parody pdf` produces stable output across machines and CI — the
+# role the old meta-book Docker container played.
+#
+# Pinned to linux/amd64 on purpose: it matches CI (GitHub runners) and the old
+# container, so the engine bytes are identical everywhere. On Apple Silicon it
+# runs under emulation (slower) — keep using host TeX for fast iteration and this
+# image for reproducible / reference builds and CI.
+#
+# TeX Live: `latest-full` is a rolling tag, so we freeze it BY DIGEST to the
+# current release — TL2026, the engine the golden print output was validated
+# against. scheme-full carries every CTAN package the profiles pull (circuitikz,
+# pgfgantt, biblatex-chicago, newpx, algpseudocodex, minted, tkz-euclide, …), so
+# there is no per-package whack-a-mole. When islandoftex publishes
+# `TL2026-historic` (after TL2027 ships) switch this FROM to that named tag.
+FROM --platform=linux/amd64 texlive/texlive:latest-full@sha256:d39efa547acfa518072600315280f92357ca8e0b9e295e09b6ccd5f5d82a1373
+
+# Toolchain that is not part of TeX Live.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl git xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv drives the Python side (pandoc via pypandoc-binary, pygments for minted,
+# segno for QR codes) — see pyproject.toml / uv.lock.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# pandoc-crossref pinned to the release built against the pinned pandoc (3.6.1);
+# see parody/toolchain.py. Used by the print pipeline for cross-ref numbering.
+ARG PANDOC_CROSSREF_VERSION=0.3.18.1
+RUN curl -fsSL -o /tmp/pc.tar.xz \
+      "https://github.com/lierdakil/pandoc-crossref/releases/download/v${PANDOC_CROSSREF_VERSION}/pandoc-crossref-Linux-X64.tar.xz" \
+    && tar -xJf /tmp/pc.tar.xz -C /usr/local/bin pandoc-crossref \
+    && rm /tmp/pc.tar.xz
+
+# Install parody into a project venv (uv provisions the pinned Python itself).
+WORKDIR /opt/parody
+COPY pyproject.toml uv.lock* README.md ./
+COPY parody ./parody
+RUN uv sync --frozen --no-dev || uv sync --no-dev
+ENV PATH="/opt/parody/.venv/bin:$PATH"
+
+# xsim writes whole exercise bodies on one line; big solutions overflow TeX's
+# default input buffer (mirrors parody/writers/latex.py:_tool_env).
+ENV buf_size=2000000
+
+# The book — content plus any book-private profile with its licensed fonts — is
+# mounted at runtime, so this image stays book-agnostic and publishable:
+#   docker run --rm -v "$PWD":/book -w /book parody-print \
+#     pdf . --profile profile-mitpress -o print.pdf
+WORKDIR /book
+ENTRYPOINT ["parody"]

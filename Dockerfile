@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # pandoc-crossref pinned to the release built against the pinned pandoc
-# (see parody/toolchain.py). TeX itself is not in this image; use a TeX-
-# enabled derivative for `parody pdf` in CI.
+# (see parody/toolchain.py). TeX itself is not in this image — for `parody pdf`
+# use ./Dockerfile.print, which adds a pinned full TeX Live on top.
 ARG PANDOC_CROSSREF_VERSION=0.3.18.1
 RUN apt-get update && apt-get install -y --no-install-recommends curl xz-utils \
     && curl -fsSL -o /tmp/pc.tar.xz \
