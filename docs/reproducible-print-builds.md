@@ -29,17 +29,18 @@ validated against), and layers the parody toolchain on top. Notes:
   no per-package whack-a-mole. It is a large image (~5 GB); that is the cost of
   not guessing at a package subset.
 - **`linux/amd64`** on purpose: matches CI runners and the old container, so the
-  engine bytes are identical everywhere. On Apple Silicon it runs under
-  emulation (slower) — keep using host TeX for fast iteration and the image for
-  reproducible/reference builds and CI.
+  engine bytes are identical everywhere. The `FROM` pins the amd64-specific
+  manifest digest, so the build is amd64 without a `--platform` flag; on Apple
+  Silicon it runs under emulation (slower) — keep using host TeX for fast
+  iteration and the image for reproducible/reference builds and CI.
 - `latest-full` is a *rolling* tag; the `@sha256:` digest is what actually
   freezes it. When islandoftex publishes `TL2026-historic` (after TL2027 ships),
-  switch the `FROM` to that named tag and drop the digest.
+  switch the `FROM` to that named tag.
 
 ## Build and run
 
 ```
-docker build --platform linux/amd64 -f Dockerfile.print -t parody-print:tl2026 .
+docker build -f Dockerfile.print -t parody-print:tl2026 .
 ```
 
 The book — content plus any book-private profile with its licensed fonts — is

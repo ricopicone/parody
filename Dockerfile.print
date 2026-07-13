@@ -7,18 +7,20 @@
 # TeX Live so `parody pdf` produces stable output across machines and CI — the
 # role the old meta-book Docker container played.
 #
-# Pinned to linux/amd64 on purpose: it matches CI (GitHub runners) and the old
-# container, so the engine bytes are identical everywhere. On Apple Silicon it
-# runs under emulation (slower) — keep using host TeX for fast iteration and this
-# image for reproducible / reference builds and CI.
+# Pinned to the linux/amd64 image on purpose: it matches CI (GitHub runners) and
+# the old container, so the engine bytes are identical everywhere. On Apple
+# Silicon it runs under emulation (slower) — keep using host TeX for fast
+# iteration and this image for reproducible / reference builds and CI.
 #
 # TeX Live: `latest-full` is a rolling tag, so we freeze it BY DIGEST to the
 # current release — TL2026, the engine the golden print output was validated
 # against. scheme-full carries every CTAN package the profiles pull (circuitikz,
 # pgfgantt, biblatex-chicago, newpx, algpseudocodex, minted, tkz-euclide, …), so
-# there is no per-package whack-a-mole. When islandoftex publishes
-# `TL2026-historic` (after TL2027 ships) switch this FROM to that named tag.
-FROM --platform=linux/amd64 texlive/texlive:latest-full@sha256:d39efa547acfa518072600315280f92357ca8e0b9e295e09b6ccd5f5d82a1373
+# there is no per-package whack-a-mole. The digest is the amd64-specific manifest
+# (not the multi-arch index) so the build is amd64 without a FROM --platform
+# flag. When islandoftex publishes `TL2026-historic` (after TL2027 ships) switch
+# this FROM to that named tag.
+FROM texlive/texlive:latest-full@sha256:7830c997d110c4c9540a7f6d36afa0c8ec55724489edcc63dc3f4908d5eee65c
 
 # Toolchain that is not part of TeX Live.
 RUN apt-get update && apt-get install -y --no-install-recommends \
