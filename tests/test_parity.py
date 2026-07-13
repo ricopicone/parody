@@ -2,7 +2,6 @@
 
 from parody.parity import (
     ParityReport,
-    Section,
     SectionDiff,
     _looks_like_title,
     format_report,

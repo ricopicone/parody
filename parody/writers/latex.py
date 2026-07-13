@@ -338,6 +338,13 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         resource_dirs.append(str(assets))
     env["TEXINPUTS"] = "." + os.pathsep + os.pathsep.join(resource_dirs) \
         + os.pathsep + env.get("TEXINPUTS", "")
+    # luaotfload resolves \setmainfont{Family} against OSFONTDIR (plus the OS
+    # font dirs). Point it at the build dir so fonts a profile bundles there
+    # (e.g. a licensed Palatino.ttc copied in with the profile) resolve by
+    # family name in ANY environment — notably the Linux print container, where
+    # the font is not installed system-wide. Prepend so the bundled font is
+    # authoritative, giving identical host/container output.
+    env["OSFONTDIR"] = str(build_dir) + os.pathsep + env.get("OSFONTDIR", "")
     if not shutil.which("latexmk", path=env["PATH"]):
         print("⚠️  latexmk not found — wrote LaTeX sources to "
               f"{build_dir}, skipping PDF compilation")
