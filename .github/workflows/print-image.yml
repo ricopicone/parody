@@ -1,7 +1,12 @@
-# Builds the reproducible print image (Dockerfile.print — pinned full TeX Live)
-# and smoke-tests a full `parody pdf` of tests/smoke-book with the memoir
-# profile. Kept off the every-push path (the image is ~5 GB); runs on demand,
-# when the image inputs change, and weekly to catch upstream drift.
+# Reproducible print image (Dockerfile.print — pinned full TeX Live).
+#
+# - build + smoke-test on demand, when the image inputs change, and weekly
+#   (catches upstream drift); the image is ~5 GB so it stays off every push.
+# - PUBLISH to GHCR on a GitHub Release, tagged <parody-version>-tl<year> (from
+#   the release tag) plus the moving tl<year> tag. The image carries no licensed
+#   fonts (those live in the book-private profile, mounted at runtime), so it is
+#   safe to publish; make the package public once, in the repo's Packages
+#   settings, so co-authors can pull without a login.
 name: print-image
 
 on:
@@ -13,23 +18,30 @@ on:
       - .dockerignore
       - .github/workflows/print-image.yml
       - tests/smoke-book/**
+  release:
+    types: [published]
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/parody-print
+  TL_TAG: tl2026 # bump when Dockerfile.print's TeX Live digest changes
 
 jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v5
-
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build print image
+      - name: Build print image (load for the smoke test)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.print
-          platforms: linux/amd64
           tags: parody-print:ci
           load: true
           cache-from: type=gha
@@ -42,7 +54,21 @@ jobs:
           test -s smoke.pdf || { echo "smoke.pdf missing or empty"; exit 1; }
           echo "smoke.pdf: $(du -h smoke.pdf | cut -f1)"
 
-      - uses: actions/upload-artifact@v4
+      # Publish the smoke-tested image only on a release, after it passes.
+      - name: Log in to GHCR
+        if: github.event_name == 'release'
+        uses: docker/login-action@v3
         with:
-          name: smoke-pdf
-          path: smoke.pdf
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push <version>-tl<year> and tl<year> tags
+        if: github.event_name == 'release'
+        run: |
+          V="${{ github.event.release.tag_name }}"; V="${V#v}"
+          docker tag parody-print:ci "$IMAGE:$V-$TL_TAG"
+          docker tag parody-print:ci "$IMAGE:$TL_TAG"
+          docker push "$IMAGE:$V-$TL_TAG"
+          docker push "$IMAGE:$TL_TAG"
+          echo "published $IMAGE:$V-$TL_TAG and $IMAGE:$TL_TAG"
