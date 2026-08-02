@@ -44,8 +44,20 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v5
+
+      # The full TeX Live image is ~10 GB unpacked; the default runner disk
+      # (~14 GB free) overflows while loading it into Docker. Reclaim ~25 GB of
+      # preinstalled toolchains first.
+      - name: Free up runner disk
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+
       - uses: docker/setup-buildx-action@v3
 
+      # No gha cache: the pinned 5 GB base layer would blow the 10 GB cache
+      # limit and adds disk pressure; the base pulls from Docker Hub each run.
       - name: Build print image (load for the smoke test)
         uses: docker/build-push-action@v6
         with:
@@ -53,8 +65,6 @@ jobs:
           file: Dockerfile.print
           tags: parody-print:ci
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Smoke-build the sample book (memoir profile)
         run: |
