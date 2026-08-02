@@ -2,8 +2,10 @@
 #
 # - build + smoke-test on demand, when the image inputs change, and weekly
 #   (catches upstream drift); the image is ~5 GB so it stays off every push.
-# - PUBLISH to GHCR on a GitHub Release, tagged <parody-version>-tl<year> (from
-#   the release tag) plus the moving tl<year> tag. The image carries no licensed
+# - PUBLISH to GHCR is manual (workflow_dispatch with publish=true), matching
+#   the manual PyPI release flow — run it after bumping the version / publishing
+#   parody to PyPI. Tags the image <version>-tl<year> (version defaults to
+#   pyproject.toml) plus the moving tl<year> tag. The image carries no licensed
 #   fonts (those live in the book-private profile, mounted at runtime), so it is
 #   safe to publish; make the package public once, in the repo's Packages
 #   settings, so co-authors can pull without a login.
@@ -11,6 +13,15 @@ name: print-image
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the built image to GHCR"
+        type: boolean
+        default: false
+      version:
+        description: "Version for the image tag (blank = read pyproject.toml)"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths:
@@ -18,8 +29,6 @@ on:
       - .dockerignore
       - .github/workflows/print-image.yml
       - tests/smoke-book/**
-  release:
-    types: [published]
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
 
@@ -54,9 +63,9 @@ jobs:
           test -s smoke.pdf || { echo "smoke.pdf missing or empty"; exit 1; }
           echo "smoke.pdf: $(du -h smoke.pdf | cut -f1)"
 
-      # Publish the smoke-tested image only on a release, after it passes.
+      # Publish the smoke-tested image only when explicitly requested.
       - name: Log in to GHCR
-        if: github.event_name == 'release'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -64,9 +73,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push <version>-tl<year> and tl<year> tags
-        if: github.event_name == 'release'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
         run: |
-          V="${{ github.event.release.tag_name }}"; V="${V#v}"
+          V="${{ inputs.version }}"
+          [ -z "$V" ] && V="$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
           docker tag parody-print:ci "$IMAGE:$V-$TL_TAG"
           docker tag parody-print:ci "$IMAGE:$TL_TAG"
           docker push "$IMAGE:$V-$TL_TAG"
