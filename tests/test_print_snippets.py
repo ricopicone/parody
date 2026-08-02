@@ -139,3 +139,15 @@ def test_raw_html_table_backslash_paren_math_not_leaked():
     assert "\\textbackslash(" not in out
     assert "\\dfrac{1}{K_q}" in out  # cell: real math, not escaped \textbackslash
     assert "$q(t)$" in out  # caption: math renders too, not stringified to nothing
+
+
+def test_grouped_header_table_multicolumn_cmidrule():
+    # a grouped-header raw-HTML table (colspan/rowspan + cmid classes) must
+    # reproduce the column grouping, not flatten via to_simple_table: a spanned
+    # header -> \multicolumn, a rowspan flanker -> \multirow, cmid groups ->
+    # \cmidrule, and a wide header wraps via \makecell (tbl:grouped).
+    out = render(FIXTURES / "environments.md")
+    assert "\\multicolumn{2}{c}{Group $A$}" in out
+    assert "\\multirow{2}{*}{Row}" in out
+    assert "\\cmidrule(r){1-1}" in out and "\\cmidrule(lr){2-3}" in out
+    assert "\\makecell{Wide\\\\Header}" in out

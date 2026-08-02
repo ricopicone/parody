@@ -1091,8 +1091,147 @@ local function get_table_id(el)
   return string.sub(id, 3, -2)
 end
 
+-- ── Grouped-header tables ─────────────────────────────────────────────────
+-- Raw-HTML tables tagged `grouped-header` carry colspan/rowspan headers and
+-- `cmid`/`cmid-l`/`cmid-r` rule groups (e.g. tbl:steadystateerror). These can't
+-- survive to_simple_table (it drops spans and rules), so render them straight
+-- from the pandoc Table AST: \multicolumn column groups, \multirow flankers,
+-- \cmidrule from the cmid classes, and 2-line \makecell wrapping of wide
+-- headers so they don't overrun the text width.
+
+local function cell_to_latex(cell)
+  return (pandoc.write(pandoc.Pandoc(cell.contents), 'latex')
+    :gsub('\n', ' '):gsub('%s+$', ''))
+end
+
+-- split latex on spaces outside $...$ and {...}
+local function top_level_words(s)
+  local words, buf, depth, math = {}, {}, 0, false
+  for i = 1, #s do
+    local ch = s:sub(i, i)
+    if ch == '$' then math = not math
+    elseif ch == '{' then depth = depth + 1
+    elseif ch == '}' then depth = depth - 1 end
+    if ch == ' ' and depth == 0 and not math then
+      words[#words + 1] = table.concat(buf); buf = {}
+    else
+      buf[#buf + 1] = ch
+    end
+  end
+  words[#words + 1] = table.concat(buf)
+  return words
+end
+
+-- wrap a wide multi-word header into two balanced \makecell lines
+local function wrap_header(s)
+  local words = top_level_words(s)
+  if #words < 2 or #s < 11 then return s end  -- leave short headers on one line
+  local len, split = 0, 1
+  for i = 1, #words - 1 do
+    len = len + #words[i] + 1; split = i
+    if len >= #s / 2 then break end
+  end
+  local a, b = {}, {}
+  for i = 1, split do a[#a + 1] = words[i] end
+  for i = split + 1, #words do b[#b + 1] = words[i] end
+  return '\\makecell{' .. table.concat(a, ' ') .. '\\\\' .. table.concat(b, ' ') .. '}'
+end
+
+local function is_grouped_header(el)
+  if el.attr.classes:includes('grouped-header') then return true end
+  for _, row in ipairs(el.head.rows) do
+    for _, cell in ipairs(row.cells) do
+      if cell.col_span > 1 or cell.row_span > 1 then return true end
+    end
+  end
+  return false
+end
+
+-- Header rows -> LaTeX, with \multicolumn/\multirow and \cmidrule per cmid
+-- group. A rowspan cell's rule is deferred to the row where its span ends.
+local function grouped_header_rows(head_rows, ncols)
+  local occupied, deferred, out = {}, {}, {}
+  for ri, row in ipairs(head_rows) do
+    local cells, col, group_start = {}, 1, nil
+    for _, cell in ipairs(row.cells) do
+      while (occupied[col] or 0) > 0 do
+        occupied[col] = occupied[col] - 1; cells[#cells + 1] = ''; col = col + 1
+      end
+      local span, a = cell.col_span, col
+      local b = col + span - 1
+      local cls = cell.attr.classes
+      if cls:includes('cmid-l') or (cls:includes('cmid') and group_start == nil) then
+        group_start = a
+      end
+      if cls:includes('cmid-r') and group_start ~= nil then
+        local after = ri + cell.row_span - 1
+        -- (r) for a group flush to the left edge, (lr) for interior groups, so
+        -- adjacent rules don't touch and the leftmost reaches the margin.
+        local trim = (group_start > 1 and 'l' or '') .. 'r'
+        deferred[after] = deferred[after] or {}
+        deferred[after][#deferred[after] + 1] =
+          '\\cmidrule(' .. trim .. '){' .. group_start .. '-' .. b .. '}'
+        group_start = nil
+      end
+      local content = wrap_header(cell_to_latex(cell))
+      if cell.row_span > 1 then
+        content = '\\multirow{' .. cell.row_span .. '}{*}{' .. content .. '}'
+        for k = a, b do occupied[k] = cell.row_span - 1 end
+      end
+      if span > 1 then content = '\\multicolumn{' .. span .. '}{c}{' .. content .. '}' end
+      cells[#cells + 1] = content
+      col = col + span
+    end
+    while col <= ncols do
+      if (occupied[col] or 0) > 0 then occupied[col] = occupied[col] - 1 end
+      cells[#cells + 1] = ''; col = col + 1
+    end
+    out[#out + 1] = table.concat(cells, ' & ') .. ' \\\\'
+    if deferred[ri] then out[#out + 1] = table.concat(deferred[ri], ' ') end
+  end
+  return table.concat(out, '\n')
+end
+
+local function grouped_body_rows(bodies, strut)
+  local out = {}
+  for _, body in ipairs(bodies) do
+    for _, row in ipairs(body.body) do
+      local cells = {}
+      for _, cell in ipairs(row.cells) do
+        local content = cell_to_latex(cell)
+        if cell.col_span > 1 then
+          content = '\\multicolumn{' .. cell.col_span .. '}{c}{' .. content .. '}'
+        end
+        cells[#cells + 1] = content
+      end
+      out[#out + 1] = strut .. table.concat(cells, ' & ') .. ' \\\\'
+    end
+  end
+  return table.concat(out, '\n')
+end
+
+local function grouped_table_latex(el, identifier)
+  local ncols = 0
+  for _, cell in ipairs(el.head.rows[1].cells) do ncols = ncols + cell.col_span end
+  local spec = {}
+  for c = 1, ncols do spec[c] = (c == 1) and 'l' or 'c' end
+  local strut = '\\rule[-1ex]{0pt}{3.2ex}'
+  local tabular = '\\begin{tabular}{@{}' .. table.concat(spec) .. '@{}}\n\\toprule\n'
+    .. grouped_header_rows(el.head.rows, ncols) .. '\n'
+    .. grouped_body_rows(el.bodies, strut) .. '\n\\bottomrule\n\\end{tabular}'
+  local caption_text = pandoc.write(pandoc.Pandoc(el.caption.long), 'latex')
+    :gsub('\n', ' '):gsub('%s+$', ''):gsub('%s*{#.*}$', '')
+  local caption_latex = ''
+  if #caption_text > 0 or identifier ~= '' then
+    caption_latex = '\\tabcaption[][nofloat]{' .. identifier .. '}{' .. caption_text .. '}\n'
+  end
+  return pandoc.RawBlock('latex',
+    '\\begin{table}\n' .. caption_latex .. '\\centering\n' .. tabular .. '\n\\end{table}')
+end
+
 local function tabler_latex(el)
   local identifier = get_table_id(el)
+  if is_grouped_header(el) then return grouped_table_latex(el, identifier) end
   local simple = pandoc.utils.to_simple_table(el)
 
   local function render_row(row)

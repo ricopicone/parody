@@ -97,6 +97,15 @@ MOV r0, #1
 <tbody><tr><td>\(q^2\)</td><td>\(\dfrac{1}{K_q}\)</td></tr></tbody>
 </table>
 
+<table id="tbl:grouped" class="notes-table grouped-header">
+<caption>A grouped-header table.</caption>
+<thead>
+<tr><th rowspan="2" class="cmid cmid-l cmid-r">Row</th><th colspan="2" class="cmid cmid-l cmid-r">Group \(A\)</th></tr>
+<tr><th class="cmid cmid-l">Wide Header</th><th class="cmid cmid-r">\(y\)</th></tr>
+</thead>
+<tbody><tr><td>r1</td><td>\(a\)</td><td>\(b\)</td></tr></tbody>
+</table>
+
 ![A figure caption naming `a.out`.](figures/plot.png){#fig:plot figwidth="3in"}
 
 ![A table that is rendered as an image.](figures/plot.png){#tbl:asimage .figure .standalone}

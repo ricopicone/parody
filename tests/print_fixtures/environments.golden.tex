@@ -103,6 +103,20 @@ $q^2$ & $\dfrac{1}{K_q}$ \\
 \end{tabular}
 \end{table}
 
+\begin{table}
+\tabcaption[][nofloat]{tbl:grouped}{A grouped-header table.}
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\multirow{2}{*}{Row} & \multicolumn{2}{c}{Group $A$} \\
+\cmidrule(lr){2-3}
+ & \makecell{Wide\\Header} & $y$ \\
+\cmidrule(r){1-1} \cmidrule(lr){2-3}
+\rule[-1ex]{0pt}{3.2ex}r1 & $a$ & $b$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \gdef\graphicslist{}%
 \begin{figure}[H]%
 \centering
