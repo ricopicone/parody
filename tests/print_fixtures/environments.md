@@ -91,6 +91,12 @@ MOV r0, #1
 
 : A caption {#tbl:demo}
 
+<table id="tbl:htmlmath" class="notes-table">
+<caption>A raw-HTML table whose cells write math as \(q(t)\).</caption>
+<thead><tr><th>\(q(t)\)</th><th>\(e_\infty\)</th></tr></thead>
+<tbody><tr><td>\(q^2\)</td><td>\(\dfrac{1}{K_q}\)</td></tr></tbody>
+</table>
+
 ![A figure caption naming `a.out`.](figures/plot.png){#fig:plot figwidth="3in"}
 
 ![A table that is rendered as an image.](figures/plot.png){#tbl:asimage .figure .standalone}

@@ -129,3 +129,13 @@ def test_subfigure_list_caption_not_an_environment():
     out = render(FIXTURES / "environments.md")
     _, _, tail = out.partition("{fig:subs}{")
     assert "\\begin{enumerate}" not in tail.split("}\n")[0]
+
+
+def test_raw_html_table_backslash_paren_math_not_leaked():
+    # \(...\) math in a raw-HTML table's cells must parse as math, not escape
+    # to \textbackslash( and leak as literal text (RawBlock re-read needs
+    # tex_math_single_backslash). tbl:htmlmath cell is \(\dfrac{1}{K_q}\).
+    out = render(FIXTURES / "environments.md")
+    assert "\\textbackslash(" not in out
+    assert "\\dfrac{1}{K_q}" in out  # cell: real math, not escaped \textbackslash
+    assert "$q(t)$" in out  # caption: math renders too, not stringified to nothing
