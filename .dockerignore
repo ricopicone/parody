@@ -1,0 +1,16 @@
+# Keep the build context tiny — the images only need pyproject/uv.lock/README
+# and the parody/ package. Everything below would bloat or poison the context.
+.venv/
+**/__pycache__/
+*.pyc
+.git/
+.github/
+.claude-worktrees/
+.claude/
+tests/golden/
+dist/
+build/
+artifact/
+*.pdf
+scratchpad/
+node_modules/
