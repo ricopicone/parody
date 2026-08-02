@@ -1115,7 +1115,12 @@ local function tabler_latex(el)
       .. table.concat(lines, '\n') .. '\n\\end{tabular}'
   end
 
-  local caption_text = pandoc.utils.stringify(simple.caption)
+  -- Render caption inlines to LaTeX, not stringify: stringify flattens Math and
+  -- markup to plain text, so \(x\) math in a caption would vanish. Unwrap the
+  -- newlines pandoc.write inserts so the \tabcaption argument stays one line.
+  local caption_text = pandoc.write(
+    pandoc.Pandoc({ pandoc.Plain(simple.caption) }), 'latex')
+  caption_text = caption_text:gsub('\n', ' '):gsub('%s+$', '')
   caption_text = string.gsub(caption_text, '%s*{#.*}$', '')
   local content_latex = render_tabular(simple.headers, simple.rows)
   if string.len(caption_text) > 0 or identifier ~= '' then
@@ -1344,7 +1349,11 @@ end
 function RawBlock(el)
   if is_latex() then
     if el.format:match 'html' then
-      local html_read = pandoc.read(el.text, 'html+tex_math_dollars').blocks
+      -- tex_math_single_backslash so \(...\)/\[...\] math in raw-HTML table
+      -- cells parses as math too (not just $...$); otherwise the backslashes
+      -- get escaped to \textbackslash( and the math leaks as literal text.
+      local html_read = pandoc.read(
+        el.text, 'html+tex_math_dollars+tex_math_single_backslash').blocks
       local html_reads = {}
       for i = 1, #html_read do
         html_reads[i] = pandoc.walk_block(html_read[i], interior_filter)
