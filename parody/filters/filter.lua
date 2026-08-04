@@ -511,17 +511,25 @@ local function exercise(el)
 
   -- Only transform for HTML
   if FORMAT:match 'html' then
+    -- Lab problems (::: {.exercise .lab}) are numbered on their own per-chapter
+    -- counter and labelled "Problem L4.5" by the web renderer, so the artifact
+    -- has to carry the distinction. Purely additive: the legacy class string and
+    -- attribute order are untouched, because homepage-django styles those
+    -- Tailwind names for real and tests/golden/*.json pins the markup.
+    local classes = {"exercise", "numbered-environment", "rounded", "border",
+                     "border-green-400", "shadow-md", "my-4", "bg-white",
+                     "scroll-mt-20"}
+    local kv = {{"data-h", hash}, {"data-env-type", "exercise"}}
+    if el.classes:includes('lab') then
+      classes[#classes + 1] = "lab"
+      kv[#kv + 1] = {"data-lab", "1"}
+    end
     return pandoc.Div({
       pandoc.Div({
         pandoc.Header(3, title, { class = "text-lg font-semibold text-green-900" })
       }, { class = "px-4 py-2 border-b border-green-400 bg-green-50 rounded-t" }),
       pandoc.Div(filtered_content, { class = "px-4 py-3 text-sm text-gray-700" })
-    }, {
-      class = "exercise numbered-environment rounded border border-green-400 shadow-md my-4 bg-white scroll-mt-20",
-      id = identifier,
-      ["data-h"] = hash,
-      ["data-env-type"] = "exercise"
-    })
+    }, pandoc.Attr(identifier, classes, kv))
   else
     return el
   end
