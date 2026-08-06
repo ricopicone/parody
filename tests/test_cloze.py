@@ -402,3 +402,74 @@ def test_profile_macros_compile(tmp_path, profile, mode):
     log = (work / "main.log").read_text(encoding="utf-8", errors="replace")
     assert "Undefined control sequence" not in log, log[-3000:]
     assert "LaTeX Error" not in log, log[-3000:]
+
+
+# --- figures ---------------------------------------------------------------
+
+@pytest.fixture
+def figdir(tmp_path):
+    for name in ("rl.pdf", "rl-blank.pdf", "bode.pdf", "bode-cloze.pdf",
+                 "plain.pdf"):
+        (tmp_path / name).write_bytes(b"%PDF-1.4\n")
+    return tmp_path
+
+
+@contextmanager
+def chapter_dir(d):
+    saved = os.environ.get("PARODY_CHAPTER_DIR")
+    os.environ["PARODY_CHAPTER_DIR"] = str(d)
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop("PARODY_CHAPTER_DIR", None)
+        else:
+            os.environ["PARODY_CHAPTER_DIR"] = saved
+
+
+def test_web_explicit_cloze_variant(figdir):
+    md = '![Root locus](rl.pdf){#fig:rl cloze="rl-blank.pdf"}'
+    with chapter_dir(figdir):
+        out = web(md, "blank", cwd=figdir)
+    assert "rl-blank.pdf" in out
+    assert "rl.pdf" not in out.replace("rl-blank.pdf", "")
+
+
+def test_web_complete_artwork_in_key_and_full(figdir):
+    md = '![Root locus](rl.pdf){#fig:rl cloze="rl-blank.pdf"}'
+    for mode in ("key", "full"):
+        with chapter_dir(figdir):
+            out = web(md, mode, cwd=figdir)
+        assert "rl-blank.pdf" not in out
+
+
+def test_web_sibling_variant_autodetected(figdir):
+    with chapter_dir(figdir):
+        out = web("![Bode](bode.pdf){#fig:b}", "blank", cwd=figdir)
+    assert "bode-cloze.pdf" in out
+
+
+def test_web_no_variant_renders_complete(figdir):
+    """No variant authored means the artwork isn't part of the exercise."""
+    with chapter_dir(figdir):
+        out = web("![Plain](plain.pdf){#fig:p}", "blank", cwd=figdir)
+    assert "plain.pdf" in out
+
+
+def test_print_explicit_cloze_variant(figdir):
+    with chapter_dir(figdir):
+        out = latex('![Root locus](rl.pdf){#fig:rl cloze="rl-blank.pdf"}')
+    assert "rl-blank" in out
+
+
+def test_print_sibling_variant_autodetected(figdir):
+    with chapter_dir(figdir):
+        out = latex("![Bode](bode.pdf){#fig:b}")
+    assert "bode-cloze" in out
+
+
+def test_print_complete_artwork_in_full(figdir):
+    with chapter_dir(figdir):
+        out = latex('![Root locus](rl.pdf){#fig:rl cloze="rl-blank.pdf"}',
+                    "full")
+    assert "rl-blank" not in out

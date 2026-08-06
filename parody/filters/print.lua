@@ -130,6 +130,9 @@ end
 -- stream — a `blank` PDF cannot be mined for answers. Named sizes are resolved
 -- here so the profile always receives a real length. See filter.lua for the
 -- web side, which must strip the answer instead.
+-- Figure variants are the one thing print resolves in Lua, not TeX: asset
+-- resolution and svg conversion already live here.
+local CLOZE_MODE = os.getenv('PARODY_CLOZE_MODE') or 'blank'
 local CLOZE_SIZES = { sm = '2em', md = '5em', lg = '10em', xl = '20em' }
 
 local function cloze_manual_width(el)
@@ -137,6 +140,25 @@ local function cloze_manual_width(el)
   if w and w ~= '' then return w end
   local size = (el.attributes and el.attributes.size) or 'md'
   return CLOZE_SIZES[size] or CLOZE_SIZES.md
+end
+
+-- Incomplete artwork for `blank` mode: an explicit cloze="…" attribute, else a
+-- <stem>-cloze.<ext> sibling in the chapter source dir. Absence means the
+-- figure isn't part of the exercise, so it renders complete in every mode.
+-- Only the referenced file is staged into media/, so in `blank` mode the
+-- complete artwork is never published.
+local function cloze_variant_src(el)
+  if CLOZE_MODE ~= 'blank' then return nil end
+  local explicit = el.attributes and el.attributes.cloze
+  if explicit and explicit ~= '' then return explicit end
+  local stem, ext = el.src:match('^(.*)%.(%w+)$')
+  if not stem then return nil end
+  local candidate = stem .. '-cloze.' .. ext
+  local dir = os.getenv('PARODY_CHAPTER_DIR')
+  if not dir then return nil end
+  local f = io.open(dir .. '/' .. candidate, 'r')
+  if f then f:close() return candidate end
+  return nil
 end
 
 local function clozer_latex(el)
@@ -1600,6 +1622,8 @@ end
 -- \includegraphics cannot load .pgf; route those through \inputpgf.
 function Image(el)
   if not is_latex() then return el end
+  local variant = cloze_variant_src(el)
+  if variant then el.src = variant end
   if el.classes:includes('pgf') or el.src:match('%.pgf$') then
     return imager(el)
   end
@@ -1690,6 +1714,10 @@ end
 function Figure(el)
   local first = el.content[1]
   local image = first and first.content and first.content[1]
+  if image and image.src then
+    local variant = cloze_variant_src(image)
+    if variant then image.src = variant end
+  end
   if image and image.classes and image.classes:includes('algorithm') then
     if is_latex() then
       return algorithmer_latex(el)

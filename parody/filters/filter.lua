@@ -762,6 +762,25 @@ local function blanker(el)
   return pandoc.RawInline('html', cloze_blank_html(cloze_manual_width(el)))
 end
 
+-- Incomplete artwork for `blank` mode: an explicit cloze="…" attribute, else a
+-- <stem>-cloze.<ext> sibling in the chapter source dir. Absence means the
+-- figure isn't part of the exercise, so it renders complete in every mode.
+-- Only the referenced file is staged into media/, so in `blank` mode the
+-- complete artwork is never published.
+local function cloze_variant_src(el)
+  if CLOZE_MODE ~= 'blank' then return nil end
+  local explicit = el.attributes and el.attributes.cloze
+  if explicit and explicit ~= '' then return explicit end
+  local stem, ext = el.src:match('^(.*)%.(%w+)$')
+  if not stem then return nil end
+  local candidate = stem .. '-cloze.' .. ext
+  local dir = os.getenv('PARODY_CHAPTER_DIR')
+  if not dir then return nil end
+  local f = io.open(dir .. '/' .. candidate, 'r')
+  if f then f:close() return candidate end
+  return nil
+end
+
 -- Rewrite every `\<name>{...}` in a TeX string, honoring nested braces.
 -- A regex can't do this: \cloze{\sqrt{k/m}} would stop at the first brace.
 -- Escaped braces (\{ \}) inside an argument are not supported; clozes are
@@ -897,6 +916,8 @@ function Link(el)
 end
 
 function Image(el, notebook_slug, chapter_slug, base_name)
+  local variant = cloze_variant_src(el)
+  if variant then el.src = variant end
   local path = el.src
   local alt = ""
   if el.content then
@@ -1005,6 +1026,8 @@ function Figure(el)
 
   if #el.content > 0 and el.content[1].content and #el.content[1].content > 0 and el.content[1].content[1].t == "Image" then
     local image = el.content[1].content[1]  -- Figure -> Plain -> Image
+    local variant = cloze_variant_src(image)
+    if variant then image.src = variant end
     local path = image.src
     local alt = pandoc.utils.stringify(image.content)
 
