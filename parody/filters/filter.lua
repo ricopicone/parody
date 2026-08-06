@@ -762,6 +762,64 @@ local function blanker(el)
   return pandoc.RawInline('html', cloze_blank_html(cloze_manual_width(el)))
 end
 
+-- Rewrite every `\<name>{...}` in a TeX string, honoring nested braces.
+-- A regex can't do this: \cloze{\sqrt{k/m}} would stop at the first brace.
+-- Escaped braces (\{ \}) inside an argument are not supported; clozes are
+-- authored as prose or short expressions, and the scanner leaves the string
+-- untouched if it ever finds the braces unbalanced.
+local function cloze_rewrite_macro(text, name, replace)
+  local out, i = {}, 1
+  local head = '\\' .. name
+  while true do
+    local s = text:find(head .. '%s*{', i)
+    if not s then break end
+    local open = text:find('{', s + #head)
+    local depth, j = 1, open + 1
+    while j <= #text and depth > 0 do
+      local c = text:sub(j, j)
+      if c == '{' then depth = depth + 1
+      elseif c == '}' then depth = depth - 1 end
+      j = j + 1
+    end
+    if depth ~= 0 then return text end  -- unbalanced: leave it alone
+    out[#out + 1] = text:sub(i, s - 1)
+    out[#out + 1] = replace(text:sub(open + 1, j - 2))
+    i = j
+  end
+  out[#out + 1] = text:sub(i)
+  return table.concat(out)
+end
+
+-- Math is opaque to pandoc, so clozes inside it are a TeX macro rather than a
+-- span. Rewrite them here so the answer never reaches the browser in `blank`
+-- mode.
+--
+-- Both replacements were checked against MathJax v3 (tex-mml-chtml) in a
+-- browser: \underline{\hspace{w}} draws a clean rule with correct spacing
+-- (a bare \rule butts against the preceding operator), and \class needs BOTH
+-- lines of MathJax config, not just the package list:
+--     loader: {load: ['[tex]/html']},
+--     tex: {packages: {'[+]': ['html']}}
+-- With only the second, \class renders as a red undefined-macro error.
+function Math(el)
+  if not (el.text:find('\\cloze') or el.text:find('\\blank')) then
+    return el
+  end
+  local t = cloze_rewrite_macro(el.text, 'cloze', function(arg)
+    if CLOZE_MODE == 'full' then return arg end
+    if CLOZE_MODE == 'key' then
+      return '\\class{cloze-key}{' .. arg .. '}'
+    end
+    return '\\underline{\\hspace{' .. cloze_estimate_width(arg) .. '}}'
+  end)
+  t = cloze_rewrite_macro(t, 'blank', function(arg)
+    if CLOZE_MODE == 'full' then return '' end
+    return '\\underline{\\hspace{' .. arg .. '}}'
+  end)
+  el.text = t
+  return el
+end
+
 -- Block forms. `::: {.blank lines=6}` is empty work space; `::: {.cloze}`
 -- hides a whole passage, blanked to roughly its own height (~90 chars/line).
 local function cloze_lines_html(n)

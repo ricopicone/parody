@@ -241,3 +241,52 @@ def test_web_hidden_block_line_count_grows_with_content():
     long = web("::: {.cloze}\n" + "word " * 200 + "\n:::", "blank")
     assert lines(short) == 1
     assert lines(long) > 1
+
+
+# --- web: math -------------------------------------------------------------
+
+def test_web_math_cloze_hidden():
+    out = web(r"The constant is $\tau = \cloze{RC}$.", "blank")
+    assert "RC" not in out
+    assert "underline" in out
+
+
+def test_web_math_cloze_nested_braces():
+    r"""A brace-matching scanner, not a regex: \cloze{\sqrt{k/m}} nests."""
+    out = web(r"$\omega_n = \cloze{\sqrt{k/m}}$", "blank")
+    assert "sqrt" not in out
+    assert "k/m" not in out
+
+
+def test_web_math_cloze_key():
+    out = web(r"$\tau = \cloze{RC}$", "key")
+    assert "RC" in out
+    assert r"\class{cloze-key}" in out
+
+
+def test_web_math_cloze_full():
+    out = web(r"$\tau = \cloze{RC}$", "full")
+    assert "RC" in out
+    assert "cloze" not in out
+
+
+def test_web_math_manual_blank():
+    out = web(r"$y(t) = \blank{3em}$", "blank")
+    assert "3em" in out
+    assert "underline" in out
+
+
+def test_web_math_manual_blank_dropped_in_full():
+    out = web(r"$y(t) = \blank{3em}$", "full")
+    assert "blank" not in out
+    assert "3em" not in out
+
+
+def test_web_display_math_cloze():
+    out = web(r"$$x = \cloze{\frac{a}{b}}$$", "blank")
+    assert "frac" not in out
+
+
+def test_web_math_without_cloze_untouched():
+    out = web(r"$E = mc^2$", "blank")
+    assert "mc^2" in out

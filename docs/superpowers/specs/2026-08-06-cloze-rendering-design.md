@@ -199,10 +199,15 @@ nests. Rewrites:
 | `key` | `\class{cloze-key}{X}` | `\underline{\hspace{L}}` |
 | `full` | `X` | removed |
 
-`\class` requires MathJax's `html` package — a one-line addition to the MathJax
-config parody-web already carries for macros and packages. If `\underline{\hspace{…}}`
-proves not to render a visible rule in MathJax v3, fall back to
-`\rule[-0.3em]{<w>em}{0.4pt}`; verify during implementation.
+`\class` requires MathJax's `html` package. **Verified in a browser against
+MathJax v3 (`tex-mml-chtml`)** during implementation:
+
+- `\underline{\hspace{<w>}}` draws a clean rule with correct spacing. A bare
+  `\rule[-0.3em]{<w>}{0.4pt}` also renders, but butts directly against the
+  preceding operator with no gap — so `\underline{\hspace{…}}` it is.
+- `\class` needs **two** lines of MathJax config, not just the package list:
+  `loader: {load: ['[tex]/html']}` **and** `tex: {packages: {'[+]': ['html']}}`.
+  With only the second it renders as a red undefined-macro error.
 
 ## Boxes and solutions
 
@@ -268,5 +273,6 @@ answer key is nonsense.
 | `tests/` | as above |
 
 parody-web follow-on (separate repo, separate release): CSS for `.cloze-blank`,
-`.cloze-key`, `.cloze-lines`; MathJax `html` package; optional instructor-copy
-labelling from `cloze_mode`.
+`.cloze-key`, `.cloze-lines`; MathJax `html` package (both the `loader.load`
+and `tex.packages` entries above); optional instructor-copy labelling from
+`cloze_mode`.
