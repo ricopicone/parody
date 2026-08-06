@@ -194,12 +194,17 @@ def _check_duplicate_hashes(artifact):
 
 
 @contextlib.contextmanager
-def _slug_env(notebook_slug=None, chapter_slug=None, media_root=None):
+def _slug_env(notebook_slug=None, chapter_slug=None, media_root=None,
+              chapter_dir=None, cloze_mode=None):
     """Set PARODY_* context env vars, restoring previous values on exit."""
     updates = {
         "PARODY_NOTEBOOK_SLUG": notebook_slug,
         "PARODY_CHAPTER_SLUG": chapter_slug,
         "PARODY_MEDIA_ROOT": str(media_root) if media_root else None,
+        # chapter_dir lets the web filter stat sibling files (e.g. a figure's
+        # <stem>-cloze.<ext> variant) the way print.lua already can.
+        "PARODY_CHAPTER_DIR": str(chapter_dir) if chapter_dir else None,
+        "PARODY_CLOZE_MODE": cloze_mode,
     }
     saved = {k: os.environ.get(k) for k in updates}
     try:
@@ -314,7 +319,8 @@ def build_editions(project_dir, output_dir, **kwargs):
 
 
 def build_project(project_dir, output_path, convert_jupytext=True,
-                  media_root=None, online_only=False, edition=None):
+                  media_root=None, online_only=False, edition=None,
+                  cloze_mode=None):
     """Build the JSON artifact for either layout. Returns the artifact dict.
 
     online_only: emit only the public web subset (online-only sections +
@@ -327,8 +333,14 @@ def build_project(project_dir, output_path, convert_jupytext=True,
     overlay, decision 1a). None builds the unfiltered single artifact (also
     the back-compat path for books without editions). Usually called via
     build_editions, which loops over every configured edition.
+
+    cloze_mode: "blank" | "key" | "full" (see config.resolve_cloze_mode).
+    None takes parody.yaml's `cloze.default`, itself defaulting to "blank".
     """
     project = load_project(project_dir)
+
+    from .config import resolve_cloze_mode
+    cloze_mode = resolve_cloze_mode(project.meta, cloze_mode)
 
     if project.layout == "legacy":
         convert_notebook(
@@ -380,6 +392,12 @@ def build_project(project_dir, output_path, convert_jupytext=True,
     if chapter_start != 1:
         output["chapter_start"] = chapter_start
 
+    # Cloze rendering mode. Emitted only when it isn't the default, so
+    # artifacts of books without fill-in-the-blank content stay byte-identical
+    # (same convention as chapter_start). Absence means "blank".
+    if cloze_mode != "blank":
+        output["cloze_mode"] = cloze_mode
+
     # Edition metadata: this artifact's edition plus the full roster, so a
     # renderer can build the edition switcher (default = latest) from any one
     # edition's artifact.
@@ -395,7 +413,8 @@ def build_project(project_dir, output_path, convert_jupytext=True,
     requested_code_files = set()
 
     for chapter in project.chapters:
-        with _slug_env(project.slug, chapter.slug, media_root):
+        with _slug_env(project.slug, chapter.slug, media_root,
+                       chapter_dir=chapter.directory, cloze_mode=cloze_mode):
             if convert_jupytext:
                 converted = convert_jupytext_files_in_directory(chapter.directory)
                 if converted:

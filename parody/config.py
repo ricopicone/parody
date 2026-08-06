@@ -150,3 +150,21 @@ def load_project(project_dir):
         bibliography=_find_bibliography(project_dir),
         editions=normalize_editions(meta.get("editions")),
     )
+
+
+# Cloze (fill-in-the-blank) rendering mode. `blank` hides answers behind
+# rules (student handout), `key` shows them accented (instructor copy),
+# `full` renders them as ordinary text (publication build). Orthogonal to
+# --solutions: a published student book wants clozes filled and exercise
+# solutions hidden. Default `blank` so a build can never leak by omission.
+CLOZE_MODES = ("blank", "key", "full")
+
+
+def resolve_cloze_mode(meta, override=None):
+    """CLI override > parody.yaml `cloze.default` > "blank"."""
+    value = override or (meta.get("cloze") or {}).get("default") or "blank"
+    if value not in CLOZE_MODES:
+        raise ValueError(
+            f"unknown cloze mode {value!r} (expected one of: "
+            + ", ".join(CLOZE_MODES) + ")")
+    return value

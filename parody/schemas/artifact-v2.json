@@ -59,6 +59,11 @@
       "description": "The number of the first (non-appendix) chapter. Omitted when the default of 1 applies; set to 0 for books whose first chapter is 'Chapter 0' (e.g. RTC). Section/figure/equation numbers inherit it (0.1, Figure 0.4, ...).",
       "type": "integer"
     },
+    "cloze_mode": {
+      "description": "Cloze (fill-in-the-blank) rendering this artifact was built with: \"key\" (instructor copy, answers shown accented) or \"full\" (cloze-free publication build). Absent means \"blank\" — the student handout, where answers are replaced by rules at build time and never reach the browser.",
+      "type": "string",
+      "enum": ["key", "full"]
+    },
     "edition": {
       "description": "Present on per-edition artifacts: the edition this artifact was built for (id, title, active version tracks, and whether it is the default/latest shown by the web switcher).",
       "type": "object",

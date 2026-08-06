@@ -189,7 +189,8 @@ def resolve_profile(profile):
 
 
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
-              profile_dir=None, keep_build=False, build_dir=None):
+              profile_dir=None, keep_build=False, build_dir=None,
+              cloze_mode=None):
     """Build the print PDF. Returns the path to the produced PDF.
 
     section: "chapter-slug/section-slug" builds just that section
@@ -199,6 +200,9 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # with cwd at the section dir, where relative paths no longer resolve.
     project_dir = Path(project_dir).resolve()
     project = load_project(project_dir)
+
+    from ..config import resolve_cloze_mode
+    cloze_mode = resolve_cloze_mode(project.meta, cloze_mode)
 
     from ..plugins import apply_transforms, content_transforms
     transforms = content_transforms(project.meta, project.directory, target="print")
@@ -222,11 +226,15 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # so hand it the project/chapter context and an svg-conversion cache.
     # Save/restore so the context never leaks past this build.
     _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
-                 "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR")
+                 "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
+                 "PARODY_CLOZE_MODE")
     _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
     os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
     os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
     os.environ["PARODY_SVG_CACHE"] = str(build_dir / "svg-cache")
+    # print.lua needs the mode only for figure variants; TeX branches on
+    # \clozemode for everything else.
+    os.environ["PARODY_CLOZE_MODE"] = cloze_mode
     chapters_tex = []
     # chapter_start: the number of the first (non-appendix) chapter (default 1).
     # \chapter increments the counter before printing, so seed it one below the
@@ -292,6 +300,9 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     flags = []
     if solutions:
         flags.append("\\def\\issolution{1}")
+    # Cloze mode is a separate axis from --solutions: a published student book
+    # wants clozes filled and exercise solutions hidden.
+    flags.append("\\def\\clozemode{%s}" % cloze_mode)
 
     # Companion-site base URL (book.companion_url in parody.yaml). A profile
     # can use it to build printed QR codes / short links (\companionurl/<hash>).

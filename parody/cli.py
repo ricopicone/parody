@@ -23,6 +23,7 @@ def cmd_build(args):
         convert_jupytext=not args.no_execute,
         media_root=args.media_root,
         online_only=getattr(args, "online_only", False),
+        cloze_mode=getattr(args, "clozes", None),
     )
 
     project = load_project(args.input_dir)
@@ -110,6 +111,7 @@ def cmd_pdf(args):
         solutions=args.solutions,
         section=args.section,
         profile_dir=args.profile,
+        cloze_mode=args.clozes,
     )
     return 0
 
@@ -271,6 +273,10 @@ def main(argv=None):
                          help="emit only the public web subset (online-only sections + "
                               "per-section online-resources) — the partial artifact a "
                               "standalone book host (e.g. rtcbook.org) imports")
+    p_build.add_argument("--clozes", metavar="MODE",
+                         help="cloze rendering: blank (student handout, the "
+                              "default), key (instructor copy), or full "
+                              "(cloze-free publication build)")
     p_build.set_defaults(func=cmd_build)
 
     p_prev = sub.add_parser("preview", help="render a static HTML preview site")
@@ -298,6 +304,10 @@ def main(argv=None):
     p_pdf.add_argument("-o", "--output", help="output PDF path")
     p_pdf.add_argument("--solutions", action="store_true",
                        help="build the solutions manual (\\issolution)")
+    p_pdf.add_argument("--clozes", metavar="MODE",
+                       help="cloze rendering: blank (student handout, the "
+                            "default), key (instructor copy), or full "
+                            "(cloze-free publication build)")
     p_pdf.add_argument("--section", metavar="CH/SEC",
                        help="build a single section (chapter-slug/section-slug)")
     p_pdf.add_argument("--profile",
