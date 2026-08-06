@@ -709,8 +709,88 @@ function CodeBlock(el)
   return el
 end
 
+-- ---- cloze (fill-in-the-blank) -------------------------------------------
+-- PARODY_CLOZE_MODE: blank (default) | key | full.
+--
+-- In `blank` the hidden text is NEVER written into the HTML: anything this
+-- filter emits is fetchable by the reader, so the answer is replaced here at
+-- build time, not hidden with CSS. Widths are estimates (HTML can't measure
+-- at build time); print measures the real box instead — see print.lua.
+local CLOZE_MODE = os.getenv('PARODY_CLOZE_MODE') or 'blank'
+
+local CLOZE_SIZES = { sm = '2em', md = '5em', lg = '10em', xl = '20em' }
+
+-- Width of a manual blank: explicit width= wins, then a named size=, then md.
+local function cloze_manual_width(el)
+  local w = el.attributes and el.attributes.width
+  if w and w ~= '' then return w end
+  local size = (el.attributes and el.attributes.size) or 'md'
+  return CLOZE_SIZES[size] or CLOZE_SIZES.md
+end
+
+-- Width of an automatic blank, estimated from the hidden content. TeX control
+-- sequences are stripped first so \sqrt{k/m} counts its glyphs, not its source.
+local function cloze_estimate_width(text)
+  local plain = text:gsub('\\%a+%s*', ''):gsub('[{}$]', '')
+  local n = pandoc.text.len(plain)
+  local w = 0.6 * n + 0.8
+  if w < 2 then w = 2 elseif w > 14 then w = 14 end
+  return string.format('%.1fem', w)
+end
+
+local function cloze_blank_html(width)
+  return string.format(
+    '<span class="cloze-blank" style="--cloze-w: %s"></span>', width)
+end
+
+-- [answer]{.cloze} — hide the answer behind a rule sized to it.
+local function clozer(el)
+  if CLOZE_MODE == 'full' then
+    return el.content  -- no wrapper at all: identical to a book without clozes
+  elseif CLOZE_MODE == 'key' then
+    return pandoc.Span(el.content, { class = 'cloze-key' })
+  end
+  return pandoc.RawInline('html', cloze_blank_html(
+    cloze_estimate_width(pandoc.utils.stringify(el.content))))
+end
+
+-- []{.blank size=lg} — a manual blank with nothing behind it. `key` keeps the
+-- rule (there is no answer to reveal); `full` drops it (a published book has
+-- no room to write in).
+local function blanker(el)
+  if CLOZE_MODE == 'full' then return {} end
+  return pandoc.RawInline('html', cloze_blank_html(cloze_manual_width(el)))
+end
+
+-- Block forms. `::: {.blank lines=6}` is empty work space; `::: {.cloze}`
+-- hides a whole passage, blanked to roughly its own height (~90 chars/line).
+local function cloze_lines_html(n)
+  return string.format('<div class="cloze-lines" data-lines="%d"></div>', n)
+end
+
+local function blank_div(el)
+  if CLOZE_MODE == 'full' then return {} end
+  local n = tonumber(el.attributes and el.attributes.lines) or 4
+  return pandoc.RawBlock('html', cloze_lines_html(math.max(1, math.floor(n))))
+end
+
+local function cloze_div(el)
+  if CLOZE_MODE == 'full' then
+    return el.content
+  elseif CLOZE_MODE == 'key' then
+    return pandoc.Div(el.content, { class = 'cloze-key-block' })
+  end
+  local chars = pandoc.text.len(pandoc.utils.stringify(el.content))
+  return pandoc.RawBlock('html', cloze_lines_html(
+    math.max(1, math.ceil(chars / 90))))
+end
+
 function Div(el)
-  if el.classes:includes("subfigures") then
+  if el.classes:includes("cloze") then
+    return cloze_div(el)
+  elseif el.classes:includes("blank") then
+    return blank_div(el)
+  elseif el.classes:includes("subfigures") then
     return subfigures(el)
   elseif el.classes:includes("subtables") then
     return subtables(el)
@@ -1090,59 +1170,6 @@ function Table(el)
   end
   
   return el
-end
-
--- ---- cloze (fill-in-the-blank) -------------------------------------------
--- PARODY_CLOZE_MODE: blank (default) | key | full.
---
--- In `blank` the hidden text is NEVER written into the HTML: anything this
--- filter emits is fetchable by the reader, so the answer is replaced here at
--- build time, not hidden with CSS. Widths are estimates (HTML can't measure
--- at build time); print measures the real box instead — see print.lua.
-local CLOZE_MODE = os.getenv('PARODY_CLOZE_MODE') or 'blank'
-
-local CLOZE_SIZES = { sm = '2em', md = '5em', lg = '10em', xl = '20em' }
-
--- Width of a manual blank: explicit width= wins, then a named size=, then md.
-local function cloze_manual_width(el)
-  local w = el.attributes and el.attributes.width
-  if w and w ~= '' then return w end
-  local size = (el.attributes and el.attributes.size) or 'md'
-  return CLOZE_SIZES[size] or CLOZE_SIZES.md
-end
-
--- Width of an automatic blank, estimated from the hidden content. TeX control
--- sequences are stripped first so \sqrt{k/m} counts its glyphs, not its source.
-local function cloze_estimate_width(text)
-  local plain = text:gsub('\\%a+%s*', ''):gsub('[{}$]', '')
-  local n = pandoc.text.len(plain)
-  local w = 0.6 * n + 0.8
-  if w < 2 then w = 2 elseif w > 14 then w = 14 end
-  return string.format('%.1fem', w)
-end
-
-local function cloze_blank_html(width)
-  return string.format(
-    '<span class="cloze-blank" style="--cloze-w: %s"></span>', width)
-end
-
--- [answer]{.cloze} — hide the answer behind a rule sized to it.
-local function clozer(el)
-  if CLOZE_MODE == 'full' then
-    return el.content  -- no wrapper at all: identical to a book without clozes
-  elseif CLOZE_MODE == 'key' then
-    return pandoc.Span(el.content, { class = 'cloze-key' })
-  end
-  return pandoc.RawInline('html', cloze_blank_html(
-    cloze_estimate_width(pandoc.utils.stringify(el.content))))
-end
-
--- []{.blank size=lg} — a manual blank with nothing behind it. `key` keeps the
--- rule (there is no answer to reveal); `full` drops it (a published book has
--- no room to write in).
-local function blanker(el)
-  if CLOZE_MODE == 'full' then return {} end
-  return pandoc.RawInline('html', cloze_blank_html(cloze_manual_width(el)))
 end
 
 function Span(el)

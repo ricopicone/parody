@@ -200,3 +200,44 @@ def test_web_cloze_inside_a_box():
     out = web(md, "blank")
     assert "0.707" not in out
     assert "cloze-blank" in out
+
+
+# --- web: block forms ------------------------------------------------------
+
+def test_web_manual_block_blank():
+    out = web("::: {.blank lines=6}\n:::", "blank")
+    assert 'class="cloze-lines"' in out
+    assert 'data-lines="6"' in out
+
+
+def test_web_manual_block_defaults_to_four_lines():
+    assert 'data-lines="4"' in web("::: {.blank}\n:::", "blank")
+
+
+def test_web_manual_block_dropped_in_full():
+    assert "cloze-lines" not in web("::: {.blank lines=6}\n:::", "full")
+
+
+def test_web_hidden_block_hides_its_text():
+    md = "::: {.cloze}\nA whole hidden paragraph of derivation.\n:::"
+    out = web(md, "blank")
+    assert "derivation" not in out
+    assert 'class="cloze-lines"' in out
+
+
+def test_web_hidden_block_shows_text_in_key_and_full():
+    md = "::: {.cloze}\nA whole hidden paragraph of derivation.\n:::"
+    assert "derivation" in web(md, "key")
+    assert "cloze-key-block" in web(md, "key")
+    full = web(md, "full")
+    assert "derivation" in full
+    assert "cloze" not in full
+
+
+def test_web_hidden_block_line_count_grows_with_content():
+    def lines(html):
+        return int(html.split('data-lines="')[1].split('"')[0])
+    short = web("::: {.cloze}\nshort\n:::", "blank")
+    long = web("::: {.cloze}\n" + "word " * 200 + "\n:::", "blank")
+    assert lines(short) == 1
+    assert lines(long) > 1
