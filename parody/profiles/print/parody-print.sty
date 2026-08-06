@@ -135,6 +135,13 @@
   \xsimsetup{labsolution/print=true}
 \fi
 
+% A cloze inside a solution always renders full — an answer key must not blank
+% its own answers. Scoped to the environment, so the ambient \clozemode returns
+% at \end. (\clozemode is \providecommand'd in the cloze block above.)
+\AtBeginEnvironment{solution}{\renewcommand{\clozemode}{full}}
+\AtBeginEnvironment{labsolution}{\renewcommand{\clozemode}{full}}
+
+
 % ---- theorem-like environments: \begin{<env>}{title}{label} ----
 \newcounter{thmctr}
 \newtcolorbox{parodythmbox}[2]{%

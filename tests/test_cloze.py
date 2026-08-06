@@ -473,3 +473,34 @@ def test_print_complete_artwork_in_full(figdir):
         out = latex('![Root locus](rl.pdf){#fig:rl cloze="rl-blank.pdf"}',
                     "full")
     assert "rl-blank" not in out
+
+
+# --- solutions -------------------------------------------------------------
+
+def test_solution_clozes_always_render_full(tmp_path):
+    """An answer key must not blank its own answers."""
+    from parody.writers.artifact import convert_solution_to_html
+
+    with cloze_mode("blank"):
+        html = convert_solution_to_html(
+            "The ratio is [0.707]{.cloze}.", str(tmp_path), cloze_mode="full")
+    assert "0.707" in html
+    assert "cloze-blank" not in html
+
+
+def test_problem_bodies_keep_the_ambient_mode(tmp_path):
+    from parody.writers.artifact import convert_solution_to_html
+
+    with cloze_mode("blank"):
+        html = convert_solution_to_html(
+            "The ratio is [0.707]{.cloze}.", str(tmp_path))
+    assert "0.707" not in html
+
+
+def test_solution_override_is_restored(tmp_path):
+    """The override must not leak into the rest of the build."""
+    from parody.writers.artifact import convert_solution_to_html
+
+    with cloze_mode("blank"):
+        convert_solution_to_html("x", str(tmp_path), cloze_mode="full")
+        assert os.environ["PARODY_CLOZE_MODE"] == "blank"
