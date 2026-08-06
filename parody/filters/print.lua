@@ -78,6 +78,15 @@ interior_filter = {
   OrderedList = function(el) return OrderedList(el) end,
   Table = function(el) return Table(el) end,
   Figure = function(el) return Figure(el) end,
+  -- Only cloze blocks: returning nil for every other class leaves the bespoke
+  -- nested-Div handling inside the environment handlers untouched. Late-binds
+  -- to the global Div, like the other entries here.
+  Div = function(el)
+    if el.classes:includes('cloze') or el.classes:includes('blank') then
+      return Div(el)
+    end
+    return nil
+  end,
 }
 
 -- Bare-image fallback. Walked separately AFTER interior_filter: within a
@@ -112,6 +121,43 @@ local function inlines_to_latex(content)
   local doc = pandoc.Pandoc(walked)
   local tex = pandoc.write(doc, 'latex')
   return (tex:gsub("\n$", ""))
+end
+
+-- ---- cloze (fill-in-the-blank) -------------------------------------------
+-- Print emits the profile-contract macros in every mode and lets TeX branch on
+-- \clozemode: only LaTeX can measure the hidden box (\settowidth), so widths
+-- are exact, and the discarded measuring box never enters the PDF content
+-- stream — a `blank` PDF cannot be mined for answers. Named sizes are resolved
+-- here so the profile always receives a real length. See filter.lua for the
+-- web side, which must strip the answer instead.
+local CLOZE_SIZES = { sm = '2em', md = '5em', lg = '10em', xl = '20em' }
+
+local function cloze_manual_width(el)
+  local w = el.attributes and el.attributes.width
+  if w and w ~= '' then return w end
+  local size = (el.attributes and el.attributes.size) or 'md'
+  return CLOZE_SIZES[size] or CLOZE_SIZES.md
+end
+
+local function clozer_latex(el)
+  return pandoc.RawInline('tex',
+    '\\cloze{' .. inlines_to_latex(el.content) .. '}')
+end
+
+local function blanker_latex(el)
+  return pandoc.RawInline('tex', '\\blank{' .. cloze_manual_width(el) .. '}')
+end
+
+local function cloze_div_latex(el)
+  local content = pandoc.write(pandoc.Pandoc(el.content), 'latex')
+  return pandoc.RawBlock('tex',
+    '\\begin{clozeblock}\n' .. content .. '\n\\end{clozeblock}')
+end
+
+local function blank_div_latex(el)
+  local n = tonumber(el.attributes and el.attributes.lines) or 4
+  return pandoc.RawBlock('tex',
+    string.format('\\clozelines{%d}', math.max(1, math.floor(n))))
 end
 
 -- Inline code in a moving argument (section title, figure/table caption) must
@@ -1516,6 +1562,11 @@ function Div(el)
   if el.classes:includes('section') then
     return el -- section-divs pass through; versioning filters are Phase 4
   end
+  if el.classes:includes('cloze') then
+    return cloze_div_latex(el)
+  elseif el.classes:includes('blank') then
+    return blank_div_latex(el)
+  end
   if el.classes:includes('infobox') then
     return infoboxer(el)
   elseif el.classes:includes('freadinglist') then
@@ -1592,6 +1643,10 @@ function Span(el)
     return hashrefer(el)
   elseif el.classes:includes('lref') then
     return linerefer(el)
+  elseif el.classes:includes('cloze') then
+    return clozer_latex(el)
+  elseif el.classes:includes('blank') then
+    return blanker_latex(el)
   elseif el.classes:includes('label') then
     return labeler(el)
   elseif el.classes:includes('plaincite') then

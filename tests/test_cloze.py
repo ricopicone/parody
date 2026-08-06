@@ -290,3 +290,56 @@ def test_web_display_math_cloze():
 def test_web_math_without_cloze_untouched():
     out = web(r"$E = mc^2$", "blank")
     assert "mc^2" in out
+
+
+# --- print -----------------------------------------------------------------
+
+def latex(md, mode="blank"):
+    with cloze_mode(mode):
+        return pypandoc.convert_text(
+            md, "latex", format=PRINT_FROM,
+            extra_args=[f"--lua-filter={FILTERS / 'print.lua'}", "--biblatex",
+                        "--wrap=none"])
+
+
+def test_print_cloze_span():
+    assert "\\cloze{0.707}" in latex("The ratio is [0.707]{.cloze}.")
+
+
+def test_print_manual_blank_named_size():
+    assert "\\blank{10em}" in latex("Sketch: []{.blank size=lg}")
+
+
+def test_print_manual_blank_explicit_width():
+    assert "\\blank{4cm}" in latex("[]{.blank width=4cm}")
+
+
+def test_print_manual_blank_defaults_to_md():
+    assert "\\blank{5em}" in latex("[]{.blank}")
+
+
+def test_print_block_blank():
+    assert "\\clozelines{6}" in latex("::: {.blank lines=6}\n:::")
+
+
+def test_print_hidden_block():
+    out = latex("::: {.cloze}\nHidden derivation.\n:::")
+    assert "\\begin{clozeblock}" in out
+    assert "\\end{clozeblock}" in out
+    assert "Hidden derivation." in out  # TeX decides; the mode is a \def
+
+
+def test_print_math_cloze_passes_through():
+    r"""Math needs no filter work in print: TeX defines \cloze itself."""
+    assert "\\cloze{RC}" in latex(r"$\tau = \cloze{RC}$")
+
+
+def test_print_cloze_inside_a_box():
+    """interior_filter must reach spans and divs nested in environments."""
+    md = ("::: {.exercise h=\"8y\"}\n"
+          "The ratio is [0.707]{.cloze}.\n\n"
+          "::: {.blank lines=3}\n:::\n"
+          ":::")
+    out = latex(md)
+    assert "\\cloze{0.707}" in out
+    assert "\\clozelines{3}" in out
