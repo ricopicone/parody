@@ -56,7 +56,7 @@ Block forms:
 
 Math (a real TeX macro, not a span):
   $\tau = \cloze{RC}$
-  $y(t) = \blank{3em}$
+  $y(t) = \clozeblank{3em}$
 
 Incomplete artwork:
   ![Root locus](rl.pdf){#fig:rl cloze="rl-blank.pdf"}
@@ -122,7 +122,7 @@ that is where asset resolution and SVG conversion already live.
 | `::: {.blank lines=6}` | 6 ruled lines | 6 ruled lines | dropped |
 | `::: {.cloze}` | `\savebox`, `(\ht+\dp)/\baselineskip` ruled lines | content accented, ruled | content, plain |
 | `$\tau=\cloze{RC}$` | rule sized to `$RC$` | `\class{cloze-key}{RC}` | `RC` |
-| `$\blank{3em}$` | 3 em rule | 3 em rule | dropped |
+| `$\clozeblank{3em}$` | 3 em rule | 3 em rule | dropped |
 | `![](rl.pdf){cloze=rl-blank.pdf}` | `rl-blank.pdf` | `rl.pdf` | `rl.pdf` |
 
 In `full` mode the web HTML is **byte-identical to a book that never had
@@ -138,13 +138,13 @@ is not part of the exercise.
 `print.lua` emits four contract names and nothing more:
 
 - `\cloze{<content>}` — inline, `\ifmmode`-aware so one macro serves text and math
-- `\blank{<size-or-length>}` — manual inline blank
+- `\clozeblank{<size-or-length>}` — manual inline blank
 - `\clozelines{<n>}` — manual block blank
 - `clozeblock` environment — hidden block, self-measuring
 
 Handlers to add:
 
-- `Span`: `.cloze` → `\cloze{…}`, `.blank` → `\blank{…}`, wired into the existing
+- `Span`: `.cloze` → `\cloze{…}`, `.blank` → `\clozeblank{…}`, wired into the existing
   `Span` dispatch chain (`print.lua:1595`). `Span` is **already** in
   `interior_filter` (`print.lua:53`), so inline clozes inside exercise/example
   bodies and captions work with no extra wiring.
@@ -157,6 +157,12 @@ Handlers to add:
 
 Math needs **no** filter work: `Math` already passes `InlineMath` through as raw
 TeX, so `\cloze` inside `$…$` reaches LaTeX intact.
+
+The math macro is `\clozeblank`, not `\blank`: **memoir already defines
+`\blank`**, and `\newcommand` over an existing macro raises a LaTeX error and
+silently leaves the *other* definition in force — it compiles, and renders
+wrong. Found during implementation; the compile test now fails on any
+`LaTeX Error` in the log, not just undefined control sequences.
 
 The profile defines the four names, branching on `\clozemode`:
 
@@ -182,7 +188,7 @@ names under commands/environments.
 - **`Div`** — block forms emit `<div class="cloze-lines" data-lines="6">`;
   parody-web draws the rules. Line count for a hidden block is estimated as
   `max(1, ceil(chars / 90))`.
-- **`Math`** — rewrite `\cloze{…}` / `\blank{…}` inside `el.text`.
+- **`Math`** — rewrite `\cloze{…}` / `\clozeblank{…}` inside `el.text`.
 
 Width estimate (both spans and math): strip TeX control sequences, count the
 remaining characters `n`, then `clamp(2, 0.6n + 0.8, 14)` em. Emitted as a
@@ -193,7 +199,7 @@ parody-web).
 The math rewriter needs a **brace-matching scanner, not a regex** — `\cloze{\sqrt{k/m}}`
 nests. Rewrites:
 
-| mode | `\cloze{X}` | `\blank{L}` |
+| mode | `\cloze{X}` | `\clozeblank{L}` |
 |---|---|---|
 | `blank` | `\underline{\hspace{<w>em}}` | `\underline{\hspace{L}}` |
 | `key` | `\class{cloze-key}{X}` | `\underline{\hspace{L}}` |

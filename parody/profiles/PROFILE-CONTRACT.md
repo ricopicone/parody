@@ -34,6 +34,8 @@ and `\printindex`.
 - `mintedwrapper`, `algorithmcenter`, `algorithm[H]`, `formattedoutput`.
 - xsim: `exercise`/`solution` and `labexercise`/`labsolution`, with
   `\DeclareExerciseProperty{hash}` and `solution/print` gated on `\issolution`.
+- `clozeblock` — fill-in-the-blank passage; blanks to its own measured height
+  in `blank` mode, prints its content in `full`.
 
 ## Commands
 
@@ -43,10 +45,17 @@ and `\printindex`.
   `\mathdefault`, `\tightlist`, `\ul`.
 - `\keyword`, `\mykeys`, `\unicoder`, `\lref`, `\myindex`, `\indexc`,
   `\myurl`/`\myurlbottom`/`\myurlinline`, `\numberthis`.
+- `\cloze{content}` (text- and math-mode), `\clozeblank{length}`,
+  `\clozelines{n}` — fill-in-the-blank rendering; all three branch on
+  `\clozemode`. Not `\blank`: memoir already defines it, and `\newcommand`
+  over an existing macro errors and leaves the other definition in force.
 
 ## Build flags (set via `\def` before the class options take effect)
 
-`\issolution` (solutions manual), `\ispartial` (sample build), `\nocropmarks`.
+`\issolution` (solutions manual), `\ispartial` (sample build), `\nocropmarks`,
+`\clozemode` (`blank` | `key` | `full`, default `blank`) — orthogonal to
+`\issolution`: a published student book wants clozes filled and exercise
+solutions hidden.
 
 ## Theme layer (recommended, not required by the filter)
 

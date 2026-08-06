@@ -145,7 +145,7 @@ local function clozer_latex(el)
 end
 
 local function blanker_latex(el)
-  return pandoc.RawInline('tex', '\\blank{' .. cloze_manual_width(el) .. '}')
+  return pandoc.RawInline('tex', '\\clozeblank{' .. cloze_manual_width(el) .. '}')
 end
 
 local function cloze_div_latex(el)

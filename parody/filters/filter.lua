@@ -802,7 +802,7 @@ end
 --     tex: {packages: {'[+]': ['html']}}
 -- With only the second, \class renders as a red undefined-macro error.
 function Math(el)
-  if not (el.text:find('\\cloze') or el.text:find('\\blank')) then
+  if not el.text:find('\\cloze') then  -- also catches \clozeblank
     return el
   end
   local t = cloze_rewrite_macro(el.text, 'cloze', function(arg)
@@ -812,7 +812,7 @@ function Math(el)
     end
     return '\\underline{\\hspace{' .. cloze_estimate_width(arg) .. '}}'
   end)
-  t = cloze_rewrite_macro(t, 'blank', function(arg)
+  t = cloze_rewrite_macro(t, 'clozeblank', function(arg)
     if CLOZE_MODE == 'full' then return '' end
     return '\\underline{\\hspace{' .. arg .. '}}'
   end)

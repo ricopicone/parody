@@ -43,6 +43,79 @@
 % \ispartial   : partial/sample build
 % \nocropmarks : no crop marks
 
+% ---- cloze (fill-in-the-blank) --------------------------------------------
+% \clozemode is set by the writer via \def: blank | key | full. `blank` hides
+% the answer behind a rule measured from the real box, so the answer is never
+% typeset and cannot be recovered from the PDF. Orthogonal to \issolution.
+\providecommand{\clozemode}{blank}
+\providecolor{parodyaccent}{HTML}{1F4E79} % themes that define it win
+\newlength{\parodyclozewd}
+
+\newcommand{\parody@clozeswitch}[3]{% #1 blank, #2 key, #3 full
+  \ifdefstring{\clozemode}{full}{#3}{%
+    \ifdefstring{\clozemode}{key}{#2}{#1}}}
+
+\newcommand{\parody@blankrule}{%
+  \ifdim\parodyclozewd<2em\relax\setlength{\parodyclozewd}{2em}\fi
+  \leavevmode\rule[-0.55ex]{\dimexpr\parodyclozewd+1em\relax}{0.4pt}}
+
+% \settowidth typesets in LR mode, so the outer math/text mode must be captured
+% before measuring — \ifmmode inside the box would always be false.
+\newcommand{\parody@cloze@text}[1]{%
+  \parody@clozeswitch
+    {\settowidth{\parodyclozewd}{#1}\parody@blankrule}
+    {\underline{\textcolor{parodyaccent}{#1}}}
+    {#1}}
+\newcommand{\parody@cloze@math}[1]{%
+  \parody@clozeswitch
+    {\settowidth{\parodyclozewd}{$#1$}\mbox{\parody@blankrule}}
+    {\underline{{\color{parodyaccent}#1}}}
+    {#1}}
+\newcommand{\cloze}[1]{%
+  \relax\ifmmode\parody@cloze@math{#1}\else\parody@cloze@text{#1}\fi}
+
+% Manual blank: nothing is hidden, so `key` keeps the rule and `full` drops it.
+% Named \clozeblank, not \blank: memoir already defines \blank, and
+% \newcommand over it errors and silently leaves memoir's version in force.
+\newcommand{\clozeblank}[1]{%
+  \parody@clozeswitch
+    {\leavevmode\rule[-0.55ex]{#1}{0.4pt}}
+    {\leavevmode\rule[-0.55ex]{#1}{0.4pt}}
+    {}}
+
+\newcounter{parodyclozeline}
+\newcommand{\parody@rulelines}[1]{%
+  \par\nobreak\medskip
+  \setcounter{parodyclozeline}{0}%
+  \@whilenum\value{parodyclozeline}<#1\do{%
+    \noindent\rule{\linewidth}{0.4pt}\par\vspace{0.5\baselineskip}%
+    \stepcounter{parodyclozeline}}%
+  \medskip}
+\newcommand{\clozelines}[1]{%
+  \parody@clozeswitch{\parody@rulelines{#1}}{\parody@rulelines{#1}}{}}
+
+% Hidden block: capture the content, then blank it to its own height.
+\newsavebox{\parodyclozebox}
+% The mode is chosen at \begin, not at \end: content captured into an lrbox
+% keeps whatever colour was in force at capture time, so a key-mode accent
+% applied to \usebox would do nothing. Only `blank` needs the box (to measure
+% the passage); key and full typeset in place. \clozemode cannot change inside
+% the environment, so both halves always take the same branch.
+\newenvironment{clozeblock}
+  {\parody@clozeswitch
+     {\begin{lrbox}{\parodyclozebox}\begin{minipage}{\linewidth}}
+     {\par\medskip\bgroup\color{parodyaccent}}
+     {\par}}
+  {\parody@clozeswitch
+     {\end{minipage}\end{lrbox}%
+      \@tempcnta=\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax
+      \@tempcntb=\baselineskip
+      \divide\@tempcnta by \@tempcntb
+      \advance\@tempcnta by 1
+      \parody@rulelines{\@tempcnta}}
+     {\par\egroup\medskip}
+     {\par}}
+
 % ---- exercises (xsim) ----
 \DeclareExerciseProperty{hash}
 \ifdefined\issolution

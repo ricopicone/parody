@@ -271,13 +271,13 @@ def test_web_math_cloze_full():
 
 
 def test_web_math_manual_blank():
-    out = web(r"$y(t) = \blank{3em}$", "blank")
+    out = web(r"$y(t) = \clozeblank{3em}$", "blank")
     assert "3em" in out
     assert "underline" in out
 
 
 def test_web_math_manual_blank_dropped_in_full():
-    out = web(r"$y(t) = \blank{3em}$", "full")
+    out = web(r"$y(t) = \clozeblank{3em}$", "full")
     assert "blank" not in out
     assert "3em" not in out
 
@@ -307,15 +307,15 @@ def test_print_cloze_span():
 
 
 def test_print_manual_blank_named_size():
-    assert "\\blank{10em}" in latex("Sketch: []{.blank size=lg}")
+    assert "\\clozeblank{10em}" in latex("Sketch: []{.blank size=lg}")
 
 
 def test_print_manual_blank_explicit_width():
-    assert "\\blank{4cm}" in latex("[]{.blank width=4cm}")
+    assert "\\clozeblank{4cm}" in latex("[]{.blank width=4cm}")
 
 
 def test_print_manual_blank_defaults_to_md():
-    assert "\\blank{5em}" in latex("[]{.blank}")
+    assert "\\clozeblank{5em}" in latex("[]{.blank}")
 
 
 def test_print_block_blank():
@@ -343,3 +343,62 @@ def test_print_cloze_inside_a_box():
     out = latex(md)
     assert "\\cloze{0.707}" in out
     assert "\\clozelines{3}" in out
+
+
+# --- print: real LaTeX compile ---------------------------------------------
+
+CLOZE_TEX_SNIPPET = r"""
+Text cloze: \cloze{0.707} and manual \clozeblank{10em}.
+
+Math cloze: $\tau = \cloze{RC}$ and $y = \clozeblank{3em}$.
+
+\clozelines{3}
+
+\begin{clozeblock}
+A whole hidden paragraph that should blank to its own height.
+\end{clozeblock}
+"""
+
+
+@pytest.mark.parametrize("profile", ["memoir", "print"])
+@pytest.mark.parametrize("mode", ["blank", "key", "full"])
+def test_profile_macros_compile(tmp_path, profile, mode):
+    """The four contract names must compile in every mode, in both profiles."""
+    import shutil
+    import subprocess
+
+    from parody.writers.latex import _tool_env, have_tool
+
+    if not have_tool("lualatex"):
+        pytest.skip("no LaTeX toolchain")
+
+    src = (Path(__file__).parent.parent / "parody" / "profiles" / profile)
+    work = tmp_path / profile
+    work.mkdir()
+    for f in src.iterdir():
+        if f.is_file() and f.name != "main.tex.template":
+            shutil.copy2(f, work / f.name)
+
+    template = (src / "main.tex.template").read_text(encoding="utf-8")
+    preamble = template.split("$flags")[0]
+    packages = "\n".join(
+        line for line in template.split("\n")
+        if line.startswith("\\usepackage{parody-"))
+    (work / "main.tex").write_text(
+        preamble
+        + f"\\def\\clozemode{{{mode}}}\n"
+        + packages
+        + "\n\\begin{document}\n" + CLOZE_TEX_SNIPPET + "\n\\end{document}\n",
+        encoding="utf-8")
+
+    r = subprocess.run(
+        ["lualatex", "-interaction=nonstopmode", "-shell-escape", "main.tex"],
+        cwd=work, env=_tool_env(), capture_output=True, text=True)
+    assert (work / "main.pdf").exists(), r.stdout[-3000:]
+    # nonstopmode still emits a PDF over a LaTeX error, so the PDF's
+    # existence proves nothing on its own — the log is the real gate. It must
+    # catch name clashes too: \newcommand over an existing macro errors and
+    # leaves the OTHER definition in force, which renders wrong but compiles.
+    log = (work / "main.log").read_text(encoding="utf-8", errors="replace")
+    assert "Undefined control sequence" not in log, log[-3000:]
+    assert "LaTeX Error" not in log, log[-3000:]
