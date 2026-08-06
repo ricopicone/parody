@@ -104,3 +104,99 @@ def test_pdf_flag_is_independent_of_solutions(tmp_path, monkeypatch):
     main_tex = (build_dir / "main.tex").read_text(encoding="utf-8")
     assert "\\def\\clozemode{key}" in main_tex
     assert "\\def\\issolution{1}" in main_tex
+
+
+import pypandoc  # noqa: E402
+
+WEB_FROM = ("markdown-smart-markdown_in_html_blocks+raw_tex"
+            "+tex_math_dollars+grid_tables")
+PRINT_FROM = "markdown-markdown_in_html_blocks+raw_tex+tex_math_dollars"
+
+
+def web(md, mode="blank", cwd=None):
+    with cloze_mode(mode):
+        return pypandoc.convert_text(
+            md, "html", format=WEB_FROM,
+            extra_args=[f"--lua-filter={FILTERS / 'filter.lua'}", "--mathjax"],
+            cworkdir=str(cwd) if cwd else None,
+        )
+
+
+# --- web: inline spans -----------------------------------------------------
+
+SPAN_MD = "The damping ratio is [0.707]{.cloze}."
+
+
+def test_web_blank_hides_the_answer():
+    out = web(SPAN_MD, "blank")
+    assert "0.707" not in out
+    assert 'class="cloze-blank"' in out
+    assert "--cloze-w:" in out
+
+
+def test_web_key_shows_the_answer_marked():
+    out = web(SPAN_MD, "key")
+    assert "0.707" in out
+    assert "cloze-key" in out
+
+
+def test_web_full_leaves_no_trace():
+    out = web(SPAN_MD, "full")
+    assert "0.707" in out
+    assert "cloze" not in out
+
+
+def test_web_default_mode_is_blank():
+    with cloze_mode(None):
+        out = pypandoc.convert_text(
+            SPAN_MD, "html", format=WEB_FROM,
+            extra_args=[f"--lua-filter={FILTERS / 'filter.lua'}"])
+    assert "0.707" not in out
+
+
+def test_web_manual_blank_named_size():
+    out = web("Sketch it: []{.blank size=lg}", "blank")
+    assert "--cloze-w: 10em" in out
+
+
+def test_web_manual_blank_explicit_width_wins():
+    out = web("[]{.blank size=lg width=4cm}", "blank")
+    assert "--cloze-w: 4cm" in out
+
+
+def test_web_manual_blank_defaults_to_md():
+    out = web("[]{.blank}", "blank")
+    assert "--cloze-w: 5em" in out
+
+
+def test_web_manual_blank_dropped_in_full():
+    out = web("Sketch it: []{.blank size=lg}", "full")
+    assert "cloze-blank" not in out
+
+
+def test_web_manual_blank_survives_in_key():
+    """Nothing is hidden behind a manual blank, so key still needs the rule."""
+    assert "cloze-blank" in web("[]{.blank size=lg}", "key")
+
+
+def _cloze_width(html):
+    return float(html.split("--cloze-w: ")[1].split("em")[0])
+
+
+def test_web_blank_width_scales_with_the_answer():
+    short = web("[a]{.cloze}", "blank")
+    long = web("[a much longer hidden answer]{.cloze}", "blank")
+    assert _cloze_width(short) < _cloze_width(long)
+
+
+def test_web_blank_width_is_clamped():
+    assert _cloze_width(web("[x]{.cloze}", "blank")) >= 2.0
+    assert _cloze_width(web("[" + "x" * 400 + "]{.cloze}", "blank")) <= 14.0
+
+
+def test_web_cloze_inside_a_box():
+    """Clozes inside .example/.exercise bodies are rewritten too."""
+    md = "::: {.example h=\"c4\"}\nThe ratio is [0.707]{.cloze}.\n:::"
+    out = web(md, "blank")
+    assert "0.707" not in out
+    assert "cloze-blank" in out
