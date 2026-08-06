@@ -17,3 +17,7 @@ A short code listing drives minted (shell-escape + pygmentize):
 def greet(name):
     print(f"hello, {name}")
 ```
+
+Fill-in-the-blank markup, so the cloze macros are exercised by a real
+lualatex run: the damping ratio is [0.707]{.cloze}, and $\tau = \cloze{RC}$.
+Sketch the response: []{.blank size=lg}

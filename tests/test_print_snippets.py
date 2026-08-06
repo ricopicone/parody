@@ -151,3 +151,20 @@ def test_grouped_header_table_multicolumn_cmidrule():
     assert "\\multirow{2}{*}{Row}" in out
     assert "\\cmidrule(r){1-1}" in out and "\\cmidrule(lr){2-3}" in out
     assert "\\makecell{Wide\\\\Header}" in out
+
+
+@pytest.mark.parametrize("mode", ["blank", "key", "full"])
+def test_cloze_snippet_matches_golden(request, mode, monkeypatch):
+    """print.lua's cloze emission is identical in all three modes — TeX
+    branches on \\clozemode — except for figure variants, which the filter
+    resolves. Pinning all three catches an accidental mode leak into the
+    filter."""
+    monkeypatch.setenv("PARODY_CLOZE_MODE", mode)
+    md = FIXTURES / "cloze.md"
+    golden = FIXTURES / f"cloze-{mode}.golden.tex"
+    out = render(md)
+    if request.config.getoption("--regen-golden"):
+        golden.write_text(out, encoding="utf-8")
+        pytest.skip("golden regenerated")
+    assert golden.exists(), "golden missing — run with --regen-golden once"
+    assert out == golden.read_text(encoding="utf-8")

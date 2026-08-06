@@ -504,3 +504,34 @@ def test_solution_override_is_restored(tmp_path):
     with cloze_mode("blank"):
         convert_solution_to_html("x", str(tmp_path), cloze_mode="full")
         assert os.environ["PARODY_CLOZE_MODE"] == "blank"
+
+
+# --- end to end ------------------------------------------------------------
+
+def test_full_artifact_has_no_cloze_markup(tmp_path):
+    """A `full` build must be indistinguishable from a book without clozes."""
+    import json
+
+    from parody.build import build_project
+
+    out = build_project(SMOKE_BOOK, tmp_path / "full.json",
+                        convert_jupytext=False, media_root=tmp_path,
+                        cloze_mode="full")
+    blob = json.dumps(out)
+    assert "cloze-blank" not in blob
+    assert "cloze-key" not in blob
+    assert "0.707" in blob
+
+
+def test_blank_artifact_never_carries_the_answer(tmp_path):
+    """The leak test: the whole artifact, not just one rendered fragment."""
+    import json
+
+    from parody.build import build_project
+
+    out = build_project(SMOKE_BOOK, tmp_path / "blank.json",
+                        convert_jupytext=False, media_root=tmp_path,
+                        cloze_mode="blank")
+    blob = json.dumps(out)
+    assert "0.707" not in blob
+    assert "cloze-blank" in blob
