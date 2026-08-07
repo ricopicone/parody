@@ -188,6 +188,10 @@
                       },
                       "hash": {
                         "type": "string"
+                      },
+                      "lab": {
+                        "type": "boolean",
+                        "description": "Exercise-only. True when this anchor is a lab problem, numbered L<chapter>.<n> instead of the ordinary <chapter>.<n>."
                       }
                     }
                   }

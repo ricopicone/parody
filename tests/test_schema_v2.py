@@ -41,6 +41,11 @@ Hash-only exercise (no explicit #id) — keyed on its short hash.
 ::: {.exercise .lab h="ag"}
 Lab problem — numbered L<chapter>.<n> by the web renderer.
 :::
+
+::: {.example .lab h="el"}
+An example that happens to carry a .lab class — not an exercise, so it must
+not be stamped "lab" on its anchor (task #499 F3).
+:::
 """
 
 
@@ -75,6 +80,11 @@ def test_v2_extraction_flags_lab_exercises():
     # byte-identical to before
     assert "lab" not in anchors["ho"]
     assert "lab" not in anchors["ex:demo"]
+    # lab is exercise-only: a .lab class on a non-exercise env (::: {.example
+    # .lab}) must not be stamped on the anchor, even though it is present in
+    # the raw class list (task #499 F3)
+    assert anchors["el"]["type"] == "example"
+    assert "lab" not in anchors["el"]
 
 
 def test_unwrap_web_markdown_blocks():

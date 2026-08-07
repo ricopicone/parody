@@ -384,7 +384,9 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
             div_classes = re.findall(r'\.([A-Za-z0-9_-]+)', attr_text)
             env_class = next((c for c in div_classes if c in class_type_map), None)
             # ::: {.exercise .lab} is a lab problem: its own per-chapter counter
-            # and an "L"-prefixed number ("Problem L4.1") in the renderer.
+            # and an "L"-prefixed number ("Problem L4.1") in the renderer. This
+            # only reflects the raw class list here; it is scoped to exercise
+            # anchors below once the anchor's final type is resolved.
             is_lab = 'lab' in div_classes
             # infoboxes are cross-referenced by their title, not a number, so
             # carry it through to the anchor (see numbering.py).
@@ -428,7 +430,10 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
             }
             if div_hash:
                 anchor['hash'] = div_hash
-            if div_lab:
+            # lab is exercise-only: ::: {.example .lab} or ::: {.infobox .lab}
+            # must not be stamped, even though div_lab was computed from the
+            # raw class list before the anchor's final type was resolved.
+            if div_lab and anchor_type == 'exercise':
                 anchor['lab'] = True
             anchors.append(anchor)
             found_ids.add(anchor_id)
