@@ -535,3 +535,11 @@ def test_blank_artifact_never_carries_the_answer(tmp_path):
     blob = json.dumps(out)
     assert "0.707" not in blob
     assert "cloze-blank" in blob
+
+
+def test_web_block_blank_exposes_line_count_to_css():
+    """CSS can't read data-lines into a length, so the count is also a custom
+    property parody-web multiplies by its line height."""
+    out = web("::: {.blank lines=6}\n:::", "blank")
+    assert 'data-lines="6"' in out
+    assert "--cloze-lines: 6" in out

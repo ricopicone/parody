@@ -841,8 +841,14 @@ end
 
 -- Block forms. `::: {.blank lines=6}` is empty work space; `::: {.cloze}`
 -- hides a whole passage, blanked to roughly its own height (~90 chars/line).
+-- data-lines carries the count semantically; --cloze-lines repeats it as a
+-- custom property because CSS cannot read an attribute into a length (attr()
+-- outside `content` is not portable), and parody-web needs the count to size
+-- the ruled area: height = var(--cloze-lines) * line-height.
 local function cloze_lines_html(n)
-  return string.format('<div class="cloze-lines" data-lines="%d"></div>', n)
+  return string.format(
+    '<div class="cloze-lines" data-lines="%d" style="--cloze-lines: %d"></div>',
+    n, n)
 end
 
 local function blank_div(el)
