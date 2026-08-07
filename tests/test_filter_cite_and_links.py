@@ -93,3 +93,38 @@ def test_download_code_relative_path_gets_slug_prefix(tmp_path, monkeypatch):
     monkeypatch.setenv("PARODY_CHAPTER_SLUG", "chapter_rc")
     out = web(DIRECTIVE.format(path="lab_03.zip"))
     assert 'href="notebooks/mech/chapter_rc/lab_03.zip"' in out
+
+
+# --- web: exercise divs carry lab-ness (task #499) --------------------------
+
+# The non-lab box HTML is frozen: homepage-django styles these Tailwind class
+# names for real, and tests/golden/*.json pin the markup. Only lab exercises
+# gain markers.
+PLAIN_EXERCISE_HTML = (
+    '<div id="8y"\n'
+    'class="exercise numbered-environment rounded border border-green-400'
+    ' shadow-md my-4 bg-white scroll-mt-20"\n'
+    'data-h="8y" data-env-type="exercise">\n'
+    '<section\n'
+    'class="text-lg font-semibold text-green-900 px-4 py-2 border-b'
+    ' border-green-400 bg-green-50 rounded-t">\n'
+    '<h3 class="text-lg font-semibold text-green-900">Exercise</h3>\n'
+    '</section>\n'
+    '<div class="px-4 py-3 text-sm text-gray-700">\n'
+    '<p>Body text.</p>\n'
+    '</div>\n'
+    '</div>\n'
+)
+
+
+def test_plain_exercise_html_is_unchanged():
+    assert web(':::: {.exercise h="8y"}\nBody text.\n::::\n') == PLAIN_EXERCISE_HTML
+
+
+def test_lab_exercise_carries_lab_markers():
+    out = web(':::: {.exercise .lab h="ag"}\nLab body.\n::::\n')
+    # the legacy class string is preserved; "lab" is appended to it
+    assert 'bg-white scroll-mt-20 lab"' in out
+    assert 'data-lab="1"' in out
+    assert 'data-env-type="exercise"' in out
+    assert 'id="ag"' in out

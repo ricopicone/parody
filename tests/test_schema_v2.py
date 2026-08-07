@@ -37,6 +37,15 @@ Hash-only exercise (no explicit #id) — keyed on its short hash.
 :::
 
 ![A figure](fig.png){#fig:widget h=fw width=300}
+
+::: {.exercise .lab h="ag"}
+Lab problem — numbered L<chapter>.<n> by the web renderer.
+:::
+
+::: {.example .lab h="el"}
+An example that happens to carry a .lab class — not an exercise, so it must
+not be stamped "lab" on its anchor (task #499 F3).
+:::
 """
 
 
@@ -56,6 +65,26 @@ def test_v2_extraction_captures_hashes():
         "hash": "ho",
     }
     assert anchors["fig:widget"]["hash"] == "fw"
+
+
+def test_v2_extraction_flags_lab_exercises():
+    # ::: {.exercise .lab} is a lab problem ("Problem L4.1"); plain .exercise is
+    # a chapter problem ("Problem 4.1"). They run on separate counters, so the
+    # artifact has to carry the distinction (task #499).
+    anchors = {a["id"]: a for a in extract_anchor_ids(SECTION_MD, with_hashes=True)}
+    assert anchors["ag"] == {
+        "id": "ag", "type": "exercise", "level": None, "title": None,
+        "hash": "ag", "lab": True,
+    }
+    # the flag is omitted (not False) elsewhere, so non-lab artifacts are
+    # byte-identical to before
+    assert "lab" not in anchors["ho"]
+    assert "lab" not in anchors["ex:demo"]
+    # lab is exercise-only: a .lab class on a non-exercise env (::: {.example
+    # .lab}) must not be stamped on the anchor, even though it is present in
+    # the raw class list (task #499 F3)
+    assert anchors["el"]["type"] == "example"
+    assert "lab" not in anchors["el"]
 
 
 def test_unwrap_web_markdown_blocks():

@@ -381,28 +381,32 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
                              flags=re.MULTILINE):
             attr_text = m.group(1)
             idm = re.search(r'#([A-Za-z0-9_:-]+)', attr_text)
-            env_class = next(
-                (c for c in re.findall(r'\.([A-Za-z0-9_-]+)', attr_text)
-                 if c in class_type_map), None)
+            div_classes = re.findall(r'\.([A-Za-z0-9_-]+)', attr_text)
+            env_class = next((c for c in div_classes if c in class_type_map), None)
+            # ::: {.exercise .lab} is a lab problem: its own per-chapter counter
+            # and an "L"-prefixed number ("Problem L4.1") in the renderer. This
+            # only reflects the raw class list here; it is scoped to exercise
+            # anchors below once the anchor's final type is resolved.
+            is_lab = 'lab' in div_classes
             # infoboxes are cross-referenced by their title, not a number, so
             # carry it through to the anchor (see numbering.py).
             tm = re.search(r'title="([^"]*)"', attr_text)
             title = tm.group(1) if tm else None
             if idm and env_class:
                 div_matches.append((env_class, idm.group(1),
-                                    _attr_hash(attr_text), title))
+                                    _attr_hash(attr_text), title, is_lab))
             elif env_class:
                 # hash-only env (::: {.exercise h="8y"}): no explicit #id, so key
                 # the anchor on its short hash. The filter renders the box with
                 # id=hash, so cross-refs ([8y]{.hashref}) resolve and scroll to it.
                 h = _attr_hash(attr_text)
                 if h:
-                    div_matches.append((env_class, h, h, title))
+                    div_matches.append((env_class, h, h, title, is_lab))
     else:
-        div_matches = [(m.group(1), m.group(2), None, None)
+        div_matches = [(m.group(1), m.group(2), None, None, False)
                        for m in re.finditer(div_pattern, markdown_content)]
 
-    for env_class, full_id, div_hash, div_title in div_matches:
+    for env_class, full_id, div_hash, div_title, div_lab in div_matches:
         anchor_id = full_id
         anchor_type = class_type_map.get(env_class, 'anchor')
 
@@ -426,6 +430,11 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
             }
             if div_hash:
                 anchor['hash'] = div_hash
+            # lab is exercise-only: ::: {.example .lab} or ::: {.infobox .lab}
+            # must not be stamped, even though div_lab was computed from the
+            # raw class list before the anchor's final type was resolved.
+            if div_lab and anchor_type == 'exercise':
+                anchor['lab'] = True
             anchors.append(anchor)
             found_ids.add(anchor_id)
 
