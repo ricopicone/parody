@@ -512,10 +512,14 @@ local function exercise(el)
   -- Only transform for HTML
   if FORMAT:match 'html' then
     -- Lab problems (::: {.exercise .lab}) are numbered on their own per-chapter
-    -- counter and labelled "Problem L4.5" by the web renderer, so the artifact
-    -- has to carry the distinction. Purely additive: the legacy class string and
-    -- attribute order are untouched, because homepage-django styles those
-    -- Tailwind names for real and tests/golden/*.json pins the markup.
+    -- counter and labelled "Problem L4.5" by the web renderer. The "lab" class
+    -- and data-lab="1" attribute below are artifact semantics for consumers in
+    -- general (e.g. homepage-django's Tailwind styling); parody-web itself does
+    -- not read them here — it derives lab-ness from the anchor's own "lab" flag
+    -- (artifact.py) and rebuilds the exercise box's class attribute from
+    -- scratch. Purely additive: the legacy class string and attribute order are
+    -- untouched, because homepage-django styles those Tailwind names for real
+    -- and tests/golden/*.json pins the markup.
     local classes = {"exercise", "numbered-environment", "rounded", "border",
                      "border-green-400", "shadow-md", "my-4", "bg-white",
                      "scroll-mt-20"}
