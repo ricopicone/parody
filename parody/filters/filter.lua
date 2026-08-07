@@ -541,14 +541,26 @@ end
 
 local function example(el)
   -- Examples carry their cross-ref handle in the short hash (::: {.example
-  -- h="c4"}); pandoc emits data-h but no DOM id, so [c4]{.hashref} had nowhere to
-  -- land. Give the div an id from the hash (keeping its content/classes as-is).
+  -- h="c4"}); pandoc emits data-h but no DOM id, so [c4]{.hashref} had nowhere
+  -- to land. Give the div an id from the hash, then build the same header/body
+  -- box definition() and exercise() build. Print has always boxed examples
+  -- (print.lua's exampler -> \begin{myexample}); this is the web catching up.
+  -- Amber keeps them distinct from definitions (cyan) and exercises (green).
+  local title = el.attr.attributes['title'] or "Example"
   local hash = el.attr.attributes['h'] or ""
   local identifier = (el.identifier ~= "" and el.identifier) or hash
-  if FORMAT:match 'html' and identifier ~= "" then
-    el.attr.identifier = identifier
-    el.attr.attributes['data-env-type'] = "example"
-    return el
+
+  if FORMAT:match 'html' then
+    return pandoc.Div({
+      pandoc.Div({
+        pandoc.Header(3, title, { class = "text-lg font-semibold text-amber-900" })
+      }, { class = "px-4 py-2 border-b border-amber-400 bg-amber-50 rounded-t" }),
+      pandoc.Div(el.content, { class = "px-4 py-3 text-sm text-gray-700" })
+    }, {
+      class = "example numbered-environment rounded border border-amber-400 shadow-md my-4 bg-white scroll-mt-20",
+      id = identifier,
+      ["data-env-type"] = "example"
+    })
   else
     return el
   end
