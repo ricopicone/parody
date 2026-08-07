@@ -274,14 +274,17 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         heading_pattern = r'^(#{1,6})\s+(.+?)\s+\{#([A-Za-z0-9_-]+)\}\s*$'
 
     # Pattern for typed anchors: {#prefix:label} or {#prefix-label}
-    # (figures, tables, equations, definitions, comments, theorems, exercises)
-    # Allow attributes like width, height after the label
-    typed_pattern = r'\{#(fig|tbl|eq|def|cmt|thm|exe)([:\-])([A-Za-z0-9_-]+)([^}]*)\}'
+    # (figures, tables, equations, definitions, comments, theorems, exercises,
+    # examples). Allow attributes like width, height after the label
+    typed_pattern = r'\{#(fig|tbl|eq|def|cmt|thm|exe|exa)([:\-])([A-Za-z0-9_-]+)([^}]*)\}'
 
     # Pattern for div environments: ::: {.type ... #id ...}
-    # Captures the environment type (definition/comment/theorem/exercise) and the ID
-    # Handles both: {.definition #id ...} and {.definition title="..." #id ...}
-    div_pattern = r':::[ \t]+\{\.(definition|comment|theorem|exercise)\s+[^}]*?#([A-Za-z0-9_:-]+)[^}]*?\}'
+    # Captures the environment type and the ID. Handles both
+    # {.definition #id ...} and {.definition title="..." #id ...}.
+    # This scan runs in every schema version; the richer attribute-parsing scan
+    # further down (hashes, lab flags, titles) is v2-only. `example` belongs
+    # here because consumers number examples from a v1 artifact.
+    div_pattern = r':::[ \t]+\{\.(definition|comment|theorem|exercise|example)\s+[^}]*?#([A-Za-z0-9_:-]+)[^}]*?\}'
 
     # Pattern for standalone IDs without type prefix
     standalone_pattern = r'\{#([A-Za-z0-9_-]+)\}'
@@ -318,6 +321,11 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
     type_map = {
         'fig': 'figure', 'tbl': 'table', 'eq': 'equation', 'def': 'definition',
         'cmt': 'comment', 'thm': 'theorem', 'exe': 'exercise',
+        # Examples are numbered by consumers, so an `exa:` id must resolve in
+        # every schema version. The div-class scan further down only runs under
+        # with_hashes (v2); an explicit id prefix works everywhere, which is
+        # what authored `::: {.example #exa:…}` blocks rely on.
+        'exa': 'example',
     }
     typed_re = (
         typed_pattern
@@ -372,10 +380,15 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         'definition': 'definition',
         'comment': 'comment',
         'theorem': 'theorem',
+        # v1 too: consumers number examples from a v1 artifact, so an
+        # ::: {.example #exa:…} block must resolve to type "example" rather
+        # than falling through to the generic "anchor". exercise/infobox stay
+        # v2-only — the v1 div_pattern scan above already covers exercises.
+        'example': 'example',
     }
     if with_hashes:
         class_type_map = dict(class_type_map, exercise='exercise',
-                              example='example', infobox='infobox')
+                              infobox='infobox')
         div_matches = []
         for m in re.finditer(r'^:{3,}\s*\{([^}]*)\}', markdown_content,
                              flags=re.MULTILINE):
@@ -417,7 +430,8 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
                 'def': 'definition',
                 'cmt': 'comment',
                 'thm': 'theorem',
-                'exe': 'exercise'
+                'exe': 'exercise',
+                'exa': 'example',
             }
             anchor_type = type_map.get(prefix, anchor_type)
 
