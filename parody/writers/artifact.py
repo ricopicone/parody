@@ -618,12 +618,17 @@ def _unwrap_subequations(md):
         repl, md, flags=re.S)
 
 
-def convert_solution_to_html(solution_markdown, chapter_dir, cloze_mode=None):
+def convert_solution_to_html(solution_markdown, chapter_dir, cloze_mode=None,
+                             solutions=False):
     """Convert solution markdown content to HTML using pypandoc.
 
     cloze_mode overrides PARODY_CLOZE_MODE for this one run. Solutions pass
     "full": blanking the answer inside an answer key is nonsense. Problem
     bodies pass nothing and keep the build's ambient mode.
+
+    solutions=True marks the run as answer-key content (PARODY_SOLUTIONS), so
+    the filter keeps `.solutions-only` blocks. It is off by default: every
+    other caller feeds reader-visible html.
     """
     import os
     import tempfile
@@ -640,6 +645,9 @@ def convert_solution_to_html(solution_markdown, chapter_dir, cloze_mode=None):
         saved_mode = os.environ.get("PARODY_CLOZE_MODE")
         if cloze_mode is not None:
             os.environ["PARODY_CLOZE_MODE"] = cloze_mode
+        saved_solutions = os.environ.get("PARODY_SOLUTIONS")
+        if solutions:
+            os.environ["PARODY_SOLUTIONS"] = "1"
         try:
             html = pypandoc.convert_file(
                 temp_file.name, 'html+raw_tex',
@@ -656,6 +664,11 @@ def convert_solution_to_html(solution_markdown, chapter_dir, cloze_mode=None):
                     os.environ.pop("PARODY_CLOZE_MODE", None)
                 else:
                     os.environ["PARODY_CLOZE_MODE"] = saved_mode
+            if solutions:
+                if saved_solutions is None:
+                    os.environ.pop("PARODY_SOLUTIONS", None)
+                else:
+                    os.environ["PARODY_SOLUTIONS"] = saved_solutions
             try:
                 os.unlink(temp_file.name)
             except:
@@ -693,7 +706,8 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
         # solution_data is now a dict with 'content' and 'title'
         # cloze_mode="full": an answer key must not blank its own answers.
         solution_content_html = convert_solution_to_html(
-            solution_data['content'], chapter_dir, cloze_mode="full")
+            solution_data['content'], chapter_dir, cloze_mode="full",
+            solutions=True)
         solutions_html[exercise_id] = {
             'content': solution_content_html,
             'title': solution_data.get('title')

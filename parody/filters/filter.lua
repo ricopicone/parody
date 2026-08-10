@@ -892,8 +892,20 @@ local function cloze_div(el)
     math.max(1, math.ceil(chars / 90))))
 end
 
+-- ---- solutions-only ------------------------------------------------------
+-- PARODY_SOLUTIONS: set when this run is rendering answer-key content (the
+-- owner-gated `solutions` bucket), unset for section html and problem bodies.
+--
+-- A `.solutions-only` div belongs to the solutions manual. Print gates it with
+-- \ifdefined\issolution (print.lua); the web has no solutions manual, so the
+-- block is DROPPED here at build time rather than hidden — anything this
+-- filter emits into section html is fetchable by any reader.
+local SOLUTIONS = (os.getenv('PARODY_SOLUTIONS') or '') ~= ''
+
 function Div(el)
-  if el.classes:includes("cloze") then
+  if el.classes:includes("solutions-only") and not SOLUTIONS then
+    return {}
+  elseif el.classes:includes("cloze") then
     return cloze_div(el)
   elseif el.classes:includes("blank") then
     return blank_div(el)
