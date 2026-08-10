@@ -135,19 +135,63 @@ local function starts_with(start, str)
   return str:sub(1, #start) == start
 end
 
+-- Read the first `n` brace-delimited arguments of a macro, honouring nesting.
+-- The older `{(.-)}` and `{.-}{(.-)}{.-}` patterns stop at the first `}` and
+-- mis-split every nested argument; this is the only extractor handlers use.
+local function read_args(text, n)
+  local args, pos = {}, 1
+  for _ = 1, n do
+    local s, e = text:find('%b{}', pos)
+    if not s then return nil end
+    -- strip outer braces, then the LaTeX line-continuation debris (a `%`
+    -- comment and its newline) authors put after the opening brace
+    args[#args + 1] = text:sub(s + 1, e - 1):gsub('^%s*%%?%s*', '')
+    pos = e + 1
+  end
+  return args
+end
+
+-- Convert a LaTeX argument, running the migrator's own handlers over it, so
+-- nested macros (\keyword, \myindex, ...) convert instead of surviving as a
+-- raw string.
+local function convert_blocks(tex)
+  local blocks = pandoc.read(tex, 'latex+raw_tex').blocks
+  for i = 1, #blocks do
+    blocks[i] = pandoc.walk_block(blocks[i], block_filter)
+  end
+  return blocks
+end
+
+local function convert_inlines(tex)
+  local inlines = pandoc.utils.blocks_to_inlines(convert_blocks(tex))
+  return pandoc.walk_inline(pandoc.Span(inlines), inline_filter).content
+end
+
+local function excerpt(text)
+  return (text:gsub('%s+', ' '):sub(1, 60))
+end
+
+local function warn(fmt, ...)
+  io.stderr:write('latex-to-md: ' .. string.format(fmt, ...) .. '\n')
+end
+
 local function keyworder(element)
   local main_text = element.text:match("{(.-)}")
   return pandoc.Span(main_text,{class='keyword'})
 end
 
 local function clozer(element)
-  local main_text = element.text:match("{(.-)}")
-  return pandoc.Span(main_text,{class='cloze'})
+  local args = read_args(element.text, 1)
+  if not args then return element end
+  return pandoc.Span(convert_inlines(args[1]), {class = 'cloze'})
 end
 
+-- Para takes neither an attr nor a string, so the previous body was doubly
+-- wrong; a hidden block is a Div.
 local function clozer_block(element)
-  local main_text = element.text:match("{(.-)}")
-  return pandoc.Para(main_text,{class='cloze'})
+  local args = read_args(element.text, 1)
+  if not args then return element end
+  return pandoc.Div(convert_blocks(args[1]), {class = 'cloze'})
 end
 
 local function referencer(element)
@@ -879,8 +923,10 @@ function RawInline(el)
     return myindexer(el)
   elseif starts_with('\\keyword', el.text) then
     return keyworder(el)
-  elseif starts_with('\\cloze', el.text) then
+  elseif starts_with('\\cloze{', el.text) then
     return clozer(el)
+  elseif starts_with('\\clozeset', el.text) then
+    return {}
   elseif starts_with('\\ref', el.text) or starts_with('\\cref', el.text) or starts_with('\\autoref', el.text) or starts_with('\\eqref', el.text) then
     return referencer(el)
   elseif starts_with('\\myurl', el.text) then
@@ -957,8 +1003,10 @@ function RawBlock(el)
     return replace_exercise(el)
   elseif starts_with('\\begin{solution}', el.text) then
     return replace_solution(el)
-  elseif starts_with('\\cloze', el.text) then
+  elseif starts_with('\\cloze{', el.text) then
     return clozer_block(el)
+  elseif starts_with('\\clozeset', el.text) then
+    return {}
   elseif starts_with('\\clearpage', el.text) then
     return {}
   elseif starts_with('\\bigbreak', el.text) then

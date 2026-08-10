@@ -74,6 +74,59 @@ def test_deterministic(tmp_path):
     assert convert(tmp_path) == convert(tmp_path)
 
 
+# --- cloze package and the \maybe* family (task #542) ----------------------
+
+
+def convert_src(tmp_path, tex, name="sample.tex"):
+    src = tmp_path / "src"
+    src.mkdir(exist_ok=True)
+    path = src / name
+    path.write_text(tex)
+    return convert_latex_file(path, src)
+
+
+CLOZE_TEX = textwrap.dedent(r"""
+    \section[S]{cloze-sample}{bk}{Cloze sample}
+
+    The damping ratio is \cloze{0.707} here.
+
+    A nested one: \cloze{\keyword{stationary point}} ok.
+
+    Inline math: $\tau = \cloze{RC}$ done.
+
+    \begin{align}
+      y &= \cloze{g(x)}
+    \end{align}
+    """)
+
+
+def test_cloze_becomes_a_cloze_span(tmp_path):
+    out = convert_src(tmp_path, CLOZE_TEX)
+    assert "[0.707]{.cloze}" in out
+
+
+def test_cloze_argument_survives_nested_braces(tmp_path):
+    out = convert_src(tmp_path, CLOZE_TEX)
+    # brace-naive extraction captured "\keyword{stationary point" and dropped
+    # the closing brace, leaving an escaped literal in the span
+    assert "stationary point" in out
+    assert "{.cloze}" in out
+    assert "{stationary point]" not in out, "argument truncated at first brace"
+    assert "\\\\keyword" not in out, "argument left as an escaped raw string"
+
+
+def test_cloze_argument_is_recursively_converted(tmp_path):
+    out = convert_src(tmp_path, CLOZE_TEX)
+    # the inner \keyword must become a .keyword span, not a raw string
+    assert ".keyword" in out
+
+
+def test_cloze_inside_math_is_left_alone(tmp_path):
+    out = convert_src(tmp_path, CLOZE_TEX)
+    assert r"\cloze{RC}" in out
+    assert r"\cloze{g(x)}" in out
+
+
 def test_preprocess_postprocess_pure():
     pre = preprocess("\\section{slug-a}{q1}{Title A}\n")
     assert "\\section{Title A}" in pre
