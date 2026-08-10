@@ -1296,6 +1296,12 @@ function Table(el)
 end
 
 function Span(el)
+    -- `.solutions-only` means the same mid-sentence as it does on a block, and
+    -- a sentence is where an answer is most likely to be written inline. Drop
+    -- the run and keep the prose around it. See the Div handler for the gate.
+    if el.classes:includes("solutions-only") and not SOLUTIONS then
+        return {}
+    end
     if el.classes:includes("cloze") then
         return clozer(el)
     elseif el.classes:includes("blank") then

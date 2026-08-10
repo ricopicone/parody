@@ -1652,8 +1652,28 @@ function Image(el)
   end
 end
 
+-- `[answer]{.solutions-only}` — the inline form of the listing-box gate a few
+-- hundred lines up. Wrap the run in \ifdefined\issolution…\fi so a non-solutions
+-- build typesets nothing.
+--
+-- Both {} matter. Without the one after \issolution the true branch would start
+-- by gobbling nothing in particular; without the one after \fi, TeX eats the
+-- space that follows the control word and the span runs into the next word
+-- ("4.2 secondsfor this design"). Any non-LaTeX format drops the run instead of
+-- passing it through — print.lua only ever runs for latex, and a gate that
+-- fails open is how this class leaked onto the web in the first place.
+local function solutions_onlyer(el)
+  if not is_latex() then return {} end
+  local out = pandoc.List({ pandoc.RawInline('latex', '\\ifdefined\\issolution{}') })
+  out:extend(el.content)
+  out:insert(pandoc.RawInline('latex', '\\fi{}'))
+  return out
+end
+
 function Span(el)
-  if el.classes:includes('key') or el.classes:includes('keys') then
+  if el.classes:includes('solutions-only') then
+    return solutions_onlyer(el)
+  elseif el.classes:includes('key') or el.classes:includes('keys') then
     return keyer(el)
   elseif el.classes:includes('menu') then
     if is_latex() then return menuer_latex(el) end

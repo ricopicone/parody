@@ -65,9 +65,11 @@ def web(md, solutions=False):
 
 
 def latex(md):
+    # --wrap=none matches writers/latex.py; without it pandoc breaks lines
+    # mid-sentence and the spacing assertions below read false failures.
     return pypandoc.convert_text(
         md, "latex", format=PRINT_FROM,
-        extra_args=[f"--lua-filter={FILTERS / 'print.lua'}"])
+        extra_args=[f"--lua-filter={FILTERS / 'print.lua'}", "--wrap=none"])
 
 
 # --- web: the public section html ------------------------------------------
@@ -119,9 +121,46 @@ def test_solutions_flag_does_not_leak_into_later_runs():
     assert "secret_answer" not in web(LISTING_MD)
 
 
-# --- print: unchanged ------------------------------------------------------
+# --- print: block level ----------------------------------------------------
 
 def test_print_still_gates_on_issolution():
     out = latex(LISTING_MD)
     assert "\\ifdefined\\issolution" in out
     assert "secret_answer" in out
+
+
+# --- inline spans ----------------------------------------------------------
+# The class means the same thing mid-sentence as it does on a block, and a
+# sentence is where an answer is most likely to be written inline.
+
+SPAN_MD = "The settling time is [4.2 seconds]{.solutions-only} for this design."
+
+
+def test_web_drops_a_solutions_only_span():
+    out = web(SPAN_MD)
+    assert "4.2 seconds" not in out
+    assert "The settling time is" in out   # the sentence around it survives
+    assert "for this design." in out
+
+
+def test_web_keeps_a_solutions_only_span_in_solutions_context():
+    assert "4.2 seconds" in web(SPAN_MD, solutions=True)
+
+
+def test_print_gates_a_solutions_only_span():
+    out = latex(SPAN_MD)
+    assert "\\ifdefined\\issolution" in out
+    assert "4.2 seconds" in out
+    # The gate has to close, or everything after it vanishes from the build.
+    assert "\\fi" in out
+    assert out.index("\\ifdefined\\issolution") < out.index("4.2 seconds")
+    assert out.index("4.2 seconds") < out.rindex("\\fi")
+
+
+def test_print_span_gate_does_not_swallow_the_sentence():
+    out = latex(SPAN_MD)
+    assert "for this design." in out
+    assert out.rindex("\\fi") < out.index("for this design.")
+    # \fi{} not \fi: a bare control word eats the following space, gluing the
+    # gated run to the next word in the solutions build.
+    assert "\\fi{} for this design." in out
