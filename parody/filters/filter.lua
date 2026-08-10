@@ -905,6 +905,13 @@ local SOLUTIONS = (os.getenv('PARODY_SOLUTIONS') or '') ~= ''
 function Div(el)
   if el.classes:includes("solutions-only") and not SOLUTIONS then
     return {}
+  -- A solution div nested in an .exercise is stripped by exercise() below;
+  -- one that is NOT nested reached no handler at all and rendered as ordinary
+  -- content. Drop it here so the gate does not depend on where it was written.
+  -- (Solutions destined for the owner-gated bucket are converted from content
+  -- the extractor has already unwrapped, so this never sees their fence.)
+  elseif el.classes:includes("exercise-solution") and not SOLUTIONS then
+    return {}
   elseif el.classes:includes("cloze") then
     return cloze_div(el)
   elseif el.classes:includes("blank") then
@@ -1296,6 +1303,12 @@ function Table(el)
 end
 
 function Span(el)
+    -- `.solutions-only` means the same mid-sentence as it does on a block, and
+    -- a sentence is where an answer is most likely to be written inline. Drop
+    -- the run and keep the prose around it. See the Div handler for the gate.
+    if el.classes:includes("solutions-only") and not SOLUTIONS then
+        return {}
+    end
     if el.classes:includes("cloze") then
         return clozer(el)
     elseif el.classes:includes("blank") then
