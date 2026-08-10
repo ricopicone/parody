@@ -478,6 +478,118 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
 
     return anchors
 
+# --- fenced-div scanning ---------------------------------------------------
+# Pandoc opens a fenced div with a run of >= 3 colons plus an attribute block
+# and closes it with a bare colon run; it pairs them by nesting, not by length,
+# so `::::` and `:::` are interchangeable and authors mix them freely. The
+# extractors below were originally regexes keyed to one exact spelling
+# (`::: {.exercise #exe:…}` with a bare `::: {.exercise-solution}` closer),
+# which no parody-native book writes — every such book shipped empty
+# `solutions`/`problems` buckets until this was rewritten to scan fences.
+
+_FENCE_OPEN = re.compile(r'^(:{3,})[ \t]*\{(.*)\}[ \t]*$')
+# Pandoc's brace-less shorthand: `::: exercise-solution` is `{.exercise-solution}`.
+# systems-parody writes every div this way. Missing it is worse than just losing
+# those divs — an unrecognised opener leaves its closing `:::` to be read as the
+# closer of the enclosing div, so the surrounding structure decodes wrong too.
+_FENCE_OPEN_WORD = re.compile(r'^(:{3,})[ \t]+([A-Za-z][A-Za-z0-9_-]*)[ \t]*$')
+_FENCE_CLOSE = re.compile(r'^:{3,}[ \t]*$')
+
+
+def _fence_has_class(attrs, name):
+    """True if the attribute block carries `.name` as a whole class token, so
+    `.exercise` does not match `.exercise-solution`."""
+    return re.search(r'(?<![-\w])\.' + re.escape(name) + r'(?![-\w])',
+                     attrs) is not None
+
+
+def _fence_attr(attrs, name):
+    m = re.search(r'(?<![-\w])' + re.escape(name)
+                  + r'=(?:"([^"]*)"|\'([^\']*)\'|([^\s}]+))', attrs)
+    if not m:
+        return None
+    return m.group(1) or m.group(2) or m.group(3)
+
+
+def _fence_identity(attrs):
+    """The key filter.lua's `exercise()` gives this div: the explicit
+    identifier when there is one, otherwise the `h=` short hash. The bucket key
+    doubles as an anchor link target, so the two MUST agree."""
+    m = re.search(r'#([A-Za-z0-9_:.-]+)', attrs)
+    if m:
+        return m.group(1)
+    return _fence_attr(attrs, 'h')
+
+
+_CODE_FENCE = re.compile(r'^(`{3,}|~{3,})(.*)$')
+
+
+def _mask_html_comments(text):
+    """Blank the inside of <!-- … --> spans, keeping every newline so line
+    indices still address the original text.
+
+    Commented-out content is not content — and, more sharply, these books wrap
+    code fences in comments (`<!-- ``` c … ``` -->`). The opening fence hides
+    behind the `<!--` while the closing one starts the line, so a scanner that
+    just toggles on ``` desynchronises and treats the rest of the file as code.
+    """
+    return re.sub(r'<!--.*?-->',
+                  lambda m: re.sub(r'[^\n]', ' ', m.group(0)),
+                  text, flags=re.S)
+
+
+def _scan_fenced_divs(lines):
+    """Every fenced div as (open_index, close_index, attrs).
+
+    Colon runs inside a fenced code block are content, not fences — a solution
+    holding a listing would otherwise close the div early. Code fences follow
+    the CommonMark rule: any run of >= 3 backticks/tildes opens a block, and
+    only a bare run of the same character and at least the same length closes
+    it, so ```` ```{=latex} ```` inside a block stays content.
+    """
+    scan = _mask_html_comments('\n'.join(lines)).split('\n')
+    spans, stack = [], []
+    in_code, fence_char, fence_len = False, None, 0
+    for i, line in enumerate(scan):
+        s = line.strip()
+        m = _CODE_FENCE.match(s)
+        if m:
+            run, info = m.group(1), m.group(2).strip()
+            if not in_code:
+                in_code, fence_char, fence_len = True, run[0], len(run)
+            elif run[0] == fence_char and len(run) >= fence_len and not info:
+                in_code, fence_char, fence_len = False, None, 0
+            continue
+        if in_code:
+            continue
+        m = _FENCE_OPEN.match(s)
+        if m:
+            stack.append((i, m.group(2)))
+            continue
+        m = _FENCE_OPEN_WORD.match(s)
+        if m:
+            stack.append((i, '.' + m.group(2)))
+        elif _FENCE_CLOSE.match(s) and stack:
+            open_index, attrs = stack.pop()
+            spans.append((open_index, i, attrs))
+    spans.sort()
+    return spans
+
+
+def _iter_exercises(lines):
+    """(key, attrs, open_index, close_index) for each identifiable exercise div,
+    plus the full span list so callers can look inside without rescanning."""
+    spans = _scan_fenced_divs(lines)
+    found = []
+    for open_index, close_index, attrs in spans:
+        if not _fence_has_class(attrs, 'exercise'):
+            continue
+        key = _fence_identity(attrs)
+        if key is not None:
+            found.append((key, attrs, open_index, close_index))
+    return found, spans
+
+
 def extract_exercise_solutions(content):
     """
     Extract exercise solutions from exercise-solution divs.
@@ -485,45 +597,34 @@ def extract_exercise_solutions(content):
     where solutions_dict maps exercise IDs to their solution HTML and metadata.
     Each solution entry is a dict with 'content', 'title', and optionally other metadata.
     """
-    import re
+    lines = content.split('\n')
+    exercises, spans = _iter_exercises(lines)
 
     solutions = {}
+    cuts = []
+    for key, attrs, open_index, close_index in exercises:
+        for sol_open, sol_close, sol_attrs in spans:
+            if not (open_index < sol_open and sol_close < close_index):
+                continue
+            if not _fence_has_class(sol_attrs, 'exercise-solution'):
+                continue
+            solutions[key] = {
+                'content': '\n'.join(lines[sol_open + 1:sol_close]).strip(),
+                'title': _fence_attr(attrs, 'title'),
+            }
+            cuts.append((sol_open, sol_close))
+            break
 
-    # Pattern to match ::: {.exercise #id title="..." ...} ... ::: {.exercise-solution} ... ::: :::
-    # This captures the entire exercise block including nested solution and title attribute.
-    # The negative lookahead (?!::: \{\.exercise\s) prevents the match from crossing into
-    # a subsequent exercise block when an exercise without a solution appears in between.
-    exercise_pattern = r'(::: \{\.exercise\s+#(exe[:\-][A-Za-z0-9_-]+)([^}]*)\}(?:(?!::: \{\.exercise\s).)*?)(::: \{\.exercise-solution\})(.*?)(:::)(.*?)(:::)'
+    # Drop the solution divs, last first so earlier indices stay valid.
+    for sol_open, sol_close in sorted(cuts, reverse=True):
+        del lines[sol_open:sol_close + 1]
 
-    def extract_solution(match):
-        """Replace exercise-solution div with empty string and store solution."""
-        before_solution = match.group(1)  # Everything before exercise-solution div
-        exercise_id = match.group(2)      # Exercise ID (e.g., exe:reflex-agent)
-        attributes = match.group(3)       # Attributes after ID (e.g., title="...")
-        solution_content = match.group(5) # Content inside exercise-solution
-        after_solution = match.group(7)   # Content after inner ::: but before outer :::
-
-        # Extract title attribute if present
-        title_match = re.search(r'title="([^"]+)"', attributes)
-        title = title_match.group(1) if title_match else None
-
-        # Store the solution content with metadata
-        solutions[exercise_id] = {
-            'content': solution_content.strip(),
-            'title': title
-        }
-
-        # Return the exercise without the solution div
-        return before_solution + after_solution + match.group(8)
-
-    # Extract all solutions and remove them from content
-    content_without_solutions = re.sub(exercise_pattern, extract_solution, content, flags=re.DOTALL)
-
-    return content_without_solutions, solutions
+    return '\n'.join(lines), solutions
 
 def extract_exercise_problems(content):
     """
-    Extract exercise problem-statement bodies from `::: {.exercise #exe:...}` divs.
+    Extract exercise problem-statement bodies from `.exercise` divs, keyed the
+    way the renderer keys them (explicit id, else the `h=` hash).
 
     Intended to run on the output of `extract_exercise_solutions`, so any nested
     `::: {.exercise-solution}` div has already been removed; the body captured
@@ -531,53 +632,15 @@ def extract_exercise_problems(content):
 
     Returns a dict mapping exercise IDs to {'title': str|None, 'content': markdown_body}.
     """
-    problems = {}
     lines = content.split('\n')
-
-    opener_re = re.compile(
-        r'^:::[ \t]+\{\.exercise\s+#(exe[:\-][A-Za-z0-9_-]+)([^}]*)\}[ \t]*$'
-    )
-
-    i = 0
-    while i < len(lines):
-        m = opener_re.match(lines[i])
-        if not m:
-            i += 1
-            continue
-
-        exercise_id = m.group(1)
-        attributes = m.group(2)
-        title_match = re.search(r'title="([^"]+)"', attributes)
-        title = title_match.group(1) if title_match else None
-
-        body_lines = []
-        depth = 1
-        j = i + 1
-        while j < len(lines):
-            stripped = lines[j].strip()
-            if stripped == ':::':
-                depth -= 1
-                if depth == 0:
-                    break
-                body_lines.append(lines[j])
-            elif stripped.startswith(':::') and '{' in stripped:
-                depth += 1
-                body_lines.append(lines[j])
-            else:
-                body_lines.append(lines[j])
-            j += 1
-
-        if depth == 0:
-            problems[exercise_id] = {
-                'title': title,
-                'content': '\n'.join(body_lines).strip(),
-            }
-            i = j + 1
-        else:
-            # Unbalanced fence; skip past the opener and keep scanning.
-            i += 1
-
-    return problems
+    exercises, _ = _iter_exercises(lines)
+    return {
+        key: {
+            'title': _fence_attr(attrs, 'title'),
+            'content': '\n'.join(lines[open_index + 1:close_index]).strip(),
+        }
+        for key, attrs, open_index, close_index in exercises
+    }
 
 
 def _unwrap_web_markdown_blocks(md):
