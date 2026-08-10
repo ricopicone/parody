@@ -164,3 +164,55 @@ def test_print_span_gate_does_not_swallow_the_sentence():
     # \fi{} not \fi: a bare control word eats the following space, gluing the
     # gated run to the next word in the solutions build.
     assert "\\fi{} for this design." in out
+
+
+# --- .exercise-solution outside an exercise ---------------------------------
+# Both filters only ever gated the NESTED shape: filter.lua strips solution
+# divs while rendering the enclosing .exercise box, print.lua turns them into
+# a `solution` environment from inside `exerciser`. A solution div that is not
+# inside an .exercise div reached neither handler and rendered as ordinary
+# content on both paths.
+
+NESTED_MD = """\
+::: {.exercise .lab h="sc"}
+Do the thing.
+
+::: {.exercise-solution .lab}
+SECRET-NESTED
+:::
+:::
+"""
+
+STANDALONE_MD = """\
+::: {.exercise-solution}
+SECRET-STANDALONE
+:::
+"""
+
+
+def test_web_drops_a_nested_solution():
+    assert "SECRET-NESTED" not in web(NESTED_MD)
+
+
+def test_web_drops_a_standalone_solution():
+    assert "SECRET-STANDALONE" not in web(STANDALONE_MD)
+
+
+def test_web_keeps_a_standalone_solution_in_solutions_context():
+    assert "SECRET-STANDALONE" in web(STANDALONE_MD, solutions=True)
+
+
+def test_print_gates_a_standalone_solution():
+    out = latex(STANDALONE_MD)
+    assert "\\ifdefined\\issolution" in out
+    assert "SECRET-STANDALONE" in out
+    assert out.index("\\ifdefined\\issolution") < out.index("SECRET-STANDALONE")
+    assert out.index("SECRET-STANDALONE") < out.rindex("\\fi")
+
+
+def test_print_still_uses_the_solution_environment_when_nested():
+    # The nested shape must keep going through exerciser — it closes the
+    # enclosing exercise env, which a bare \ifdefined gate would not do.
+    out = latex(NESTED_MD)
+    assert "\\begin{labsolution}" in out
+    assert "SECRET-NESTED" in out

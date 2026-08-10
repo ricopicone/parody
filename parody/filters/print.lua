@@ -1580,9 +1580,24 @@ function RawInline(el)
   return el
 end
 
+-- A solution div OUTSIDE any exercise: no handler ever claimed it, so it
+-- rendered as ordinary body text in the public PDF. It cannot go through
+-- exercise_solution — that emits \end{exercise} to close an enclosing
+-- environment which, here, does not exist — so gate it like .solutions-only.
+local function orphan_solutioner(el)
+  if not is_latex() then return {} end
+  local content = delimiter_dollar(walk_to_latex(el))
+  return pandoc.RawBlock('latex',
+    '\n\\ifdefined\\issolution\n' .. content .. '\n\\fi\n')
+end
+
 function Div(el)
   if el.classes:includes('section') then
     return el -- section-divs pass through; versioning filters are Phase 4
+  end
+  if el.classes:includes('exercise-solution')
+      and not el.classes:includes('in-exercise') then
+    return orphan_solutioner(el)
   end
   if el.classes:includes('cloze') then
     return cloze_div_latex(el)
@@ -1761,7 +1776,26 @@ function OrderedList(el)
   return el
 end
 
+-- Marks `.exercise-solution` divs that live inside an .exercise, so the Div
+-- pass can tell them from orphans. It has to be its own earlier pass: pandoc
+-- walks bottom-up, so by the time Div sees a solution div its exercise has not
+-- been visited yet and the div cannot look upward for itself. Marking from the
+-- exercise DOWN sidesteps the ordering entirely.
+local function mark_nested_solutions(el)
+  if not el.classes:includes('exercise') then return nil end
+  return pandoc.walk_block(el, {
+    Div = function(inner)
+      if inner.classes:includes('exercise-solution')
+          or inner.classes:includes('solution') then
+        inner.classes:insert('in-exercise')
+      end
+      return inner
+    end,
+  })
+end
+
 return {
+  { Div = mark_nested_solutions },
   { Div = Div },
   { Header = Header },
   { RawBlock = RawBlock },
