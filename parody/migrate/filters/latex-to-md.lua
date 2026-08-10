@@ -167,6 +167,16 @@ local function convert_inlines(tex)
   return pandoc.walk_inline(pandoc.Span(inlines), inline_filter).content
 end
 
+-- \maybeeq and friends are display boxes, but pandoc hands them to us from an
+-- inline position when the macro sits in its own paragraph. An inline handler
+-- may not return a Block ("no __toinline metamethod"), so serialise the Div to
+-- raw markdown -- the idiom replace_exercise already uses -- and pad it with
+-- blank lines so the fence still parses when the markdown is read back.
+local function block_as_raw_inline(div)
+  local text = pandoc.write(pandoc.Pandoc({div}), 'markdown')
+  return pandoc.RawInline('markdown', '\n\n' .. text:gsub('%s+$', '') .. '\n\n')
+end
+
 local function excerpt(text)
   return (text:gsub('%s+', ' '):sub(1, 60))
 end
@@ -566,11 +576,26 @@ end
 -- \maybeeq is always a display box in the source, even where pandoc hands it
 -- to us from an inline position.
 local function replace_maybeeq_inline(el)
-  return replace_maybeeq(el)
+  local block = replace_maybeeq(el)
+  if block.t ~= 'Div' then return el end
+  return block_as_raw_inline(block)
+end
+
+-- Same inline-position problem as replace_maybeeq_inline.
+local function maybe_infobox_inline(el)
+  local block = maybe_infobox(el)
+  if block.t ~= 'Div' then return el end
+  return block_as_raw_inline(block)
+end
+
+local function maybe_block_inline(el)
+  local block = maybe_block(el)
+  if block.t ~= 'Div' then return el end
+  return block_as_raw_inline(block)
 end
 
 local function replace_maybeeqn_inline(el)
-  return maybe_infobox(el)
+  return maybe_infobox_inline(el)
 end
 
 -- \mayb{X} is `X` or `\phantom{X}` in the source -- a blank sized to the
@@ -928,13 +953,13 @@ function RawInline(el)
   -- tested before \maybeeq before \mayben{ before \maybe{ before \mayb{, or a
   -- \maybeeqn routes into the \maybe handler and silently loses title + label.
   elseif starts_with('\\maybeeqn', el.text) then
-    return maybe_infobox(el)
+    return maybe_infobox_inline(el)
   elseif starts_with('\\maybeeq', el.text) then
     return replace_maybeeq_inline(el)
   elseif starts_with('\\mayben{', el.text) then
-    return maybe_infobox(el)
+    return maybe_infobox_inline(el)
   elseif starts_with('\\maybe{', el.text) then
-    return maybe_block(el)
+    return maybe_block_inline(el)
   elseif starts_with('\\mayb{', el.text) then
     return replace_mayb_inline(el)
   else

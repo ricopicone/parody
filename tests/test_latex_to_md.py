@@ -233,6 +233,36 @@ def test_clozeset_is_dropped(tmp_path):
     assert "Prose after." in out
 
 
+INLINE_POSITION_TEX = textwrap.dedent(r"""
+    \section[S]{inline-pos}{bk}{Inline position}
+
+    A sentence that runs straight into the macro with no blank line, so
+    pandoc hands it to us as an inline rather than a block.
+    \maybeeqn{a titled result}{eq:inline}{%
+    \begin{align*}
+      v = 1.
+    \end{align*}
+    }
+    """)
+
+
+def test_blockish_macro_in_inline_position(tmp_path):
+    """An inline handler may not return a Block ('no __toinline metamethod').
+
+    Found by running the real electronics-primer chapters, not by a fixture:
+    ch03/ch04 put \\maybeeqn in a paragraph's inline stream. The Div is
+    serialised to raw markdown, padded with blank lines so the fence still
+    parses when the markdown is read back.
+    """
+    out = convert_src(tmp_path, INLINE_POSITION_TEX)
+    assert 'title="a titled result"' in out
+    assert "#eq:inline" in out
+    assert "\\maybeeqn" not in out
+    # the fence must start its own line, or it reads back as paragraph text
+    assert any(ln.lstrip().startswith(":::") and ".infobox" in ln
+               for ln in out.splitlines()), out
+
+
 EXAMPLEMAYBE_TEX = textwrap.dedent(r"""
     \section[S]{ex-sample}{bk}{Ex sample}
 
