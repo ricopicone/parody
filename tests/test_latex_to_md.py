@@ -141,6 +141,27 @@ def test_mayb_becomes_a_cloze_span(tmp_path):
     assert "\\mayb" not in out
 
 
+MAYBEEQ_TEX = textwrap.dedent(r"""
+    \section[S]{maybeeq-sample}{bk}{Maybeeq sample}
+
+    \maybeeq{%
+    \begin{align*}
+      v_k = \frac{Z_k}{Z_1 + Z_2} v_\text{in}.
+    \end{align*}
+    }
+    """)
+
+
+def test_maybeeq_becomes_a_cloze_div(tmp_path):
+    out = convert_src(tmp_path, MAYBEEQ_TEX)
+    # pandoc's markdown writer uses the compact single-class fence form
+    # (`::: cloze`); it reads back to the same classes as `::: {.cloze}`.
+    assert "::: cloze" in out
+    assert "v_k" in out
+    assert "\\maybeeq" not in out
+    assert ".maybe" not in out
+
+
 def test_preprocess_postprocess_pure():
     pre = preprocess("\\section{slug-a}{q1}{Title A}\n")
     assert "\\section{Title A}" in pre

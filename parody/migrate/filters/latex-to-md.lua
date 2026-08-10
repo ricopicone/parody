@@ -529,21 +529,14 @@ local function replace_notes(el)
   return tex_contents
 end
 
+-- \maybeeq{X} is an untitled, unnumbered box (eqboxtwo) whose contents hide --
+-- `upperbox=invisible` is exactly what ::: {.cloze} means. The coloured frame
+-- is dropped: an .infobox with no title renders an empty heading, which is
+-- worse. Recorded as an accepted fidelity loss in the design.
 local function replace_maybeeq(el)
-  -- Replace \maybeeq{...} with its contents
-  -- get text between {} but not the braces, recognizing that there can be braces in the text
-  local con = el.text:match("%b{}")
-  -- strip outer braces
-  con = con:sub(2,-2)
-  -- strip only leading % and \n, if they are in the first two characters
-  con = con:gsub("^%s*%%?%s*","")
-  -- if it is wrapped in \begin{align}...\end{align} or \begin{align*}...\end{align*}, replace the wrapping align or align* with $$\begin{aligned}...\end{aligned}$$ and remove trailing whitespace before \end{aligned}
-  con = con:gsub("\\begin{align%*?}(.-)\\end{align%*?}",function (x) return "$$\\begin{aligned}" .. x:gsub("%s*$","") .. "\\end{aligned}$$" end)
-  local tex_contents = pandoc.RawBlock('markdown',
-    con,
-    {class='maybe maybeeq'}
-  )
-  return tex_contents
+  local args = read_args(el.text, 1)
+  if not args then return el end
+  return pandoc.Div(convert_blocks(args[1]), {class = 'cloze'})
 end
 
 local function replace_maybeeqn(el)
@@ -565,21 +558,10 @@ local function replace_maybeeqn(el)
   return el
 end
 
+-- \maybeeq is always a display box in the source, even where pandoc hands it
+-- to us from an inline position.
 local function replace_maybeeq_inline(el)
-  -- Replace \maybeeq{...} with its contents
-  -- get text between {} but not the braces, recognizing that there can be braces in the text
-  local con = el.text:match("%b{}")
-  -- strip outer braces
-  con = con:sub(2,-2)
-  -- strip only leading % and \n, if they are in the first two characters
-  con = con:gsub("^%s*%%?%s*","")
-  -- if it is wrapped in \begin{align}...\end{align} or \begin{align*}...\end{align*}, replace the wrapping align or align* with $$\begin{aligned}...\end{aligned}$$
-  con = con:gsub("\\begin{align%*?}(.-)\\end{align%*?}",function (x) return "$$\\begin{aligned}" .. x:gsub("%s*$","") .. "\\end{aligned}$$" end)
-  local tex_contents = pandoc.RawInline('markdown',
-    con,
-    {class='maybe maybeeq'}
-  )
-  return tex_contents
+  return replace_maybeeq(el)
 end
 
 local function replace_maybeeqn_inline(el)
