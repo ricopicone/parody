@@ -600,34 +600,21 @@ local function replace_maybeeqn_inline(el)
   return tex_contents
 end
 
+-- \mayb{X} is `X` or `\phantom{X}` in the source -- a blank sized to the
+-- answer, which is exactly [X]{.cloze}. The old bodies emitted a `maybe` class
+-- no renderer knows, and the markdown writer dropped it, revealing the answer.
+-- The align-to-aligned rewriting they carried is gone: pandoc's LaTeX reader
+-- parses align natively and meta_book.py demotes it in postprocess.
 local function replace_mayb(el)
-  -- Replace \mayb{...} with its contents
-  -- get text between {} but not the braces, recognizing that there can be braces in the text
-  local con = el.text:match("%b{}")
-  -- strip outer braces
-  con = con:sub(2,-2)
-  -- strip only leading % and \n, if they are in the first two characters
-  con = con:gsub("^%s*%%?%s*","")
-  -- if it is wrapped in \begin{align}...\end{align} or \begin{align*}...\end{align*}, replace the wrapping align or align* with $$\begin{aligned}...\end{aligned}$$
-  con = con:gsub("\\begin{align%*?}(.-)\\end{align%*?",function (x) return "$$\\begin{aligned}" .. x:gsub("%s*$","") .. "\\end{aligned}$$" end)
-  return pandoc.RawBlock('markdown',con,{class='maybe'})
+  local args = read_args(el.text, 1)
+  if not args then return el end
+  return pandoc.Div(convert_blocks(args[1]), {class = 'cloze'})
 end
 
 local function replace_mayb_inline(el)
-  -- Replace \mayb{...} with its contents
-  -- get text between {} but not the braces, recognizing that there can be braces in the text
-  local con = el.text:match("%b{}")
-  -- strip outer braces
-  con = con:sub(2,-2)
-  -- strip only leading % and \n, if they are in the first two characters
-  con = con:gsub("^%s*%%?%s*","")
-  -- if it is wrapped in \begin{align}...\end{align} or \begin{align*}...\end{align*}, replace the wrapping align or align* with $$\begin{aligned}...\end{aligned}$$
-  con = con:gsub("\\begin{align%*?}(.-)\\end{align%*?",function (x) return "$$\\begin{aligned}" .. x:gsub("%s*$","") .. "\\end{aligned}$$" end)
-  local tex_contents = pandoc.RawInline('markdown',
-    con,
-    {class='maybe'}
-  )
-  return tex_contents
+  local args = read_args(el.text, 1)
+  if not args then return el end
+  return pandoc.Span(convert_inlines(args[1]), {class = 'cloze'})
 end
 
 local function replace_examplemaybe(el)

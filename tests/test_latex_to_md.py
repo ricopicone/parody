@@ -127,6 +127,20 @@ def test_cloze_inside_math_is_left_alone(tmp_path):
     assert r"\cloze{g(x)}" in out
 
 
+MAYB_TEX = textwrap.dedent(r"""
+    \section[S]{mayb-sample}{bk}{Mayb sample}
+
+    The answer is \mayb{42} and that is all.
+    """)
+
+
+def test_mayb_becomes_a_cloze_span(tmp_path):
+    out = convert_src(tmp_path, MAYB_TEX)
+    assert "[42]{.cloze}" in out
+    assert "maybe" not in out
+    assert "\\mayb" not in out
+
+
 def test_preprocess_postprocess_pure():
     pre = preprocess("\\section{slug-a}{q1}{Title A}\n")
     assert "\\section{Title A}" in pre
