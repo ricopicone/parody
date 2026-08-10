@@ -543,3 +543,60 @@ def test_web_block_blank_exposes_line_count_to_css():
     out = web("::: {.blank lines=6}\n:::", "blank")
     assert 'data-lines="6"' in out
     assert "--cloze-lines: 6" in out
+
+
+# --- end to end: migrated LaTeX must actually blank (task #542) -------------
+
+import textwrap  # noqa: E402
+
+from parody.migrate.latex_to_md import convert_latex_file  # noqa: E402
+
+MIGRATION_TEX = textwrap.dedent(r"""
+    \section[S]{leak}{bk}{Leak check}
+
+    The damping ratio is \mayb{ZETASECRET} here.
+
+    \maybeeq{%
+    \begin{align*}
+      w = WSECRET.
+    \end{align*}
+    }
+
+    \maybeeqn{a titled result}{eq:leak}{%
+    \begin{align*}
+      v = VSECRET.
+    \end{align*}
+    }
+
+    A package cloze: \cloze{CSECRET} done.
+    """)
+
+SECRETS = ("ZETASECRET", "WSECRET", "VSECRET", "CSECRET")
+
+
+def _migrate(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    tex = src / "leak.tex"
+    tex.write_text(MIGRATION_TEX)
+    return convert_latex_file(tex, src)
+
+
+def test_migrated_clozes_do_not_leak_in_blank_mode(tmp_path):
+    md = _migrate(tmp_path)
+    # the answers live in the markdown source -- that is the point of a cloze
+    for secret in SECRETS:
+        assert secret in md, f"{secret} lost in migration"
+
+    out = web(md, "blank")
+    for secret in SECRETS:
+        assert secret not in out, f"{secret} leaked in blank mode"
+    # the box and its title survive the blanking
+    assert "a titled result" in out
+
+
+def test_migrated_clozes_show_in_full_mode(tmp_path):
+    md = _migrate(tmp_path)
+    out = web(md, "full")
+    for secret in SECRETS:
+        assert secret in out, f"{secret} missing in full mode"
