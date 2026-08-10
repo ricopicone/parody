@@ -162,6 +162,49 @@ def test_maybeeq_becomes_a_cloze_div(tmp_path):
     assert ".maybe" not in out
 
 
+MAYBEEQN_TEX = textwrap.dedent(r"""
+    \section[S]{eqn-sample}{bk}{Eqn sample}
+
+    \maybeeqn{general impedance voltage divider}{eq:vdiv}{%
+    For the output voltage across impedance $Z_k$ we have
+    \begin{align*}
+      v_k = \frac{Z_k}{Z_1 + Z_2} v_\text{in}.
+    \end{align*}
+    }
+
+    \maybeeqn{piecewise linear diode model}{}{%
+    \begin{align*}
+      i_D = 0.
+    \end{align*}
+    }
+    """)
+
+
+def test_maybeeqn_becomes_a_titled_infobox(tmp_path):
+    out = convert_src(tmp_path, MAYBEEQN_TEX)
+    assert ".infobox" in out
+    assert 'title="general impedance voltage divider"' in out
+    assert "#eq:vdiv" in out
+
+
+def test_maybeeqn_hides_only_its_contents(tmp_path):
+    out = convert_src(tmp_path, MAYBEEQN_TEX)
+    # the box survives; a cloze div nests inside it
+    assert "cloze" in out
+    assert "v_k" in out
+
+
+def test_maybeeqn_empty_label_yields_no_identifier(tmp_path):
+    out = convert_src(tmp_path, MAYBEEQN_TEX)
+    assert 'title="piecewise linear diode model"' in out
+    assert "#labelme" not in out
+
+
+def test_maybeeqn_body_prose_survives(tmp_path):
+    out = convert_src(tmp_path, MAYBEEQN_TEX)
+    assert "For the output voltage" in out
+
+
 def test_preprocess_postprocess_pure():
     pre = preprocess("\\section{slug-a}{q1}{Title A}\n")
     assert "\\section{Title A}" in pre

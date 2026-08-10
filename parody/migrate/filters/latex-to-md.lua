@@ -539,23 +539,28 @@ local function replace_maybeeq(el)
   return pandoc.Div(convert_blocks(args[1]), {class = 'cloze'})
 end
 
+-- \maybeeqn{title}{label}{body} (eqbox/eqboxi) and \mayben{title}{label}{body}
+-- (infobox/infoboxi): the box, its title and its cross-ref target stay visible;
+-- only the contents hide. .infobox is the only parody box carrying a title and
+-- an identifier, so both land there wrapping a .cloze div.
+local function maybe_infobox(el)
+  local args = read_args(el.text, 3)
+  if not args then return el end
+  local title = pandoc.utils.stringify(convert_inlines(args[1]))
+  local label = args[2]:gsub('%%', ''):gsub('^%s*(.-)%s*$', '%1')
+  local inner = pandoc.Div(convert_blocks(args[3]), {class = 'cloze'})
+  return pandoc.Div({inner}, pandoc.Attr(label, {'infobox'}, {title = title}))
+end
+
+-- \maybe{body}: an unframed, untitled box whose contents hide.
+local function maybe_block(el)
+  local args = read_args(el.text, 1)
+  if not args then return el end
+  return pandoc.Div(convert_blocks(args[1]), {class = 'cloze'})
+end
+
 local function replace_maybeeqn(el)
-  -- -- Replace \maybeeq{...} with its contents
-  -- -- get text between {} but not the braces, recognizing that there can be braces in the text
-  -- local id = el.text:match("\\maybeeqn{.-}{(.-)}{.-}")
-  -- local con = el.text:match("\\maybeeqn{.-}{.-}{(.-)}")
-  -- -- strip outer braces
-  -- con = con:sub(2,-2)
-  -- -- strip only leading % and \n, if they are in the first two characters
-  -- con = con:gsub("^%s*%%?%s*","")
-  -- -- if it is wrapped in \begin{align}...\end{align} or \begin{align*}...\end{align*}, replace the wrapping align or align* with $$\begin{aligned}...\end{aligned}$$
-  -- con = con:gsub("\\begin{align%*?}(.-)\\end{align%*?}",function (x) return "$$\\begin{aligned}" .. x:gsub("%s*$","") .. "\\end{aligned}$$" end)
-  -- local tex_contents = pandoc.RawBlock(
-  --   con,
-  --   {class='maybe maybeeq'}
-  -- )
-  -- return tex_contents
-  return el
+  return maybe_infobox(el)
 end
 
 -- \maybeeq is always a display box in the source, even where pandoc hands it
@@ -565,21 +570,7 @@ local function replace_maybeeq_inline(el)
 end
 
 local function replace_maybeeqn_inline(el)
-  -- Replace \maybeeq{...} with its contents
-  -- get text between {} but not the braces, recognizing that there can be braces in the text
-  local id = el.text:match("\\maybeeqn{.-}{(.-)}{.-}")
-  local con = el.text:match("\\maybeeqn{.-}{.-}{(.-)}")
-  -- strip outer braces
-  con = con:sub(2,-2)
-  -- strip only leading % and \n, if they are in the first two characters
-  con = con:gsub("^%s*%%?%s*","")
-  -- if it is wrapped in \begin{align}...\end{align} or \begin{align*}...\end{align*}, replace the wrapping align or align* with $$\begin{aligned}...\end{aligned}$$
-  con = con:gsub("\\begin{align%*?}(.-)\\end{align%*?}",function (x) return "$$\\begin{aligned}" .. x:gsub("%s*$","") .. "\\end{aligned}$$" end)
-  local tex_contents = pandoc.RawInline('markdown',
-    con,
-    {id=id,class='maybe maybeeq'}
-  )
-  return tex_contents
+  return maybe_infobox(el)
 end
 
 -- \mayb{X} is `X` or `\phantom{X}` in the source -- a blank sized to the
@@ -930,10 +921,17 @@ function RawInline(el)
     return {}
   elseif starts_with('\\pageref', el.text) then
     return pagerefer(el)
+  -- ORDER MATTERS: starts_with dispatch, so longer names first. \maybeeqn
+  -- tested before \maybeeq before \mayben{ before \maybe{ before \mayb{, or a
+  -- \maybeeqn routes into the \maybe handler and silently loses title + label.
   elseif starts_with('\\maybeeqn', el.text) then
-    return replace_maybeeqn_inline(el)
+    return maybe_infobox(el)
   elseif starts_with('\\maybeeq', el.text) then
     return replace_maybeeq_inline(el)
+  elseif starts_with('\\mayben{', el.text) then
+    return maybe_infobox(el)
+  elseif starts_with('\\maybe{', el.text) then
+    return maybe_block(el)
   elseif starts_with('\\mayb{', el.text) then
     return replace_mayb_inline(el)
   else
@@ -1024,10 +1022,15 @@ function RawBlock(el)
     return replace_lemma(el)
   elseif starts_with('\\notes', el.text) then
     return replace_notes(el)
+  -- ORDER MATTERS -- see the matching chain in RawInline.
   elseif starts_with('\\maybeeqn{', el.text) then
-    return replace_maybeeqn(el)
+    return maybe_infobox(el)
   elseif starts_with('\\maybeeq{', el.text) then
     return replace_maybeeq(el)
+  elseif starts_with('\\mayben{', el.text) then
+    return maybe_infobox(el)
+  elseif starts_with('\\maybe{', el.text) then
+    return maybe_block(el)
   elseif starts_with('\\mayb{', el.text) then
     return replace_mayb(el)
   elseif starts_with('\\examplemaybe', el.text) then
