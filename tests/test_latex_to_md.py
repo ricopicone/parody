@@ -205,6 +205,34 @@ def test_maybeeqn_body_prose_survives(tmp_path):
     assert "For the output voltage" in out
 
 
+UNHANDLED_TEX = textwrap.dedent(r"""
+    \section[S]{unhandled}{bk}{Unhandled}
+
+    A fixed blank: \clozeline[3cm] here.
+    """)
+
+
+def test_unhandled_cloze_macro_passes_through_with_a_warning(tmp_path, caplog):
+    # pypandoc intercepts pandoc's stderr and re-emits it through logging,
+    # so the warning surfaces in caplog rather than on the fd
+    out = convert_src(tmp_path, UNHANDLED_TEX)
+    assert "clozeline" in out          # left raw, not silently swallowed
+    assert "latex-to-md" in caplog.text
+    assert "clozeline" in caplog.text
+
+
+def test_clozeset_is_dropped(tmp_path):
+    out = convert_src(tmp_path, textwrap.dedent(r"""
+        \section[S]{cset}{bk}{Cset}
+
+        \clozeset{hide}
+
+        Prose after.
+        """))
+    assert "clozeset" not in out
+    assert "Prose after." in out
+
+
 def test_preprocess_postprocess_pure():
     pre = preprocess("\\section{slug-a}{q1}{Title A}\n")
     assert "\\section{Title A}" in pre

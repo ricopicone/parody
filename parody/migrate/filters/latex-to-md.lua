@@ -887,6 +887,9 @@ function RawInline(el)
     return clozer(el)
   elseif starts_with('\\clozeset', el.text) then
     return {}
+  elseif starts_with('\\cloze', el.text) then
+    warn('unhandled cloze-package macro, left raw: %s', excerpt(el.text))
+    return el
   elseif starts_with('\\ref', el.text) or starts_with('\\cref', el.text) or starts_with('\\autoref', el.text) or starts_with('\\eqref', el.text) then
     return referencer(el)
   elseif starts_with('\\myurl', el.text) then
@@ -943,6 +946,16 @@ function Figure(el)
   return el -- Raw figures will be processed in the RawBlock function
 end
 
+-- \cloze inside math is intentional and handled by filter.lua/print.lua, so it
+-- passes through untouched. A \maybe* inside math is known to no renderer --
+-- say so rather than let it through silently.
+function Math(el)
+  if el.text:find('\\mayb') then
+    warn('\\maybe* macro inside math (no renderer support): %s', excerpt(el.text))
+  end
+  return el
+end
+
 function RawBlock(el)
   if starts_with('\\myindex', el.text) then
     -- block-level \myindex (own paragraph in the source)
@@ -974,6 +987,9 @@ function RawBlock(el)
     return clozer_block(el)
   elseif starts_with('\\clozeset', el.text) then
     return {}
+  elseif starts_with('\\cloze', el.text) then
+    warn('unhandled cloze-package macro, left raw: %s', excerpt(el.text))
+    return el
   elseif starts_with('\\clearpage', el.text) then
     return {}
   elseif starts_with('\\bigbreak', el.text) then
