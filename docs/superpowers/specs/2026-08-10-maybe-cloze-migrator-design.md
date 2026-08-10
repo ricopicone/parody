@@ -148,10 +148,11 @@ that already works.
 The root cause of every broken handler is argument extraction. Two patterns are
 in use, both wrong for real content:
 
-- `{(.-)}` — non-greedy, stops at the first `}` (`clozer` line 143,
-  `clozer_block` line 148).
-- `{.-}{(.-)}{.-}` — mis-splits whenever any argument nests
-  (`replace_maybeeqn_inline` line 544, `replace_examplemaybe` line 592).
+- `{(.-)}` — non-greedy with no trailing context, so it stops at the first `}`
+  and nothing forces backtracking (`clozer` line 143, `clozer_block` line 148).
+  This is the one that genuinely breaks.
+- `{.-}{(.-)}{.-}` — fragile in principle, but see the `\examplemaybe` note
+  below: with following groups Lua backtracks to a consistent parse.
 
 Add one helper, `read_args(text, n)`, that walks `%b{}` *n* times from the end of
 the macro name and returns the *n* arguments with outer braces stripped. Every
@@ -195,12 +196,21 @@ continue to convert to `$$\begin{aligned}…\end{aligned}$$`, matching what the
 existing handlers do and what `parody-web` 0.28.1 expects (it promotes inner
 `aligned` → `align` so `\tag` is legal).
 
-### `\examplemaybe`
+### `\examplemaybe` — not touched
 
-Its semantic mapping is unchanged — it is the `--solutions` axis, not the cloze
-axis, and `.example` + solution sub-div is already correct. It is touched only
-to swap in the shared `read_args` reader, since it carries the same
-mis-splitting bug across ~70 call sites.
+**Correction, found during implementation.** An earlier draft of this spec
+claimed `replace_examplemaybe`'s `{.-}{(.-)}{.-}{.-}` split carried the same
+bug and should adopt `read_args`. It does not. Unlike `clozer`'s `{(.-)}`, that
+pattern is *followed by more groups*, so Lua backtracks until it finds a parse
+consistent with all four — which is the correct split for any balanced input.
+Verified with both math (`\frac{a}{b}`) and non-math (`\textbf{…}`) nesting.
+
+`\examplemaybe` is therefore left entirely alone: no evidence of a defect, 70
+call sites of risk, no benefit. A characterisation test pins the behaviour so a
+future rewrite cannot regress it silently.
+
+The general lesson: a trailing-context-free `{(.-)}` is genuinely broken; the
+same lazy pattern with following groups is not.
 
 ### Warnings
 

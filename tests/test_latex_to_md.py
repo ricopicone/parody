@@ -233,6 +233,28 @@ def test_clozeset_is_dropped(tmp_path):
     assert "Prose after." in out
 
 
+EXAMPLEMAYBE_TEX = textwrap.dedent(r"""
+    \section[S]{ex-sample}{bk}{Ex sample}
+
+    \examplemaybe{A title}{Find $\frac{a}{b}$ when $a=1$.}{Because
+    $\frac{a}{b}$ is one half, the answer is $0.5$.}{ex:halves}
+    """)
+
+
+def test_examplemaybe_splits_nested_arguments(tmp_path):
+    """Characterisation guard for the multi-arg `{.-}{(.-)}{.-}{.-}` split.
+
+    Unlike clozer's `{(.-)}`, this pattern is followed by more groups, so Lua
+    backtracks until it finds a consistent parse -- it handles balanced
+    nesting correctly. Pinned so a future rewrite cannot regress it silently.
+    """
+    out = convert_src(tmp_path, EXAMPLEMAYBE_TEX)
+    assert ".example" in out
+    # the solution is not truncated at the \frac{a}{b} braces
+    assert "the answer is" in out
+    assert "ex:halves" in out
+
+
 def test_preprocess_postprocess_pure():
     pre = preprocess("\\section{slug-a}{q1}{Title A}\n")
     assert "\\section{Title A}" in pre

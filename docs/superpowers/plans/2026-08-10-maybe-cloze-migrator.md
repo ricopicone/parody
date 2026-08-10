@@ -599,7 +599,18 @@ git commit -m "migrate: warn on unhandled cloze macros and \\maybe* in math (tas
 
 ---
 
-### Task 6: `\examplemaybe` adopts `read_args`
+### Task 6: `\examplemaybe` adopts `read_args` — **DROPPED**
+
+**Outcome: not done, deliberately.** Step 2 showed the test passing against the
+unmodified handler. The premise was wrong: `{.-}{(.-)}{.-}{.-}` is followed by
+more groups, so Lua backtracks to a parse consistent with all four — the correct
+split for balanced input. Verified with `\frac{a}{b}` and `\textbf{…}` nesting.
+Only `clozer`'s trailing-context-free `{(.-)}` genuinely breaks.
+
+The handler is left untouched (70 call sites, no demonstrated defect). The test
+is kept as a characterisation guard. Original task text follows for the record.
+
+
 
 **Files:**
 - Modify: `parody/migrate/filters/latex-to-md.lua:589-600`
