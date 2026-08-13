@@ -67,6 +67,26 @@ def test_v2_extraction_captures_hashes():
     assert anchors["fig:widget"]["hash"] == "fw"
 
 
+def test_v2_extraction_accepts_non_ascii_heading_ids():
+    # Pandoc auto-ids keep the source's letters, so a heading whose title has an
+    # accent gets an accented id (## Thévenin's theorem {#thévenins-theorem}).
+    # The id pattern was ASCII-only, so the heading produced no anchor at all:
+    # it silently lost its number, became uncross-referenceable, and — because
+    # the renderer numbers headings off this list — pushed every sibling after
+    # it up one (Norton's theorem rendered 1.4.1, not 1.4.2). Task #576.
+    md = (
+        "## Thévenin's theorem {#thévenins-theorem h=\"qc\"}\n"
+        "\n"
+        "## Norton's theorem {#nortons-theorem h=\"ws\"}\n"
+    )
+    anchors = {a["id"]: a for a in extract_anchor_ids(md, with_hashes=True)}
+    assert anchors["thévenins-theorem"] == {
+        "id": "thévenins-theorem", "type": "heading", "level": 2,
+        "title": "Thévenin's theorem", "hash": "qc",
+    }
+    assert list(anchors) == ["thévenins-theorem", "nortons-theorem"]
+
+
 def test_v2_extraction_flags_lab_exercises():
     # ::: {.exercise .lab} is a lab problem ("Problem L4.1"); plain .exercise is
     # a chapter problem ("Problem 4.1"). They run on separate counters, so the

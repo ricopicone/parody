@@ -39,7 +39,10 @@ def _warn(message):
 # site, which is what makes counting them meaningful — the anchor scans below
 # each see some sites twice (a typed id-first div matches both), so counting
 # there would call every such div a duplicate.
-_ID_DECL_RE = re.compile(r'\{#([A-Za-z0-9_:-]+)[^}]*\}')
+# The id class is \w (Unicode) plus pandoc's punctuation, matching the v2 anchor
+# scan below: an accented id is a real id, and one declared twice is silently
+# lossy in exactly the same way (#576).
+_ID_DECL_RE = re.compile(r'\{#([\w:.-]+)[^}]*\}')
 
 
 def _warn_duplicate_ids(markdown_content):
@@ -322,8 +325,14 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
     anchors = []
 
     # Pattern for headings with IDs: ## Title {#id}
+    # v2 takes the id as \w (Unicode) plus pandoc's punctuation, not ASCII only:
+    # pandoc auto-ids keep the source's letters, so an accented title yields an
+    # accented id (## Thévenin's theorem {#thévenins-theorem}). Under the ASCII
+    # class such a heading matched nothing and vanished from the anchor list —
+    # no number, no cross-ref target, and every sibling after it numbered one
+    # too low, because the renderer counts headings off this list (#576).
     if with_hashes:
-        heading_pattern = r'^(#{1,6})\s+(.+?)\s+\{#([A-Za-z0-9_:-]+)((?:\s[^}]*)?)\}\s*$'
+        heading_pattern = r'^(#{1,6})\s+(.+?)\s+\{#([\w:.-]+)((?:\s[^}]*)?)\}\s*$'
     else:
         heading_pattern = r'^(#{1,6})\s+(.+?)\s+\{#([A-Za-z0-9_-]+)\}\s*$'
 

@@ -79,7 +79,10 @@
 \setsubsubsecheadstyle{\normalfont\normalsize\itshape\raggedright}
 \setbeforesecskip{-1.2\onelineskip plus -.4\onelineskip minus -.2\onelineskip}
 \setaftersecskip{0.6\onelineskip plus .2\onelineskip}
-\setsecnumdepth{subsection}
+% Number down to subsubsection, but list only to subsection: the deepest heads
+% carry a number for the reader and for cross-references, without a third tier
+% swelling the contents (#576).
+\setsecnumdepth{subsubsection}
 \settocdepth{subsection}
 
 % ---- table of contents: bold chapters, no leader dots ------------------
