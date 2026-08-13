@@ -1397,4 +1397,69 @@ function Str(el)
     return el
 end
 
+-- ---------------------------------------------------------------------------
+-- Warn about LaTeX the HTML writer is about to discard.
+--
+-- A bare macro left in the markdown by migration (\emph{...},
+-- \oldsubsubsection{...}) is not an error to pandoc: it parses as raw TeX and
+-- the HTML writer drops it without a word. The text simply is not in the built
+-- book. Five passages went missing from the Electronics Primer this way,
+-- including the clause in each of Thevenin's and Norton's theorems saying what
+-- the equivalent circuit actually IS -- a theorem reading "can be reproduced
+-- exactly by a single ." shipped to the live site.
+--
+-- pandoc distinguishes the two cases for us, which is what makes this warning
+-- worth having rather than noise:
+--   * format "tex"   -- pandoc INFERRED it from a bare backslash macro. Almost
+--                       always a migration leftover, and always silently lost.
+--   * format "latex" -- the author DECLARED it with `\foo`{=latex}, a deliberate
+--                       print-only aside. Dropping it in HTML is the intent.
+-- Only the inferred ones are reported; warning about declared spans would train
+-- everyone to ignore this.
+--
+-- Reported, not repaired: what a stray macro should become is an authoring
+-- decision (\emph -> emphasis, but \oldsubsubsection -> a heading or a bold
+-- run-in depending on the book's conventions).
+-- Does this raw TeX carry PROSE that a reader would miss?
+--
+-- Most dropped raw TeX is nothing to worry about, and saying so every time is
+-- how a warning gets ignored: across RTC's 120 chapters pandoc drops 478 raw
+-- TeX nodes, of which 271 are \noindent / \newpage / \pagebreak / \looseness
+-- (print-only spacing that SHOULD vanish from HTML) and most of the rest are
+-- math symbols (\circ, \top, \times) leaking out of raw HTML tables, where the
+-- surrounding markup passes through and MathJax still renders them.
+--
+-- What actually loses a sentence is a braced argument holding prose — two or
+-- more words. That test takes RTC from 478 reports to 7, every one worth
+-- reading (a lost \emph{globally defined}, a dropped \myindex entry, a
+-- subequations block), and still catches all five passages the Electronics
+-- Primer was missing.
+local function has_prose_argument(text)
+  return text:find("{[^{}]*%a%a[^{}]*%s[^{}]*%a%a[^{}]*}") ~= nil
+end
+
+local function report_dropped_tex(el)
+  if tostring(el.format) ~= "tex" then return nil end
+  if not has_prose_argument(el.text) then return nil end
+  local where = os.getenv("PARODY_CHAPTER_SLUG") or "?"
+  -- Both of these are byte-safety, not tidiness. Lua strings are bytes, and
+  -- this text is full of accented names, en dashes and non-breaking spaces, so
+  -- the obvious spellings corrupt UTF-8 and a caller reading this stream dies
+  -- with a UnicodeDecodeError:
+  --   * "[ \t\r\n]+" not "%s+" — %s tests bytes, and it matches the \xa0 half
+  --     of a non-breaking space, replacing it and orphaning the leading \xc2.
+  --   * pandoc.text.sub not string.sub — byte truncation splits a multi-byte
+  --     character straight down the middle.
+  local text = el.text:gsub("[ \t\r\n]+", " ")
+  if pandoc.text.len(text) > 90 then
+    text = pandoc.text.sub(text, 1, 90) .. "..."
+  end
+  io.stderr:write("[parody] dropped raw LaTeX in " .. where .. ": " .. text ..
+                  "  (pandoc discards this; convert it to markdown)\n")
+  return nil
+end
+
+function RawInline(el) return report_dropped_tex(el) end
+function RawBlock(el) return report_dropped_tex(el) end
+
 -- Remove explicit return table to allow Pandoc to find all global functions

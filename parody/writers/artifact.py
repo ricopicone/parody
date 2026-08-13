@@ -22,6 +22,60 @@ from .. import __version__
 # this. Bump only with a matching importer change (see its NOTEBOOKS_SPLIT_PLAN.md).
 SCHEMA_VERSION = 1
 
+
+def _warn(message):
+    """A build-time warning about content that will be silently missing.
+
+    On stderr rather than through this module's usual `print`, so it survives a
+    build whose stdout is being captured and lands in the same stream as
+    filter.lua's dropped-raw-LaTeX warnings — the two report the same class of
+    problem (source that reaches no reader) and are meant to be read together.
+    """
+    print(f"⚠️  {message}", file=sys.stderr)
+
+
+# Every place an id is DECLARED: a heading's {#sec-x}, a div's
+# ::: {#exa:x .example}, a bare []{#id} placeholder. One match per declaration
+# site, which is what makes counting them meaningful — the anchor scans below
+# each see some sites twice (a typed id-first div matches both), so counting
+# there would call every such div a duplicate.
+_ID_DECL_RE = re.compile(r'\{#([A-Za-z0-9_:-]+)[^}]*\}')
+
+
+def _warn_duplicate_ids(markdown_content):
+    """Report ids declared more than once in one section.
+
+    A duplicate is silently lossy: anchor extraction keeps the first and skips
+    the rest, so the later environment loses the short hash that was its
+    cross-reference handle and ends up with no number, no target and no label —
+    while the page renders with a duplicate id, which is invalid HTML. RTC
+    shipped exactly this: two ::: {#exa:operator-precedence-2 .example} blocks,
+    the second of which went unnumbered on rtcbook.org.
+
+    A warning rather than a DuplicateHashError. Short hashes are generated and
+    unique by construction, so a collision there is a bug in parody and rightly
+    fatal; ids are hand-written, and a book that has carried a duplicate for
+    years should still build while someone decides which one to rename.
+    """
+    # Commented-out and fenced-code text is not a declaration. These books keep
+    # superseded attribute blocks around in comments (<!---{#intro h="l7"} --->
+    # sits right under the heading that replaced it), which would otherwise make
+    # a false duplicate of nearly every migrated heading. Mask comments first:
+    # fences hide inside them (see _mask_html_comments), so a fence pass run on
+    # the raw text desynchronises.
+    text = _mask_html_comments(markdown_content)
+    text = re.sub(r'^(\s*)(`{3,}|~{3,}).*?^\1?\2.*?$', '',
+                  text, flags=re.S | re.M)
+    seen = {}
+    for m in _ID_DECL_RE.finditer(text):
+        seen[m.group(1)] = seen.get(m.group(1), 0) + 1
+    for anchor_id, n in seen.items():
+        if n > 1:
+            _warn(f"id '{anchor_id}' is declared {n} times; only the first is "
+                  f"anchored — the rest get no number and no cross-reference "
+                  f"target, and the page carries a duplicate id")
+
+
 def get_source_commit(path):
     """Git commit hash of the repo containing the notebook sources, if any."""
     try:
@@ -291,6 +345,7 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
 
     lines = markdown_content.split('\n')
     found_ids = set()
+    _warn_duplicate_ids(markdown_content)
 
     # Extract headings with IDs
     for line in lines:
@@ -435,22 +490,28 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
             }
             anchor_type = type_map.get(prefix, anchor_type)
 
-        if anchor_id not in found_ids:
-            anchor = {
-                'id': anchor_id,
-                'type': anchor_type,
-                'level': None,
-                'title': div_title
-            }
-            if div_hash:
-                anchor['hash'] = div_hash
-            # lab is exercise-only: ::: {.example .lab} or ::: {.infobox .lab}
-            # must not be stamped, even though div_lab was computed from the
-            # raw class list before the anchor's final type was resolved.
-            if div_lab and anchor_type == 'exercise':
-                anchor['lab'] = True
-            anchors.append(anchor)
-            found_ids.add(anchor_id)
+        # An id-first typed div (::: {#exa:x .example}) is matched by the typed
+        # scan above AS WELL, so reaching this already-seen is the normal case,
+        # not a duplicate. Genuine duplicates are reported once, up front, by
+        # _warn_duplicate_ids.
+        if anchor_id in found_ids:
+            continue
+
+        anchor = {
+            'id': anchor_id,
+            'type': anchor_type,
+            'level': None,
+            'title': div_title
+        }
+        if div_hash:
+            anchor['hash'] = div_hash
+        # lab is exercise-only: ::: {.example .lab} or ::: {.infobox .lab}
+        # must not be stamped, even though div_lab was computed from the
+        # raw class list before the anchor's final type was resolved.
+        if div_lab and anchor_type == 'exercise':
+            anchor['lab'] = True
+        anchors.append(anchor)
+        found_ids.add(anchor_id)
 
     # Also find standalone IDs (not on headings, not typed) as generic anchors
     for match in re.finditer(standalone_pattern, markdown_content):
