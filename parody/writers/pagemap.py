@@ -14,6 +14,7 @@ This module owns the three steps that turn a LaTeX build into a range table:
 """
 
 import re
+from pathlib import Path
 
 # print.lua's headerer_latex emits these; \lab is the MIT-class-private lab
 # heading. Longer names first so \subsection is not matched as \section.
@@ -67,3 +68,51 @@ def insert_section_mark(tex, key):
     if i is None:
         return mark + "%\n" + tex
     return tex[:i] + mark + tex[i:]
+
+
+# zref-abspage writes one record per mark. \page is the PRINTED page number
+# (roman in front matter, restarted at \mainmatter); \abspage is the physical
+# one. Extraction needs the physical one.
+_ZREF_RECORD = re.compile(
+    r"\\zref@newlabel\{parodypage@(?P<key>[^}]*)\}\{(?P<body>[^\n]*)\}")
+_ABSPAGE = re.compile(r"\\abspage\{(\d+)\}")
+
+
+def read_pagemap(aux_path):
+    """``{key: absolute page}`` for every page mark recorded in ``main.aux``.
+
+    Returns ``{}`` when the aux file is absent — a build that skipped LaTeX
+    (no latexmk installed) must degrade to "no page map", never to a crash.
+    """
+    path = Path(aux_path)
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    pages = {}
+    for m in _ZREF_RECORD.finditer(text):
+        abspage = _ABSPAGE.search(m.group("body"))
+        if abspage:
+            pages[m.group("key")] = int(abspage.group(1))
+    return pages
+
+
+def build_ranges(order, starts, end_page):
+    """Inclusive ``[start, end]`` page ranges, keyed ``"<chapter>/<section>"``.
+
+    ``end(i)`` is ``start(i+1)`` — deliberately inclusive. When one section
+    ends and the next begins on the same sheet, that sheet appears in both
+    PDFs; the task accepts this, and it makes the ranges tile the book with no
+    gaps, which is the end-to-end invariant worth asserting.
+
+    Sections whose mark never reached the aux (a build error, a section that
+    emitted nothing) are omitted rather than guessed at.
+    """
+    known = [k for k in order if k in starts]
+    ranges = {}
+    for i, key in enumerate(known):
+        start = starts[key]
+        end = starts[known[i + 1]] if i + 1 < len(known) else end_page
+        # max(): a backwards end would mean a stale aux; clamp rather than
+        # emit an inverted range the slicer would reject.
+        ranges[key] = [start, max(start, end)]
+    return ranges
