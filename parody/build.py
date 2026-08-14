@@ -94,7 +94,8 @@ def _stage_referenced_media(output, source_root, media_dir):
     ``<img>``. Such refs are converted to ``.svg`` (reusing the preview writer's
     pdftocairo/lualatex converters) and the artifact ref is rewritten to the
     served ``.svg``. Non-print images are copied. Returns (staged, missing)."""
-    from .writers.preview import _pdf_to_svg, _pgf_to_svg
+    from .writers.preview import (_normalise_svg_size, _pdf_to_svg,
+                                  _pgf_to_svg)
 
     refs = set(_MEDIA_REF_RE.findall(json.dumps(output)))
     # Licensed third-party figures (permission=permission) are replaced by a
@@ -140,6 +141,16 @@ def _stage_referenced_media(output, source_root, media_dir):
             if not dest.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
+                if dest.suffix.lower() == ".svg":
+                    # A figure committed as .svg is copied rather than
+                    # converted, so it never passed through _pdf_to_svg — but
+                    # most were produced by an earlier pdftocairo and carry the
+                    # same unitless points. RTC is half of each: 107 of its 231
+                    # figures come from PDFs and 124 are committed SVGs, so
+                    # normalising only the converted ones left the book still
+                    # mixed. _normalise_svg_size decides for itself whether the
+                    # file is safe to reinterpret.
+                    _normalise_svg_size(dest)
         staged += 1
         if target != ref:
             rewrites[ref] = target

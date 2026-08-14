@@ -183,8 +183,20 @@ def _latex_env():
 # at its true physical size on every build. The viewBox is left alone: it keeps
 # the point-valued coordinate system, and the larger width/height simply scale
 # it, which is exactly the intent.
+#
+# A unitless number is only safe to read as points when cairo wrote the file.
+# Books also carry hand-drawn SVGs — RTC has six Adobe Illustrator exports —
+# and there a unitless width really is CSS px, so converting it would enlarge
+# the drawing by a third. Hence two independent licences to convert:
+#   * an explicit `pt`, which is unambiguous whoever wrote it, and
+#   * a cairo fingerprint, which makes a bare number mean points.
+# Everything else is left exactly as it is. Measured over RTC's 124 committed
+# SVGs this converts 118 and leaves 6, with nothing ambiguous in between.
 _SVG_TAG_RE = re.compile(r'<svg\b[^>]*>')
 _SVG_DIM_RE = re.compile(r'\b(width|height)="([\d.]+)(pt|px)?"')
+# pdftocairo names its glyph, surface and clip elements distinctively; a
+# text-free drawing has no glyphs, so the clip ids matter as much as the rest.
+_CAIRO_SIG_RE = re.compile(r'id="glyph-|id="surface|id="clip-\d|clip-rule="')
 _PT_TO_PX = 96 / 72
 
 
@@ -199,10 +211,13 @@ def _normalise_svg_size(svg_path):
     # scaling it, so changing them would resize the drawing instead of the box.
     if not m or "viewBox" not in m.group(0):
         return
+    cairo = bool(_CAIRO_SIG_RE.search(text[:4000]))
 
     def to_px(mo):
         if mo.group(3) == "px":          # already CSS px — nothing to convert
             return mo.group(0)
+        if mo.group(3) != "pt" and not cairo:
+            return mo.group(0)           # a bare number we cannot call points
         return f'{mo.group(1)}="{float(mo.group(2)) * _PT_TO_PX:.4f}px"'
 
     tag = _SVG_DIM_RE.sub(to_px, m.group(0))
