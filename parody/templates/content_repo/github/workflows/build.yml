@@ -50,3 +50,32 @@ jobs:
           files: |
             artifact/*.json
             artifact/SHA256SUMS
+
+#  # ---------------------------------------------------------------------------
+#  # Opt-in print job: builds the PDF + page-map sidecar in the pinned TeX Live
+#  # image and attaches them to the release, so the book site can serve
+#  # per-section PDFs (see parody's `publish` command). Uncomment to enable.
+#  #
+#  # Costs ~10-20 min on a tagged build and pulls a large image. Locally,
+#  # `parody publish .` does the same thing without Docker — this job only
+#  # matters if you want tagging alone to publish print AND web.
+#  #
+#  # The site deploy downloads `print.zip` into its PARODY_WEB_PRINT_ROOT; the
+#  # PDFs are served ONLY through parody-web's gated /pdf/ views, never from the
+#  # public media tree.
+#  print:
+#    if: startsWith(github.ref, 'refs/tags/v')
+#    runs-on: ubuntu-latest
+#    container:
+#      image: texlive/texlive:latest-full
+#    steps:
+#      - uses: actions/checkout@v5
+#      - run: apt-get update && apt-get install -y python3-pip poppler-utils
+#      - run: pip install --break-system-packages parody
+#      - name: Build print PDFs + page maps (one per edition)
+#        run: parody publish . -o artifact --pdf-only --no-execute
+#      - name: Package print assets
+#        run: cd artifact && zip -rq ../print.zip *.pdf *.pages.json
+#      - uses: softprops/action-gh-release@v2
+#        with:
+#          files: print.zip

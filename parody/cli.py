@@ -129,6 +129,24 @@ def cmd_pdf(args):
     return 0
 
 
+def cmd_publish(args):
+    from .publish import publish
+
+    written = publish(
+        args.project_dir, args.output,
+        convert_jupytext=not args.no_execute,
+        media_root=args.media_root,
+        online_only=args.online_only,
+        cloze_mode=args.clozes,
+        profile_dir=args.profile,
+        skip_pdf=args.skip_pdf,
+        pdf_only=args.pdf_only,
+    )
+    print(f"Published {len(written)} file(s): "
+          f"{', '.join(p.name for p in written)}")
+    return 0
+
+
 def cmd_check(args):
     if args.toolchain:
         from .toolchain import (PANDOC_CROSSREF_VERSION, PANDOC_VERSION,
@@ -335,6 +353,30 @@ def main(argv=None):
     p_pdf.add_argument("--no-execute", action="store_true",
                        help="skip jupytext execution before the PDF build")
     p_pdf.set_defaults(func=cmd_pdf)
+
+    p_pub = sub.add_parser(
+        "publish",
+        help="build the print PDF and the web artifact together (print first, "
+             "so the artifact carries each section's page range)")
+    p_pub.add_argument("project_dir", help="project directory")
+    p_pub.add_argument("-o", "--output", default="artifact",
+                       help="output directory for PDFs + artifacts")
+    p_pub.add_argument("--no-execute", action="store_true",
+                       help="skip jupytext conversion/execution")
+    p_pub.add_argument("--media-root",
+                       help="directory to receive the media/ tree")
+    p_pub.add_argument("--online-only", action="store_true",
+                       help="emit only the public web subset (see `build`)")
+    p_pub.add_argument("--clozes", metavar="MODE",
+                       help="cloze rendering: blank | key | full")
+    p_pub.add_argument("--profile",
+                       help="LaTeX profile directory or bundled name")
+    p_pub.add_argument("--skip-pdf", action="store_true",
+                       help="reuse the existing PDF + sidecar; build only "
+                            "the artifact")
+    p_pub.add_argument("--pdf-only", action="store_true",
+                       help="build only the PDF + sidecar; write no artifact")
+    p_pub.set_defaults(func=cmd_publish)
 
     p_check = sub.add_parser("check", help="validate an artifact against the schema")
     p_check.add_argument("artifact", nargs="?", help="artifact JSON path")
