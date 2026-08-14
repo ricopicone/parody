@@ -196,7 +196,7 @@ def resolve_profile(profile):
 
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
               profile_dir=None, keep_build=False, build_dir=None,
-              cloze_mode=None, pagemap=True):
+              cloze_mode=None, pagemap=True, edition=None):
     """Build the print PDF. Returns the path to the produced PDF.
 
     section: "chapter-slug/section-slug" builds just that section
@@ -207,11 +207,17 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     project_dir = Path(project_dir).resolve()
     project = load_project(project_dir)
 
+    # Editions: reuse build_project's overlay helpers rather than restating the
+    # rules, so print and web can never disagree about what an edition contains.
+    from ..build import _meta_for_edition, _resolve_section_file
+    active_meta = _meta_for_edition(project.meta, edition) if edition \
+        else project.meta
+
     from ..config import resolve_cloze_mode
-    cloze_mode = resolve_cloze_mode(project.meta, cloze_mode)
+    cloze_mode = resolve_cloze_mode(active_meta, cloze_mode)
 
     from ..plugins import apply_transforms, content_transforms
-    transforms = content_transforms(project.meta, project.directory, target="print")
+    transforms = content_transforms(active_meta, project.directory, target="print")
     transform = (lambda text: apply_transforms(text, transforms)) \
         if transforms else None
 
@@ -261,7 +267,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # wanted start. \appendix later resets to letter numbering, so this only
     # shifts the main-matter arabic chapters. Skipped for single-section builds
     # (section=...), which emit no \chapter at all.
-    chapter_start = int(project.meta.get("chapter_start", 1))
+    chapter_start = int(active_meta.get("chapter_start", 1))
     if chapter_start != 1 and not section:
         chapters_tex.append(f"\\setcounter{{chapter}}{{{chapter_start - 1}}}")
     appendix_started = False
@@ -273,6 +279,14 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                 if chapter.slug != want_ch:
                     continue
                 sections = [s for s in sections if s == want_sec]
+            if edition:
+                # Drop sections this edition does not carry, BEFORE the chapter
+                # heading is emitted — a chapter left empty must emit no
+                # \chapter at all (build_project drops it the same way).
+                sections = [
+                    s for s in sections
+                    if _resolve_section_file(chapter.directory, s,
+                                             edition["id"]) is not None]
             if sections and not section:
                 if chapter.appendix and not appendix_started:
                     # switch to A.1/B.1 numbering for the appendix chapters
@@ -294,7 +308,13 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
             for sec_slug in sections:
                 key = f"{chapter.slug}/{sec_slug}"
                 pagemap_order.append(key)
-                src = chapter.directory / f"{sec_slug}.md"
+                if edition:
+                    # The single-source-until-fork overlay: a per-edition
+                    # <slug>.<edition>.md shadows the shared <slug>.md.
+                    src = chapter.directory / _resolve_section_file(
+                        chapter.directory, sec_slug, edition["id"])
+                else:
+                    src = chapter.directory / f"{sec_slug}.md"
                 stripped = build_dir / "sections" / chapter.slug / f"{sec_slug}.md"
                 stripped.parent.mkdir(parents=True, exist_ok=True)
                 strip_frontmatter(src, stripped, transform=transform)
@@ -352,7 +372,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
 
     # Companion-site base URL (book.companion_url in parody.yaml). A profile
     # can use it to build printed QR codes / short links (\companionurl/<hash>).
-    book = project.meta.get("book") or {}
+    book = active_meta.get("book") or {}
     companion_url = book.get("companion_url")
     if companion_url:
         flags.append("\\def\\companionurl{%s}" % companion_url)
@@ -362,7 +382,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # parody.yaml. It ends with \tableofcontents; without it we still emit the
     # TOC so the document is never left without one.
     frontmatter = "\\tableofcontents"
-    if project.meta.get("front_matter") is not False:
+    if active_meta.get("front_matter") is not False:
         fm_src = profile_dir / "front-matter.tex"
         if fm_src.exists():
             shutil.copy2(fm_src, build_dir / fm_src.name)
@@ -371,8 +391,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     template = Template((profile_dir / "main.tex.template").read_text(encoding="utf-8"))
     main_tex = template.safe_substitute(
         flags="\n".join(flags),
-        title=project.meta.get("title", project.slug),
-        author=" \\and ".join(project.meta.get("author", [])),
+        title=active_meta.get("title", project.slug),
+        author=" \\and ".join(active_meta.get("author", [])),
         frontmatter=frontmatter,
         chapters="\n".join(chapters_tex),
         bibresource=bibresource,

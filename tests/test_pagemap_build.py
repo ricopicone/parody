@@ -187,6 +187,78 @@ def test_pagemap_package_does_not_clash_with_the_class(tmp_path):
     assert "already defined" not in log
 
 
+EDITION_YAML = """\
+title: Edition Test
+slug: edition-test
+authors: [Tester]
+editions:
+  - id: ed1
+    title: First
+  - id: ed2
+    title: Second
+    default: true
+chapters:
+  - slug: one
+    title: Chapter One
+    sections: [lead-in, alpha, only-two]
+"""
+
+
+@pytest.fixture
+def edition_project(tmp_path, monkeypatch):
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    root = tmp_path / "edition-test"
+    ch = root / "chapters" / "one"
+    ch.mkdir(parents=True)
+    (root / "parody.yaml").write_text(EDITION_YAML)
+    (ch / "lead-in.md").write_text("Shared intro.\n")
+    (ch / "alpha.md").write_text("# Alpha\n\nShared alpha.\n")
+    # a per-edition fork: ed2 reads its own copy
+    (ch / "alpha.ed2.md").write_text("# Alpha\n\nRevised alpha for ed2.\n")
+    # a section only ed2 carries
+    (ch / "only-two.md").write_text(
+        "---\neditions: [ed2]\n---\n\n# Only Two\n\nSecond edition only.\n")
+    return root
+
+
+def _edition(project_dir, ed_id):
+    from parody.config import load_project
+    project = load_project(project_dir)
+    return next(e for e in project.editions if e["id"] == ed_id)
+
+
+def test_edition_build_uses_the_per_edition_fork(edition_project):
+    build_pdf(edition_project, edition=_edition(edition_project, "ed2"),
+              build_dir=edition_project / "build" / "ed2")
+    alpha = (edition_project / "build" / "ed2" / "sections" / "one"
+             / "alpha.tex").read_text()
+    assert "Revised alpha for ed2" in alpha
+
+
+def test_edition_build_omits_sections_not_in_that_edition(edition_project):
+    build_pdf(edition_project, edition=_edition(edition_project, "ed1"),
+              build_dir=edition_project / "build" / "ed1")
+    main = (edition_project / "build" / "ed1" / "main.tex").read_text()
+    assert "\\input{sections/one/alpha.tex}" in main
+    assert "only-two" not in main
+    assert "\\parodypagemark{one/only-two}" not in main
+
+
+def test_edition_build_marks_only_the_sections_it_carries(edition_project):
+    build_pdf(edition_project, edition=_edition(edition_project, "ed2"),
+              build_dir=edition_project / "build" / "ed2")
+    main = (edition_project / "build" / "ed2" / "main.tex").read_text()
+    assert "\\parodypagemark{one/lead-in}" in main
+    assert "\\input{sections/one/only-two.tex}" in main
+
+
+def test_no_edition_builds_every_section_as_before(edition_project):
+    build_pdf(edition_project)
+    main = (edition_project / "build" / "print" / "main.tex").read_text()
+    for slug in ("lead-in", "alpha", "only-two"):
+        assert f"\\input{{sections/one/{slug}.tex}}" in main
+
+
 def test_shared_is_not_selectable_as_a_profile():
     from parody.writers.latex import resolve_profile
     # "_shared" holds support files, not a profile; a bare "_shared" must be

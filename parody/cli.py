@@ -96,7 +96,18 @@ def cmd_watch(args):
 
 
 def cmd_pdf(args):
+    from .config import load_project
     from .writers.latex import build_pdf
+
+    project = load_project(args.project_dir)
+    ed = None
+    if getattr(args, "edition", None):
+        ed = next((e for e in project.editions if e["id"] == args.edition), None)
+        if ed is None:
+            known = ", ".join(e["id"] for e in project.editions) or "none"
+            print(f"error: unknown edition {args.edition!r} (known: {known})",
+                  file=sys.stderr)
+            return 1
 
     if not args.no_execute:
         from .build import build_project
@@ -104,7 +115,7 @@ def cmd_pdf(args):
 
         with tempfile.TemporaryDirectory() as td:
             build_project(args.project_dir, Path(td) / "artifact.json",
-                          convert_jupytext=True)
+                          convert_jupytext=True, edition=ed)
     build_pdf(
         args.project_dir,
         output_pdf=args.output,
@@ -112,6 +123,7 @@ def cmd_pdf(args):
         section=args.section,
         profile_dir=args.profile,
         cloze_mode=args.clozes,
+        edition=ed,
     )
     return 0
 
@@ -310,6 +322,9 @@ def main(argv=None):
                             "(cloze-free publication build)")
     p_pdf.add_argument("--section", metavar="CH/SEC",
                        help="build a single section (chapter-slug/section-slug)")
+    p_pdf.add_argument("--edition",
+                       help="build only this edition (by id); default builds "
+                            "the unfiltered book")
     p_pdf.add_argument("--profile",
                        help="LaTeX profile directory (default: bundled generic profile; "
                             "book-private profiles, e.g. MIT Press, live in content repos)")
