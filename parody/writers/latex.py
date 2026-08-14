@@ -21,6 +21,7 @@ from pathlib import Path
 from string import Template
 
 from ..config import load_project
+from .pagemap import build_ranges, insert_section_mark, read_pagemap
 
 # tex_math_single_backslash: parse \(...\)/\[...\] as math too (some raw-HTML
 # tables write math that way, e.g. \(r(t)\) in cells — without it pandoc escapes
@@ -131,6 +132,9 @@ BUNDLED_PROFILES = Path(__file__).parent.parent / "profiles"
 # memoir is the foundational house style; `print` remains as the portable
 # stock-book fallback, selectable via --profile print.
 DEFAULT_PROFILE = "memoir"
+# Support files copied into every build dir regardless of profile (the page-map
+# package). Leading underscore: not a selectable profile.
+SHARED_PROFILE_DIR = BUNDLED_PROFILES / "_shared"
 
 
 # QR hash sources: external-URL \myurl/\myurlbottom, and \parodyqr{hash} that
@@ -183,14 +187,15 @@ def resolve_profile(profile):
     name = str(profile)
     if os.sep not in name and (os.altsep or os.sep) not in name:
         candidate = BUNDLED_PROFILES / name
-        if candidate.is_dir():
+        # names starting with "_" are support dirs (e.g. _shared), not profiles
+        if candidate.is_dir() and not name.startswith("_"):
             return candidate
     return Path(profile)
 
 
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
               profile_dir=None, keep_build=False, build_dir=None,
-              cloze_mode=None):
+              cloze_mode=None, pagemap=True):
     """Build the print PDF. Returns the path to the produced PDF.
 
     section: "chapter-slug/section-slug" builds just that section
@@ -221,6 +226,19 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         if f.name != "main.tex.template":
             shutil.copy2(f, build_dir / f.name)
 
+    # Page-map support package, copied in beside the profile's own files. A
+    # single-section build has no book to index into, so it never gets one.
+    template_text = (profile_dir / "main.tex.template").read_text(encoding="utf-8")
+    if pagemap and section:
+        pagemap = False
+    if pagemap and "$flags" not in template_text:
+        print(f"⚠️  profile {profile_dir.name} has no $flags slot — "
+              "per-section page map disabled for this build")
+        pagemap = False
+    if pagemap:
+        shutil.copy2(SHARED_PROFILE_DIR / "parody-pagemap.sty",
+                     build_dir / "parody-pagemap.sty")
+
     # Convert sections. The filter resolves notebook includes and figure
     # paths against the SOURCE tree (pandoc itself runs in the build dir),
     # so hand it the project/chapter context and an svg-conversion cache.
@@ -236,6 +254,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # \clozemode for everything else.
     os.environ["PARODY_CLOZE_MODE"] = cloze_mode
     chapters_tex = []
+    pagemap_order = []  # section keys in book order, for build_ranges
     # chapter_start: the number of the first (non-appendix) chapter (default 1).
     # \chapter increments the counter before printing, so seed it one below the
     # wanted start. \appendix later resets to letter numbering, so this only
@@ -270,7 +289,10 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                                     f"\\parodyqrch{{{chapter.hash}}}\\fi")
                 chapters_tex.append(chapter_tex)
             os.environ["PARODY_CHAPTER_DIR"] = str(Path(chapter.directory).resolve())
+            first_in_chapter = bool(sections) and not section
             for sec_slug in sections:
+                key = f"{chapter.slug}/{sec_slug}"
+                pagemap_order.append(key)
                 src = chapter.directory / f"{sec_slug}.md"
                 stripped = build_dir / "sections" / chapter.slug / f"{sec_slug}.md"
                 stripped.parent.mkdir(parents=True, exist_ok=True)
@@ -278,6 +300,17 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                 tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
                 print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
                 section_to_latex(stripped, tex_path, resource_dir=chapter.directory)
+                if pagemap:
+                    if first_in_chapter:
+                        # Marked at the chapter opening instead, so the range
+                        # covers the chapter title page + lead-in prose.
+                        chapters_tex.append(f"\\parodypagemark{{{key}}}")
+                    else:
+                        tex_path.write_text(
+                            insert_section_mark(
+                                tex_path.read_text(encoding="utf-8"), key),
+                            encoding="utf-8")
+                first_in_chapter = False
                 chapters_tex.append(f"\\input{{sections/{chapter.slug}/{sec_slug}.tex}}")
     finally:
         for k, v in _saved_env.items():
@@ -285,6 +318,11 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+
+    if pagemap and chapters_tex:
+        # Closes the last section's range at the end of the body, so it stops
+        # at the bibliography rather than running through the back matter.
+        chapters_tex.append("\\parodypagemark{@end}")
 
     if not chapters_tex:
         raise SystemExit(f"no sections matched (section={section!r})")
@@ -298,6 +336,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         bibliography = "\\printbibliography"
 
     flags = []
+    if pagemap:
+        flags.append("\\usepackage{parody-pagemap}")
     if solutions:
         flags.append("\\def\\issolution{1}")
     # Cloze mode is a separate axis from --solutions: a published student book

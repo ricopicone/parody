@@ -1,0 +1,15 @@
+%% parody-pagemap — absolute page marks for per-section PDF extraction.
+%%
+%% Injected by parody's print writer through main.tex.template's $flags slot,
+%% so no print profile (including book-private ones) needs to know about it.
+%%
+%% \abspage is the PHYSICAL page index. The printed page number is not usable
+%% here: front matter is roman-numbered and \mainmatter restarts the arabic
+%% count, so page "1" is not the first sheet.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-pagemap}[2026/08/13 parody per-section page marks]
+\RequirePackage[user]{zref}
+\RequirePackage{zref-abspage}
+%% Distinctive name: a clash with a class/package macro would be masked by
+%% nonstopmode and silently render the OTHER definition.
+\newcommand{\parodypagemark}[1]{\zlabel{parodypage@#1}}
