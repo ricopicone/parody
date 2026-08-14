@@ -12,9 +12,12 @@ import pytest
 
 from parody.writers.preview import _normalise_svg_size
 
+# A pdftocairo figure, glyph ids and all: that fingerprint is what licenses
+# reading a unitless width as points (see the fingerprint cases at the bottom).
 HEAD = ('<?xml version="1.0" encoding="UTF-8"?>\n'
         '<svg xmlns="http://www.w3.org/2000/svg" {dims} '
-        'viewBox="0 0 132.438 85.7788">\n<g/>\n</svg>\n')
+        'viewBox="0 0 132.438 85.7788">\n'
+        '<g id="glyph-0-0"><path d="M 0 0"/></g>\n</svg>\n')
 
 
 def write(tmp_path, dims):
@@ -91,3 +94,89 @@ def test_body_content_is_untouched(tmp_path):
 
 def test_a_missing_file_is_not_an_error(tmp_path):
     _normalise_svg_size(tmp_path / "nope.svg")     # must not raise
+
+
+# ---- a bare number is only points when cairo wrote the file ---------------
+# Books carry hand-drawn SVGs beside the converted ones — RTC has six Adobe
+# Illustrator exports — and there a unitless width really is CSS px. Measured
+# over RTC's 124 committed SVGs the rule below converts 118 and leaves 6.
+
+CAIRO_BODY = '<g id="glyph-0-0"><path d="M 0 0"/></g>'
+CLIP_BODY = '<clipPath id="clip-0"><path clip-rule="nonzero" d="M 0 0"/></clipPath>'
+PLAIN_BODY = '<rect width="10" height="10"/>'
+
+
+def svg(tmp_path, dims, body, name="fig.svg"):
+    p = tmp_path / name
+    p.write_text('<svg xmlns="http://www.w3.org/2000/svg" '
+                 f'{dims} viewBox="0 0 132.438 85.7788">{body}</svg>')
+    return p
+
+
+@pytest.mark.parametrize("body,label", [(CAIRO_BODY, "glyph ids"),
+                                        (CLIP_BODY, "clip ids, no text")])
+def test_cairo_fingerprints_licence_a_bare_number(tmp_path, body, label):
+    p = svg(tmp_path, 'width="132.438" height="85.7788"', body)
+    _normalise_svg_size(p)
+    assert 'width="176.5840px"' in p.read_text(), label
+
+
+def test_a_bare_number_without_a_cairo_fingerprint_is_left_alone(tmp_path):
+    # an Illustrator export: unitless really does mean CSS px here, and
+    # converting would enlarge the drawing by a third
+    p = svg(tmp_path, 'width="132.438" height="85.7788"',
+            '<!-- Generator: Adobe Illustrator 27.7.0 -->' + PLAIN_BODY)
+    before = p.read_text()
+    _normalise_svg_size(p)
+    assert p.read_text() == before
+
+
+def test_an_explicit_pt_is_converted_whoever_wrote_it(tmp_path):
+    # pt is unambiguous, so no fingerprint is needed
+    p = svg(tmp_path, 'width="132.438pt" height="85.7788pt"',
+            '<!-- Generator: Adobe Illustrator 27.7.0 -->' + PLAIN_BODY)
+    _normalise_svg_size(p)
+    assert 'width="176.5840px"' in p.read_text()
+
+
+def test_an_unknown_generator_with_a_bare_number_is_left_alone(tmp_path):
+    p = svg(tmp_path, 'width="468" height="305.58"', PLAIN_BODY)
+    before = p.read_text()
+    _normalise_svg_size(p)
+    assert p.read_text() == before
+
+
+# ---- the build sweeps every staging route --------------------------------
+
+def test_build_normalises_an_svg_staged_from_assets(tmp_path):
+    """Figures reach the media tree by four routes, not one.
+
+    v0.1.40 of RTC normalised at the conversion path only, leaving its 124
+    committed SVGs unitless; the follow-up added the referenced-media copy and
+    still missed two figures sitting in assets/. The build now sweeps the whole
+    media tree once, after every staging path has run.
+    """
+    from parody.build import build_project
+
+    project = tmp_path / "book"
+    (project / "chapters" / "intro").mkdir(parents=True)
+    (project / "assets").mkdir()
+    (project / "parody.yaml").write_text(
+        "title: Book\nslug: book\nauthors:\n  - A\ndescription: \"\"\n"
+        "targets: [artifact]\nchapters:\n  - slug: intro\n    title: Intro\n"
+        "    sections:\n      - one\n")
+    (project / "chapters" / "intro" / "one.md").write_text(
+        "---\ntitle: One\nslug: one\nid: one\n---\n\n# One {#one}\n\nBody.\n")
+    # a cairo figure with the older poppler's unitless points
+    (project / "assets" / "fig.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="143.733" '
+        'height="99.709" viewBox="0 0 143.733 99.709">'
+        '<g id="glyph-0-0"><path d="M 0 0"/></g></svg>')
+
+    media_root = tmp_path / "stage"
+    build_project(project, tmp_path / "out.json", convert_jupytext=False,
+                  media_root=str(media_root))
+
+    staged = media_root / "media" / "fig.svg"
+    assert staged.is_file(), "assets/ figure was not staged"
+    assert 'width="191.6440px"' in staged.read_text()   # 143.733 * 96/72
