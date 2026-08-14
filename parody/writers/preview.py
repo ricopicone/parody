@@ -171,6 +171,45 @@ def _latex_env():
     return _tool_env()
 
 
+# pdftocairo writes the page box in POINTS, but which spelling it uses depends
+# on the poppler build: newer ones emit width="132.438pt", older ones the bare
+# number width="132.438". A bare number is user units — CSS px — so the SAME
+# figure renders 4/3 smaller when the older converter built it. This is not
+# hypothetical: RTC's published media holds 227 unitless SVGs against 10 with
+# pt, so figures in one book differ in size by a third depending on when each
+# was converted, and a site built on CI does not match one built locally.
+#
+# Normalise to explicit px, computing them from the points, so a figure renders
+# at its true physical size on every build. The viewBox is left alone: it keeps
+# the point-valued coordinate system, and the larger width/height simply scale
+# it, which is exactly the intent.
+_SVG_TAG_RE = re.compile(r'<svg\b[^>]*>')
+_SVG_DIM_RE = re.compile(r'\b(width|height)="([\d.]+)(pt|px)?"')
+_PT_TO_PX = 96 / 72
+
+
+def _normalise_svg_size(svg_path):
+    """Rewrite an SVG's intrinsic width/height from points to CSS px."""
+    try:
+        text = svg_path.read_text(errors="ignore")
+    except OSError:
+        return
+    m = _SVG_TAG_RE.search(text)
+    # No viewBox means width/height define the coordinate system rather than
+    # scaling it, so changing them would resize the drawing instead of the box.
+    if not m or "viewBox" not in m.group(0):
+        return
+
+    def to_px(mo):
+        if mo.group(3) == "px":          # already CSS px — nothing to convert
+            return mo.group(0)
+        return f'{mo.group(1)}="{float(mo.group(2)) * _PT_TO_PX:.4f}px"'
+
+    tag = _SVG_DIM_RE.sub(to_px, m.group(0))
+    if tag != m.group(0):
+        svg_path.write_text(text[:m.start()] + tag + text[m.end():])
+
+
 def _pdf_to_svg(pdf_path, svg_path):
     if shutil.which("pdftocairo") is None:
         return False
@@ -178,7 +217,10 @@ def _pdf_to_svg(pdf_path, svg_path):
         ["pdftocairo", "-svg", str(pdf_path), str(svg_path)],
         capture_output=True,
     )
-    return res.returncode == 0 and svg_path.is_file()
+    if res.returncode != 0 or not svg_path.is_file():
+        return False
+    _normalise_svg_size(svg_path)
+    return True
 
 
 def _pgf_to_svg(pgf_src, svg_path):
