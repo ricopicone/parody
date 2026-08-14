@@ -105,11 +105,23 @@ Three pure functions, each unit-testable without LaTeX:
   title comes from `parody.yaml`).
 - `read_pagemap(aux_path)` — parse `\zref@newlabel{parodypage@KEY}{…\abspage{N}…}`
   out of `main.aux` into `{key: abspage}`.
-- `build_ranges(order, starts, end_page)` — `end(i) = start(i+1)`, **inclusive**.
+- `build_ranges(order, pages, end_page)` — `end(i) = max(own_end(i), start(i+1) - 1)`, **inclusive**.
 
-The inclusive end *is* the tolerated duplicated page: when one section ends and
-the next begins on the same sheet, both PDFs contain it. It also makes the
-ranges tile the book with no gaps, which is the end-to-end invariant to assert.
+Each section carries two marks: one at its heading and one (`<key>@end`) after
+its last content. The rule threads between two failure modes:
+
+- Taking `start(i+1)` outright is wrong at a **chapter break**. `\chapter`
+  forces a page break, so the next section's first page can belong wholly to
+  it — the last section of every chapter would end with the *next* chapter's
+  title page. (This was the original rule; a real build caught it.)
+- Taking `own_end(i)` outright drops the **blank verso** pages between a
+  section's last page and the next chapter's opening, so printing every section
+  would no longer reassemble the book.
+
+When a section genuinely shares its last sheet with the next, `own_end ==
+start(i+1)` and both PDFs carry that sheet — the duplication the task accepts.
+The end-to-end invariant to assert is therefore *coverage with no gaps*, not
+strict tiling.
 
 ### Boundary rules
 
@@ -279,10 +291,11 @@ its page count) / *Download full book* when permitted.
 
 **Build side.** Unit tests for `insert_section_mark` against brace-heavy and
 math-bearing headings and the headless-section case; `read_pagemap` against
-real `.aux` fixtures; `build_ranges` for the tiling invariant. One end-to-end
-test, skipped when `latexmk` is absent, that builds a small fixture book and
-asserts the derived ranges tile the real PDF with no gaps and no page beyond
-its length. Per the `latex-newcommand-clashes-hide-in-nonstopmode` gotcha, that
+real `.aux` fixtures; `build_ranges` for the coverage invariant and the
+chapter-break case. One end-to-end test, skipped when `latexmk` is absent, that
+builds a small fixture book and asserts the derived ranges cover the real PDF's
+body with no gaps, no page beyond its length, and no section swallowing the
+page a later section opens on. Per the `latex-newcommand-clashes-hide-in-nonstopmode` gotcha, that
 test gates on `LaTeX Error` — not merely `Undefined control sequence` — so a
 `\parodypagemark` name collision cannot pass silently.
 
@@ -320,7 +333,7 @@ no affordance rather than a 500.
 ## Phasing
 
 1. **Page map** — `parody-pagemap.sty`, `pagemap.py`, `build_pdf` marks +
-   sidecar. Verifiable alone: build a book, assert the ranges tile it.
+   sidecar. Verifiable alone: build a book, assert the ranges cover its body.
 2. **Editions in `build_pdf`** — reuse `build_project`'s three helpers.
    Deferrable for single-edition books.
 3. **Artifact + `parody publish`** — schema, `--print-pages`, the combined

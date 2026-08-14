@@ -16,11 +16,34 @@
 
 - **Never compile a section separately.** Per-section PDFs are page ranges cut from the full book PDF. `parody pdf --section CH/SEC` exists but is *not* the mechanism here (spec D6).
 - **Never edit a print profile to add the page map.** It is injected through the existing `$flags` template slot so book-private profiles (MIT Press, in content repos) are covered without being touched.
-- **Ranges are inclusive at both ends**, with `end(i) == start(i+1)`. The shared page appearing in two PDFs is intended and tolerated.
+- **Ranges are inclusive at both ends**: `end(i) = max(own_end(i), start(i+1) - 1)`. A shared boundary sheet appearing in two PDFs is intended; a page belonging wholly to the *next* section is not. See the amendment below.
 - **Absolute pages only** (`\abspage`), never printed page numbers (`\page`). Front matter is roman-numbered, so they differ — verified: `\zref@newlabel{parodypage@one/lead-in}{\default{1}\page{1}\abspage{3}}`.
 - This repo's working tree is shared with concurrent agent sessions. **Never `git add -A`.** Add only the exact paths each task names.
 - Version bumps must commit `pyproject.toml` **and** `uv.lock` in the same commit.
 - Tests that compile LaTeX carry `@pytest.mark.pdf` and skip when TeX is absent, following `tests/test_print_pdf.py`.
+
+## Amendment (during execution, after Task 4)
+
+Tasks 1–4 shipped, but the range rule this plan originally specified —
+`end(i) = start(i+1)` — was **wrong at chapter breaks** and was corrected in
+commit `df19e4f`. `\chapter` forces a page break, so the next section's opening
+page can belong wholly to it; under the original rule the last section of every
+chapter ended with the *next* chapter's title page. Dumping per-page text of a
+real build caught it; the original "tiling" assertion passed happily.
+
+What changed, versus the code shown in Tasks 1–4 below:
+
+- `build_pdf` emits a **second mark per section**, `\parodypagemark{<key>@end}`,
+  immediately after that section's `\input`.
+- `build_ranges(order, pages, end_page)` takes one `pages` dict holding both
+  marks (not a `starts` dict) and computes
+  `end = max(own_end, next_start - 1)`.
+- The end-to-end invariant is **coverage with no gaps**, not strict tiling:
+  blank verso pages stay covered, but no section swallows a later section's
+  opening page.
+
+The code in Tasks 1–4 below is left as originally written for the record. Read
+`parody/writers/pagemap.py` for current behaviour. **Tasks 5–7 are unaffected.**
 
 ---
 
