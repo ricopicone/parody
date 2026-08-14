@@ -144,3 +144,39 @@ def test_an_unknown_generator_with_a_bare_number_is_left_alone(tmp_path):
     before = p.read_text()
     _normalise_svg_size(p)
     assert p.read_text() == before
+
+
+# ---- the build sweeps every staging route --------------------------------
+
+def test_build_normalises_an_svg_staged_from_assets(tmp_path):
+    """Figures reach the media tree by four routes, not one.
+
+    v0.1.40 of RTC normalised at the conversion path only, leaving its 124
+    committed SVGs unitless; the follow-up added the referenced-media copy and
+    still missed two figures sitting in assets/. The build now sweeps the whole
+    media tree once, after every staging path has run.
+    """
+    from parody.build import build_project
+
+    project = tmp_path / "book"
+    (project / "chapters" / "intro").mkdir(parents=True)
+    (project / "assets").mkdir()
+    (project / "parody.yaml").write_text(
+        "title: Book\nslug: book\nauthors:\n  - A\ndescription: \"\"\n"
+        "targets: [artifact]\nchapters:\n  - slug: intro\n    title: Intro\n"
+        "    sections:\n      - one\n")
+    (project / "chapters" / "intro" / "one.md").write_text(
+        "---\ntitle: One\nslug: one\nid: one\n---\n\n# One {#one}\n\nBody.\n")
+    # a cairo figure with the older poppler's unitless points
+    (project / "assets" / "fig.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="143.733" '
+        'height="99.709" viewBox="0 0 143.733 99.709">'
+        '<g id="glyph-0-0"><path d="M 0 0"/></g></svg>')
+
+    media_root = tmp_path / "stage"
+    build_project(project, tmp_path / "out.json", convert_jupytext=False,
+                  media_root=str(media_root))
+
+    staged = media_root / "media" / "fig.svg"
+    assert staged.is_file(), "assets/ figure was not staged"
+    assert 'width="191.6440px"' in staged.read_text()   # 143.733 * 96/72

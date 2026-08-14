@@ -94,8 +94,7 @@ def _stage_referenced_media(output, source_root, media_dir):
     ``<img>``. Such refs are converted to ``.svg`` (reusing the preview writer's
     pdftocairo/lualatex converters) and the artifact ref is rewritten to the
     served ``.svg``. Non-print images are copied. Returns (staged, missing)."""
-    from .writers.preview import (_normalise_svg_size, _pdf_to_svg,
-                                  _pgf_to_svg)
+    from .writers.preview import _pdf_to_svg, _pgf_to_svg
 
     refs = set(_MEDIA_REF_RE.findall(json.dumps(output)))
     # Licensed third-party figures (permission=permission) are replaced by a
@@ -141,16 +140,6 @@ def _stage_referenced_media(output, source_root, media_dir):
             if not dest.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
-                if dest.suffix.lower() == ".svg":
-                    # A figure committed as .svg is copied rather than
-                    # converted, so it never passed through _pdf_to_svg — but
-                    # most were produced by an earlier pdftocairo and carry the
-                    # same unitless points. RTC is half of each: 107 of its 231
-                    # figures come from PDFs and 124 are committed SVGs, so
-                    # normalising only the converted ones left the book still
-                    # mixed. _normalise_svg_size decides for itself whether the
-                    # file is safe to reinterpret.
-                    _normalise_svg_size(dest)
         staged += 1
         if target != ref:
             rewrites[ref] = target
@@ -518,6 +507,21 @@ def build_project(project_dir, output_path, convert_jupytext=True,
     if ref_missing:
         print(f"warning: {len(ref_missing)} media refs not found "
               f"(first: {sorted(ref_missing)[0]!r})")
+
+    # One sweep once every staging path has run, rather than a call beside each
+    # shutil.copy2: figures arrive in the media tree by four routes (pdf/pgf
+    # conversion, referenced-media staging, chapters/*_files/, assets/), and
+    # normalising at three of them left two of RTC's figures behind in v0.1.40.
+    # _normalise_svg_size is idempotent and decides for itself whether a file is
+    # safe to reinterpret, so sweeping the tree is both correct and drift-proof.
+    from .writers.preview import _normalise_svg_size
+    normalised = 0
+    for svg in sorted((Path(media_root) / "media").rglob("*.svg")):
+        before = svg.stat().st_mtime_ns
+        _normalise_svg_size(svg)
+        normalised += svg.stat().st_mtime_ns != before
+    if normalised:
+        print(f"✓ Normalised {normalised} SVG figure sizes to CSS px")
 
     if online_only:
         output = _filter_online_only(output)
