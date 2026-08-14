@@ -24,6 +24,7 @@ def cmd_build(args):
         media_root=args.media_root,
         online_only=getattr(args, "online_only", False),
         cloze_mode=getattr(args, "clozes", None),
+        print_pages=getattr(args, "print_pages", None),
     )
 
     project = load_project(args.input_dir)
@@ -289,6 +290,9 @@ def main(argv=None):
                          help="cloze rendering: blank (student handout, the "
                               "default), key (instructor copy), or full "
                               "(cloze-free publication build)")
+    p_build.add_argument("--print-pages", metavar="SIDECAR.pages.json",
+                         help="page-map sidecar from `parody pdf`; folds each "
+                              "section's print page range into the artifact")
     p_build.set_defaults(func=cmd_build)
 
     p_prev = sub.add_parser("preview", help="render a static HTML preview site")

@@ -320,7 +320,7 @@ def build_editions(project_dir, output_dir, **kwargs):
 
 def build_project(project_dir, output_path, convert_jupytext=True,
                   media_root=None, online_only=False, edition=None,
-                  cloze_mode=None):
+                  cloze_mode=None, print_pages=None):
     """Build the JSON artifact for either layout. Returns the artifact dict.
 
     online_only: emit only the public web subset (online-only sections +
@@ -336,8 +336,20 @@ def build_project(project_dir, output_path, convert_jupytext=True,
 
     cloze_mode: "blank" | "key" | "full" (see config.resolve_cloze_mode).
     None takes parody.yaml's `cloze.default`, itself defaulting to "blank".
+
+    print_pages: path to the page-map sidecar `parody pdf` writes beside the
+    PDF (see writers/pagemap.py). Folds each section's print page range into
+    the artifact so a book site can offer per-section PDFs. Absent → the
+    artifact carries no print keys and the web side renders no PDF affordance.
     """
     project = load_project(project_dir)
+
+    print_map, print_meta = {}, None
+    if print_pages:
+        data = json.loads(Path(print_pages).read_text(encoding="utf-8"))
+        print_map = data.get("sections") or {}
+        print_meta = {"pdf": data.get("pdf", ""), "pages": data.get("pages"),
+                      "sha256": data.get("sha256", "")}
 
     from .config import resolve_cloze_mode
     cloze_mode = resolve_cloze_mode(project.meta, cloze_mode)
@@ -383,6 +395,11 @@ def build_project(project_dir, output_path, convert_jupytext=True,
         "pdf_file": project.meta.get("pdf_file", ""),
         "chapters": [],
     }
+
+    # The print PDF this artifact's page ranges index into. Emitted only when a
+    # sidecar was supplied, so web-only builds stay byte-identical.
+    if print_meta:
+        output["print"] = print_meta
 
     # chapter_start: the number of the first (non-appendix) chapter. Default 1;
     # emit only when overridden (e.g. RTC's `chapter_start: 0`) so artifacts of
@@ -435,10 +452,17 @@ def build_project(project_dir, output_path, convert_jupytext=True,
                 for path in get_section_download_paths(
                         chapter.directory, section_slug, section_file=section_file):
                     requested_code_files.add((chapter.directory.name, path))
-                chapter_data["sections"].append(load_section(
+                section_data = load_section(
                     chapter.directory, section_slug,
                     with_hashes=with_hashes, transform=transform,
-                    section_file=section_file))
+                    section_file=section_file)
+                # Print page range from `parody pdf`'s sidecar, when one was
+                # supplied. Sections the sidecar does not mention simply carry
+                # no print key, and the web side offers them no PDF.
+                pages = print_map.get(f"{chapter.slug}/{section_slug}")
+                if pages:
+                    section_data["print"] = {"pages": pages}
+                chapter_data["sections"].append(section_data)
 
         # Drop a chapter that has no sections in this edition.
         if edition and not chapter_data["sections"]:
