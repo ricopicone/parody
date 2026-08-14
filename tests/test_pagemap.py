@@ -95,33 +95,61 @@ def test_read_pagemap_missing_file_is_empty(tmp_path):
     assert read_pagemap(tmp_path / "nope.aux") == {}
 
 
-def test_ranges_are_inclusive_and_tile_the_book():
-    order = ["one/lead-in", "one/alpha", "one/beta"]
-    starts = {"one/lead-in": 3, "one/alpha": 4, "one/beta": 9}
-    got = build_ranges(order, starts, end_page=11)
-    assert got == {
-        "one/lead-in": [3, 4],   # shares page 4 with alpha — tolerated
-        "one/alpha": [4, 9],     # shares page 9 with beta
-        "one/beta": [9, 11],
-    }
-    # the tiling invariant: each range ends where the next begins
-    keys = list(got)
-    for a, b in zip(keys, keys[1:]):
-        assert got[a][1] == got[b][0]
+def test_sections_sharing_a_sheet_both_carry_it():
+    # lead-in ends on page 4 and alpha starts on page 4: the shared sheet
+    # belongs to both PDFs, which is the duplication the task accepts.
+    order = ["one/lead-in", "one/alpha"]
+    pages = {"one/lead-in": 3, "one/lead-in@end": 4,
+             "one/alpha": 4, "one/alpha@end": 5}
+    got = build_ranges(order, pages, end_page=5)
+    assert got == {"one/lead-in": [3, 4], "one/alpha": [4, 5]}
+
+
+def test_a_chapter_break_does_not_hand_over_the_next_chapters_page():
+    # THE bug this rule exists for: \chapter forces a page break, so alpha's
+    # content ends on 5 while the next chapter opens on 7. Taking the next
+    # section's start outright would end alpha's PDF with chapter two's title
+    # page. Page 6 (a blank verso) must still be covered, or printing every
+    # section no longer reassembles the book.
+    order = ["one/alpha", "two/beta"]
+    pages = {"one/alpha": 4, "one/alpha@end": 5,
+             "two/beta": 7, "two/beta@end": 7}
+    got = build_ranges(order, pages, end_page=7)
+    assert got["one/alpha"] == [4, 6]
+    assert got["two/beta"] == [7, 7]
+
+
+def test_the_book_is_covered_with_no_gaps():
+    order = ["one/lead-in", "one/alpha", "two/beta"]
+    pages = {"one/lead-in": 3, "one/lead-in@end": 4,
+             "one/alpha": 4, "one/alpha@end": 5,
+             "two/beta": 7, "two/beta@end": 7}
+    got = build_ranges(order, pages, end_page=7)
+    covered = set()
+    for start, end in got.values():
+        covered.update(range(start, end + 1))
+    assert covered == set(range(3, 8))  # every body page, none missing
+
+
+def test_a_section_with_no_end_mark_falls_back_to_its_start():
+    order = ["one/alpha", "two/beta"]
+    pages = {"one/alpha": 4, "two/beta": 7, "two/beta@end": 7}
+    got = build_ranges(order, pages, end_page=7)
+    assert got["one/alpha"] == [4, 6]
 
 
 def test_ranges_skip_sections_that_produced_no_mark():
     order = ["one/lead-in", "one/missing", "one/beta"]
-    starts = {"one/lead-in": 3, "one/beta": 9}
-    got = build_ranges(order, starts, end_page=11)
+    pages = {"one/lead-in": 3, "one/lead-in@end": 4, "one/beta": 9}
+    got = build_ranges(order, pages, end_page=11)
     assert "one/missing" not in got
-    assert got["one/lead-in"] == [3, 9]
+    assert got["one/lead-in"] == [3, 8]
 
 
 def test_a_backwards_end_never_produces_an_inverted_range():
     order = ["one/a", "one/b"]
-    starts = {"one/a": 7, "one/b": 5}
-    got = build_ranges(order, starts, end_page=9)
+    pages = {"one/a": 7, "one/b": 5}
+    got = build_ranges(order, pages, end_page=9)
     assert got["one/a"] == [7, 7]
 
 

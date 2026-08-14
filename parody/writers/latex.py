@@ -21,7 +21,8 @@ from pathlib import Path
 from string import Template
 
 from ..config import load_project
-from .pagemap import build_ranges, insert_section_mark, read_pagemap
+from .pagemap import (build_ranges, insert_section_mark, read_pagemap,
+                      write_sidecar)
 
 # tex_math_single_backslash: parse \(...\)/\[...\] as math too (some raw-HTML
 # tables write math that way, e.g. \(r(t)\) in cells — without it pandoc escapes
@@ -312,6 +313,11 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                             encoding="utf-8")
                 first_in_chapter = False
                 chapters_tex.append(f"\\input{{sections/{chapter.slug}/{sec_slug}.tex}}")
+                if pagemap:
+                    # End mark, so a section that does NOT share its last sheet
+                    # with the next one (a chapter break forces a new page)
+                    # does not swallow the next chapter's opening page.
+                    chapters_tex.append(f"\\parodypagemark{{{key}@end}}")
     finally:
         for k, v in _saved_env.items():
             if v is None:
@@ -423,6 +429,22 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     output_pdf = Path(output_pdf)
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(produced, output_pdf)
+    if pagemap:
+        starts = read_pagemap(build_dir / "main.aux")
+        end_page = starts.get("@end")
+        if end_page is None:
+            print("⚠️  no page marks in main.aux — per-section page map "
+                  "omitted (rerun the build if this persists)")
+        else:
+            ranges = build_ranges(pagemap_order, starts, end_page)
+            missing = [k for k in pagemap_order if k not in ranges]
+            if missing:
+                print(f"⚠️  page map: no mark for {len(missing)} section(s): "
+                      f"{', '.join(missing[:5])}"
+                      f"{'…' if len(missing) > 5 else ''}")
+            side = write_sidecar(output_pdf, ranges, cloze_mode=cloze_mode,
+                                 solutions=solutions)
+            print(f"  pagemap: {len(ranges)} section ranges → {side.name}")
     if not keep_build:
         pass  # build dir kept for incremental latexmk runs; it is gitignored
     print(f"PDF written to {output_pdf}")

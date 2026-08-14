@@ -13,7 +13,11 @@ This module owns the three steps that turn a LaTeX build into a range table:
     build_ranges          turn start pages into inclusive [start, end] ranges
 """
 
+import hashlib
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 # print.lua's headerer_latex emits these; \lab is the MIT-class-private lab
@@ -96,23 +100,98 @@ def read_pagemap(aux_path):
     return pages
 
 
-def build_ranges(order, starts, end_page):
+def build_ranges(order, pages, end_page):
     """Inclusive ``[start, end]`` page ranges, keyed ``"<chapter>/<section>"``.
 
-    ``end(i)`` is ``start(i+1)`` — deliberately inclusive. When one section
-    ends and the next begins on the same sheet, that sheet appears in both
-    PDFs; the task accepts this, and it makes the ranges tile the book with no
-    gaps, which is the end-to-end invariant worth asserting.
+    ``pages`` holds both marks per section: ``key`` (at the heading) and
+    ``key@end`` (after the section's last content).
+
+    The end is ``max(own_end, next_start - 1)``, which threads between two
+    failure modes:
+
+    - Taking ``next_start`` outright would be wrong at a chapter boundary.
+      ``\\chapter`` forces a page break, so the next section's first page can
+      belong wholly to it — the last section of every chapter would end with
+      the *next* chapter's title page.
+    - Taking ``own_end`` outright would drop the blank verso pages between a
+      section's last page and the next chapter's opening, so printing every
+      section would no longer reassemble the book.
+
+    So: when a section genuinely shares its last sheet with the next one,
+    ``own_end == next_start`` and both PDFs carry that sheet — the duplication
+    the task accepts. When it does not, the range stops just short of the next
+    section, still covering any blank pages in between.
 
     Sections whose mark never reached the aux (a build error, a section that
     emitted nothing) are omitted rather than guessed at.
     """
-    known = [k for k in order if k in starts]
+    known = [k for k in order if k in pages]
     ranges = {}
     for i, key in enumerate(known):
-        start = starts[key]
-        end = starts[known[i + 1]] if i + 1 < len(known) else end_page
+        start = pages[key]
+        own_end = pages.get(f"{key}@end", start)
+        if i + 1 < len(known):
+            end = max(own_end, pages[known[i + 1]] - 1)
+        else:
+            end = max(own_end, end_page)
         # max(): a backwards end would mean a stale aux; clamp rather than
         # emit an inverted range the slicer would reject.
         ranges[key] = [start, max(start, end)]
     return ranges
+
+
+SIDECAR_SCHEMA = 1
+
+
+def pdf_page_count(pdf_path):
+    """Page count via poppler's ``pdfinfo``, or None when it is unavailable.
+
+    poppler is already a build dependency (content-repo CI installs
+    poppler-utils for figure conversion). A missing pdfinfo degrades the
+    sidecar's ``pages`` field to null; the ranges are unaffected.
+    """
+    exe = shutil.which("pdfinfo")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, str(pdf_path)], capture_output=True,
+                             text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.stdout.splitlines():
+        if line.startswith("Pages:"):
+            try:
+                return int(line.split(":", 1)[1].strip())
+            except ValueError:
+                return None
+    return None
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def sidecar_path(pdf_path):
+    """Where the page map for ``pdf_path`` lives: book.pdf → book.pages.json."""
+    return Path(pdf_path).with_suffix(".pages.json")
+
+
+def write_sidecar(pdf_path, ranges, cloze_mode="blank", solutions=False):
+    """Write the page-map sidecar beside the PDF. Returns its path."""
+    pdf_path = Path(pdf_path)
+    path = sidecar_path(pdf_path)
+    payload = {
+        "schema": SIDECAR_SCHEMA,
+        "pdf": pdf_path.name,
+        "pages": pdf_page_count(pdf_path),
+        "sha256": sha256_file(pdf_path),
+        "cloze_mode": cloze_mode,
+        "solutions": bool(solutions),
+        "sections": ranges,
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
