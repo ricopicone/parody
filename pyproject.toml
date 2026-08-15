@@ -1,6 +1,6 @@
 [project]
 name = "parody"
-version = "0.38.0"
+version = "0.39.0"
 description = "Unified book/notebook authoring toolchain: pandoc markdown + executed jupytext sources to JSON artifact, HTML preview, and print PDF"
 readme = "README.md"
 requires-python = ">=3.11"
