@@ -1,0 +1,26 @@
+%% parody-figscale — render figures at the size they were drawn for.
+%%
+%% A migrated book's figures are pre-compiled PDFs, drawn to sit at 1:1 in the
+%% ORIGINAL book's text measure. Reflowed into a profile with a narrower
+%% measure they still render at their natural size, so they occupy a much
+%% larger fraction of the column than the author drew — and their labels, set
+%% in the figure's own font, tower over the body text.
+%%
+%% `print.figure_scale` in parody.yaml is the correction: the ratio of the new
+%% measure to the one the art was drawn for. It scales the NATURAL size, and
+%% still caps at \linewidth so nothing spills into the margin.
+%%
+%% Default 1 — books whose figures were drawn for their current measure are
+%% untouched, and so is their generated LaTeX.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-figscale}[2026/08/15 parody figure scaling]
+\RequirePackage{graphicx}
+\makeatletter
+\providecommand{\parodyfigscale}{1}
+\def\parodyfigwidth{%
+  \ifdim\parodyfigscale\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \parodyfigscale\Gin@nat@width
+  \fi}
+\makeatother

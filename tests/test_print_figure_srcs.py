@@ -153,3 +153,57 @@ def test_non_notebook_projects_are_untouched(tmp_path, monkeypatch):
     chapter.mkdir()
     out = render("![](figures/thing){.figure .standalone}\n", chapter)
     assert "figures/thing" in out
+
+
+PARODY_YAML_SCALED = """\
+title: Scale Test
+slug: scale-test
+authors: [Tester]
+print:
+  figure_scale: 0.86
+chapters:
+  - slug: one
+    title: Chapter One
+    sections: [only]
+"""
+
+
+def _scaled_project(tmp_path, monkeypatch, yaml_text):
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    root = tmp_path / "scale-test"
+    ch = root / "chapters" / "one"
+    ch.mkdir(parents=True)
+    (root / "parody.yaml").write_text(yaml_text)
+    (ch / "fig.pdf").write_bytes(b"%PDF-1.7\n")
+    (ch / "only.md").write_text(
+        "---\ntitle: Only\nslug: only\n---\n\n"
+        "![](notebooks/scale-test/fig){.figure .standalone}\n")
+    return root
+
+
+def test_figure_scale_applies_when_the_book_declares_one(tmp_path, monkeypatch):
+    from parody.writers.latex import build_pdf
+    root = _scaled_project(tmp_path, monkeypatch, PARODY_YAML_SCALED)
+    build_pdf(root)
+    build = root / "build" / "print"
+    assert "\\parodyfigwidth" in (
+        build / "sections" / "one" / "only.tex").read_text()
+    main = (build / "main.tex").read_text()
+    assert "\\def\\parodyfigscale{0.86}" in main
+    assert "\\usepackage{parody-figscale}" in main
+    # the \def must precede the package, whose \providecommand defaults it to 1
+    assert main.index("\\def\\parodyfigscale") < main.index(
+        "\\usepackage{parody-figscale}")
+    assert (build / "parody-figscale.sty").is_file()
+
+
+def test_without_the_setting_the_output_is_unchanged(tmp_path, monkeypatch):
+    from parody.writers.latex import build_pdf
+    plain = PARODY_YAML_SCALED.replace("print:\n  figure_scale: 0.86\n", "")
+    root = _scaled_project(tmp_path, monkeypatch, plain)
+    build_pdf(root)
+    build = root / "build" / "print"
+    tex = (build / "sections" / "one" / "only.tex").read_text()
+    assert "width=\\maxwidth" in tex
+    assert "parodyfigwidth" not in tex
+    assert not (build / "parody-figscale.sty").exists()

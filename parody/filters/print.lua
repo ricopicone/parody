@@ -910,8 +910,14 @@ function imager(el)
   end
   local width = el.attr.attributes['figwidth']
   if width == nil then
-    -- notebook figures: natural size capped at the text width
-    width = notebook_ctx and 'width=\\maxwidth' or ''
+    -- notebook figures: natural size capped at the text width. When the book
+    -- declares print.figure_scale (its art was drawn for a WIDER measure than
+    -- this profile's), \parodyfigwidth applies that ratio to the natural size
+    -- and still caps at \linewidth. Unset -> \maxwidth, byte-identical output.
+    local scale = os.getenv('PARODY_FIG_SCALE')
+    local cap = (scale and scale ~= '' and scale ~= '1')
+      and '\\parodyfigwidth' or '\\maxwidth'
+    width = notebook_ctx and ('width=' .. cap) or ''
   else
     width = 'width=' .. pandoc.utils.stringify(width)
   end
