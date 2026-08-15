@@ -92,6 +92,24 @@ def test_pdf_only_writes_no_artifact(project, tmp_path, monkeypatch):
     assert not (out / "publish-test.json").exists()
 
 
+def test_a_relative_project_dir_works(project, tmp_path, monkeypatch):
+    """`parody publish . -o build` — the shape CI uses.
+
+    build_pdf hands the generated section .md to pandoc with cworkdir set to
+    the section's own directory, so a relative build dir stops resolving as
+    soon as pandoc changes directory. This died on the first section with
+    "source_file is not a valid path" while an absolute path worked.
+    """
+    calls = _fake_pdf(monkeypatch, {"one/alpha": [2, 9]})
+    monkeypatch.chdir(project)
+    written = publish(".", "out", convert_jupytext=False)
+    assert (project / "out" / "publish-test.json").is_file()
+    # every path handed onward is absolute
+    assert Path(calls[0]["output_pdf"]).is_absolute()
+    assert Path(calls[0]["build_dir"]).is_absolute()
+    assert all(p.is_absolute() for p in written)
+
+
 def test_each_edition_gets_its_own_pdf_and_artifact(tmp_path, monkeypatch):
     root = _write_book(tmp_path / "publish-test", EDITION_YAML)
     calls = _fake_pdf(monkeypatch, {"one/alpha": [2, 9]})

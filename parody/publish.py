@@ -21,8 +21,14 @@ def publish(project_dir, output_dir, convert_jupytext=True, media_root=None,
 
     Returns every path written, PDFs and artifacts alike.
     """
-    project_dir = Path(project_dir)
-    output_dir = Path(output_dir)
+    # Resolve before anything derives paths from these. build_pdf hands the
+    # generated section .md to pandoc with cworkdir set to its own directory,
+    # so a RELATIVE build dir stops resolving the moment pandoc changes
+    # directory — `parody publish .` died on its first section with
+    # "source_file is not a valid path" while `parody publish /abs/path`
+    # worked. Same reasoning as build_pdf's own resolve().
+    project_dir = Path(project_dir).resolve()
+    output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     project = load_project(project_dir)
 
