@@ -853,6 +853,42 @@ end
 
 -- Figures ----------------------------------------------------------------
 
+-- A standalone/pgf/subfigure src written in the MEDIA hierarchy
+-- (notebooks/<slug>/<name>) is a web-side path. In print it is handed to
+-- kpathsea, which searches TEXINPUTS (the chapter dirs + assets) for that
+-- literal relative path and never finds it — silently, so the figure is just
+-- absent from the PDF (\includestandalone is \providecommand'd to
+-- \includegraphics, so most failures raise no distinct error). The web path
+-- resolves such refs by BASENAME against the source tree; do the same, which
+-- is all TEXINPUTS needs.
+--
+-- Conservative on purpose: rewrite only when the file really is in this
+-- chapter, so srcs that already resolve (rtc, math) are untouched. Task #587.
+local function resolve_media_src(src)
+  local media_rel = src:match('^notebooks/[^/]+/(.*)$')
+  local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
+  if not (media_rel and chapter_dir) then return src end
+  -- '' first: some refs already carry their extension (…/sources-real.pdf),
+  -- and appending another would find nothing.
+  for _, ext in ipairs({'', '.pdf', '.tex', '.pgf'}) do
+    -- io.open, not file_exists(): that helper is defined further down in the
+    -- notebook-includes section and is still nil at this point.
+    local f = io.open(chapter_dir .. '/' .. media_rel .. ext, 'r')
+    if f then
+      f:close()
+      return media_rel
+    end
+  end
+  -- Left as-is rather than dropped: it might still resolve through another
+  -- TEXINPUTS entry (assets/), and removing a figure is worse than keeping a
+  -- suspect one. But say so — this shape silently produced ~70 missing
+  -- figures in the electronics book before #587.
+  io.stderr:write(
+    '⚠️  standalone figure src is a media path with no file in this chapter '
+    .. '(may be missing from the PDF): ' .. src .. '\n')
+  return src
+end
+
 function imager(el)
   if not is_latex() then return el end
   -- Notebook print builds (PARODY_PROJECT_DIR set): map media-hierarchy and
@@ -863,28 +899,7 @@ function imager(el)
     or el.classes:includes('pgf') or el.src:match('%.pgf$')
   local notebook_ctx = os.getenv('PARODY_PROJECT_DIR') ~= nil
   if notebook_ctx and is_pgf_or_standalone then
-    -- A standalone/pgf src written in the MEDIA hierarchy
-    -- (notebooks/<slug>/<name>) is a web-side path: \includestandalone hands
-    -- it to kpathsea, which searches TEXINPUTS (the chapter dirs + assets) for
-    -- that literal relative path and never finds it — silently, so the figure
-    -- is simply absent from the PDF. The web path resolves such refs by
-    -- BASENAME against the source tree; do the same here, which is all
-    -- TEXINPUTS needs. Conservative: only rewrite when the file really is in
-    -- this chapter, so srcs that already resolve (rtc, math) are untouched.
-    local media_rel = el.src:match('^notebooks/[^/]+/(.*)$')
-    local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
-    if media_rel and chapter_dir then
-      for _, ext in ipairs({'.pdf', '.tex', '.pgf'}) do
-        -- io.open, not file_exists(): that helper is defined further down in
-        -- the notebook-includes section and is still nil at this point.
-        local f = io.open(chapter_dir .. '/' .. media_rel .. ext, 'r')
-        if f then
-          f:close()
-          el.src = media_rel
-          break
-        end
-      end
-    end
+    el.src = resolve_media_src(el.src)
   end
   if notebook_ctx and not is_pgf_or_standalone then
     local resolved = resolve_asset(el.src, nil)
@@ -1045,13 +1060,17 @@ local function figurediver(el)
     if w and w ~= '' then opt = '[width=' .. w .. ']'
     elseif s and s ~= '' then opt = '[scale=' .. s .. ']' end
     local graphics_command
-    if classes[i]:includes('pgf') or srcs[i]:match('%.pgf$') then
-      local pgf = '\\inputpgf{' .. srcs[i]:gsub('%.pgf$', '') .. '}'
+    -- Subfigures build their own graphics command instead of going through
+    -- imager, so they need the same media-path resolution (#587).
+    local src = os.getenv('PARODY_PROJECT_DIR') and resolve_media_src(srcs[i])
+      or srcs[i]
+    if classes[i]:includes('pgf') or src:match('%.pgf$') then
+      local pgf = '\\inputpgf{' .. src:gsub('%.pgf$', '') .. '}'
       if w and w ~= '' then pgf = '\\resizebox{' .. w .. '}{!}{' .. pgf .. '}'
       elseif s and s ~= '' then pgf = '\\scalebox{' .. s .. '}{' .. pgf .. '}' end
       graphics_command = '\\noindent' .. pgf
     else
-      graphics_command = '\\noindent\\includegraphics' .. opt .. '{' .. srcs[i] .. '}'
+      graphics_command = '\\noindent\\includegraphics' .. opt .. '{' .. src .. '}'
     end
     local filler_after = ''
     if math.fmod(i, cols) == 0 then
@@ -1420,7 +1439,15 @@ resolve_asset = function(src, base_stem)
   if media_rel and project_dir then
     -- media-hierarchy path: maps directly onto the source layout
     local candidate = project_dir .. '/' .. media_rel
-    if file_exists(candidate) then resolved = candidate end
+    if file_exists(candidate) then
+      resolved = candidate
+    elseif chapter_dir then
+      -- ...except where the book keeps the file beside its section instead of
+      -- at the project root (electronics). The media path is flat, so the
+      -- basename is what identifies it — the same rule the web staging uses.
+      candidate = chapter_dir .. '/' .. media_rel
+      if file_exists(candidate) then resolved = candidate end
+    end
   elseif not src:match('^/') and chapter_dir then
     local candidates = {}
     if base_stem then
@@ -1688,6 +1715,24 @@ function Image(el)
     return pandoc.RawInline('latex',
       '\\begin{figure}[H]\\centering\n' .. graphics.text
       .. '\n\\figcaption[]{' .. label .. '}{}\n' .. extra .. '\\end{figure}')
+  end
+  -- No identifier: no float wrapper, but a MEDIA-HIERARCHY src still needs
+  -- resolving. A captionless, id-less
+  -- ![](notebooks/<slug>/<name>){.standalone} used to fall off the end of this
+  -- function, leaving pandoc's default writer to emit \includegraphics with
+  -- the web media path — which kpathsea cannot find, so the figure vanished
+  -- from the PDF without a distinct error (\includestandalone is
+  -- \providecommand'd to \includegraphics). ~70 refs in the electronics book
+  -- rendered as missing figures this way (#587).
+  --
+  -- Restricted to the notebooks/ form on purpose. A BARE src (rtc's shape,
+  -- e.g. ![](gate-not){.figure}) already resolves: kpathsea searches TEXINPUTS
+  -- and tries extensions. resolve_asset instead demands an exact filename
+  -- match and returns nil, so sending bare srcs down this path DROPS the
+  -- figure — an earlier attempt at #587 blanked the logic-gate images in three
+  -- rtc sections that way.
+  if os.getenv('PARODY_PROJECT_DIR') and el.src:match('^notebooks/[^/]+/') then
+    return imager(el)
   end
 end
 
