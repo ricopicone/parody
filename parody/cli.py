@@ -129,6 +129,18 @@ def cmd_pdf(args):
     return 0
 
 
+def cmd_figures(args):
+    from .config import load_project
+    from .writers.figures import build_figures
+
+    project = load_project(args.project_dir)
+    built, skipped = build_figures(project, force=args.force)
+    print(f"figures: {len(built)} built, {len(skipped)} up to date")
+    for s in built:
+        print(f"  ✓ {s.parent.name}/{s.stem}")
+    return 0
+
+
 def cmd_publish(args):
     from .publish import publish
 
@@ -377,6 +389,15 @@ def main(argv=None):
     p_pub.add_argument("--pdf-only", action="store_true",
                        help="build only the PDF + sidecar; write no artifact")
     p_pub.set_defaults(func=cmd_publish)
+
+    p_fig = sub.add_parser(
+        "figures",
+        help="compile standalone figure sources to PDFs in parody's house "
+             "style (one type size for every figure in the book)")
+    p_fig.add_argument("project_dir", help="project directory")
+    p_fig.add_argument("--force", action="store_true",
+                       help="rebuild every figure, not just the stale ones")
+    p_fig.set_defaults(func=cmd_figures)
 
     p_check = sub.add_parser("check", help="validate an artifact against the schema")
     p_check.add_argument("artifact", nargs="?", help="artifact JSON path")

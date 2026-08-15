@@ -1,0 +1,34 @@
+%% parody-standalone — the house style every standalone figure is built with.
+%%
+%% Standalone figures are compiled as their own documents, so without a shared
+%% preamble each one inherits whatever class default its source happened to
+%% get. The result is a book whose figure labels are 9pt here and 10pt there,
+%% and the only lever left is scaling the finished PDF — which changes the
+%% figure's size to fix its type size.
+%%
+%% So the type size is fixed HERE, once, for every figure parody builds. A
+%% figure then renders at its natural size in print and its labels already
+%% match the book. Override for one book with
+%%
+%%     \def\parodyfigurefontsize{9}
+%%
+%% before loading, but the point is that figures should not each choose.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-standalone}[2026/08/15 parody standalone figure style]
+
+% tikz only, and only if the book has not already brought it. Drawing
+% packages are the BOOK's business — circuitikz and pgfplots take options, and
+% loading them here ahead of a book that configures them itself is a hard
+% option clash. This package owns one thing: the type size.
+\@ifpackageloaded{tikz}{}{\RequirePackage{tikz}}
+
+% 8pt on 9pt leading — the size the printed books use for figure text.
+\providecommand{\parodyfigurefontsize}{8}
+\newcommand{\parody@figurefont}{%
+  \fontsize{\parodyfigurefontsize pt}{\numexpr\parodyfigurefontsize+1\relax pt}%
+  \selectfont}
+
+% tikz sets node text through its own font key; anything outside a tikzpicture
+% follows the document font. Set both so a figure cannot straddle two sizes.
+\tikzset{every picture/.append style={font=\parody@figurefont}}
+\AtBeginDocument{\parody@figurefont}
