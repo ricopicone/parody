@@ -88,3 +88,33 @@ def test_download_code_becomes_pointer_note(notebook_chapter, tmp_path):
                  tmp_path)
     assert "Get helper" in tex and "\\path{helper.py}" in tex
     assert "minted" not in tex
+
+
+def test_a_longtable_inside_an_exercise_becomes_a_tabular():
+    """xsim re-tokenizes an exercise body to collect it, and longtable's
+    counter machinery does not survive: "No counter 'none' defined", and NO
+    PDF is produced. Same family as the minted problem next door — except
+    this one takes the whole build down rather than one block.
+    """
+    from parody.writers.latex import _detoxify_exercise_longtables
+
+    tex = (
+        "\\begin{exercise}[ID=x,hash=x]\n"
+        "\\begin{longtable}[]{@{}ll@{}}\n"
+        "a & b \\\\\n"
+        "\\endhead\n"
+        "1 & 2 \\\\\n"
+        "\\end{longtable}\n"
+        "\\end{exercise}\n")
+    out = _detoxify_exercise_longtables(tex)
+    assert "longtable" not in out
+    assert "\\begin{tabular}" in out and "\\end{tabular}" in out
+    assert "\\endhead" not in out
+    assert "1 & 2" in out  # the content survives
+
+
+def test_a_longtable_outside_an_exercise_is_untouched():
+    from parody.writers.latex import _detoxify_exercise_longtables
+
+    tex = "\\begin{longtable}[]{@{}ll@{}}\na & b \\\\\n\\end{longtable}\n"
+    assert _detoxify_exercise_longtables(tex) == tex

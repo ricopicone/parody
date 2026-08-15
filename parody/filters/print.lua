@@ -914,6 +914,21 @@ local function resolve_media_src(src)
   return src
 end
 
+-- The [key=value] graphics option for one figure: an explicit scale, an
+-- explicit width, or (the default) natural size capped at the text measure.
+-- Shared by imager and the subfigure builder so both honour the same syntax.
+function figure_size_option(attrs, notebook_ctx)
+  local scale = attrs and attrs['scale']
+  if scale and scale ~= '' then
+    return 'scale=' .. pandoc.utils.stringify(scale)
+  end
+  local width = attrs and attrs['figwidth']
+  if width and width ~= '' then
+    return 'width=' .. pandoc.utils.stringify(width)
+  end
+  return notebook_ctx and 'width=\\maxwidth' or ''
+end
+
 function imager(el)
   if not is_latex() then return el end
   -- Notebook print builds (PARODY_PROJECT_DIR set): map media-hierarchy and
@@ -933,19 +948,14 @@ function imager(el)
     end
     el.src = resolved
   end
-  local width = el.attr.attributes['figwidth']
-  if width == nil then
-    -- notebook figures: natural size capped at the text width. When the book
-    -- declares print.figure_scale (its art was drawn for a WIDER measure than
-    -- this profile's), \parodyfigwidth applies that ratio to the natural size
-    -- and still caps at \linewidth. Unset -> \maxwidth, byte-identical output.
-    local scale = os.getenv('PARODY_FIG_SCALE')
-    local cap = (scale and scale ~= '' and scale ~= '1')
-      and '\\parodyfigwidth' or '\\maxwidth'
-    width = notebook_ctx and ('width=' .. cap) or ''
-  else
-    width = 'width=' .. pandoc.utils.stringify(width)
-  end
+  -- Sizing, in order of specificity. The DEFAULT is the figure's natural
+  -- size (capped at the text width so nothing spills into the margin) —
+  -- print does not second-guess the size the art was drawn at. A figure that
+  -- genuinely needs resizing says so itself:
+  --
+  --   ![](fig){.figure .standalone scale=0.8}     80% of natural
+  --   ![](fig){.figure .standalone figwidth=3in}  an explicit width
+  local width = figure_size_option(el.attr.attributes, notebook_ctx)
   local graphics_command
   if el.classes:includes('standalone') then
     graphics_command = '\\noindent\\includestandalone[' .. width .. ']{' .. el.src .. '}'
@@ -1073,7 +1083,10 @@ local function figurediver(el)
     end
     classes[i] = img.classes or {}
     local a = (img.attr and img.attr.attributes) or {}
-    sizes[i] = { width = a['width'] or div_attrs['width'],
+    -- figwidth is the key single figures use; accept both here so the same
+    -- inline syntax works wherever a figure appears
+    sizes[i] = { width = a['figwidth'] or a['width']
+                   or div_attrs['figwidth'] or div_attrs['width'],
                  scale = a['scale'] or div_attrs['scale'] }
   end
   local fig_tex = '\\begin{figure}[H]\n\\centering\n'

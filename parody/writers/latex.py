@@ -77,6 +77,7 @@ def section_to_latex(section_md, output_tex, resource_dir=None, crossref=True):
         cworkdir=str(Path(section_md).parent),
     )
     tex = _externalize_exercise_verbatim(tex, output_tex)
+    tex = _detoxify_exercise_longtables(tex)
     output_tex.write_text(tex, encoding="utf-8")
     return output_tex
 
@@ -112,6 +113,36 @@ def _externalize_exercise_verbatim(tex, output_tex):
         return _MINTED_RE.sub(to_input, env_match.group(0))
 
     return _EXERCISE_ENV_RE.sub(externalize, tex)
+
+
+# longtable is a page-breaking float-like environment. xsim re-tokenizes an
+# exercise body to collect it, and longtable's counter machinery does not
+# survive that: the build dies with "No counter 'none' defined" and produces
+# no PDF at all. A table inside an exercise should not be page-breaking
+# anyway — it is already inside a box that cannot break sensibly.
+_LONGTABLE_RE = re.compile(r"\\begin\{longtable\}(\[[^\]]*\])?", re.S)
+
+
+def _detoxify_exercise_longtables(tex):
+    """Turn longtables inside xsim environments into plain tabulars.
+
+    Same failure family as the minted problem above: xsim collects an exercise
+    body by re-tokenizing it, which some environments cannot survive. Here the
+    build does not just lose the content — it produces no PDF.
+    """
+    def fix(env_match):
+        body = env_match.group(0)
+        if "\\begin{longtable}" not in body:
+            return body
+        body = _LONGTABLE_RE.sub(r"\\begin{tabular}", body)
+        body = body.replace("\\end{longtable}", "\\end{tabular}")
+        # longtable-only row commands mean nothing to tabular
+        for macro in ("\\endfirsthead", "\\endhead", "\\endfoot",
+                      "\\endlastfoot"):
+            body = body.replace(macro, "")
+        return body
+
+    return _EXERCISE_ENV_RE.sub(fix, tex)
 
 
 def section_frontmatter(md_path):
@@ -322,26 +353,13 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         shutil.copy2(SHARED_PROFILE_DIR / "parody-pagemap.sty",
                      build_dir / "parody-pagemap.sty")
 
-    # print.figure_scale: this book's figures were drawn for a wider text
-    # measure than the profile provides, so rendering them at natural size
-    # blows them up relative to the column (and their labels with them).
-    fig_scale = str((active_meta.get("print") or {}).get("figure_scale") or "")
-    has_flags = "$flags" in template_text
-    if fig_scale and fig_scale != "1" and has_flags:
-        shutil.copy2(SHARED_PROFILE_DIR / "parody-figscale.sty",
-                     build_dir / "parody-figscale.sty")
-    elif fig_scale and fig_scale != "1":
-        print(f"⚠️  profile {profile_dir.name} has no $flags slot — "
-              "print.figure_scale ignored")
-        fig_scale = ""
-
     # Convert sections. The filter resolves notebook includes and figure
     # paths against the SOURCE tree (pandoc itself runs in the build dir),
     # so hand it the project/chapter context and an svg-conversion cache.
     # Save/restore so the context never leaks past this build.
     _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
                  "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
-                 "PARODY_CLOZE_MODE", "PARODY_FIG_SCALE")
+                 "PARODY_CLOZE_MODE")
     _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
     os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
     os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
@@ -349,7 +367,6 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # print.lua needs the mode only for figure variants; TeX branches on
     # \clozemode for everything else.
     os.environ["PARODY_CLOZE_MODE"] = cloze_mode
-    os.environ["PARODY_FIG_SCALE"] = fig_scale
     chapters_tex = []
     pagemap_order = []  # section keys in book order, for build_ranges
     # chapter_start: the number of the first (non-appendix) chapter (default 1).
@@ -460,10 +477,6 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         bibliography = "\\printbibliography"
 
     flags = []
-    if fig_scale and fig_scale != "1":
-        # before the \usepackage: the package \providecommand's a default of 1
-        flags.append("\\def\\parodyfigscale{%s}" % fig_scale)
-        flags.append("\\usepackage{parody-figscale}")
     if pagemap:
         flags.append("\\usepackage{parody-pagemap}")
     if solutions:
