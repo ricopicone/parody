@@ -887,12 +887,20 @@ local function resolve_media_src(src)
   local media_rel = src:match('^notebooks/[^/]+/(.*)$')
   local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
   if not (media_rel and chapter_dir) then return src end
+  -- build/figures first: a figure parody BUILT is the authoritative one, and
+  -- it is what a book using the figures/ layout has. Fall back to the chapter
+  -- dir for books whose art still sits beside its section.
+  local figures_dir = os.getenv('PARODY_FIGURES_BUILD')
+  local dirs = {}
+  if figures_dir and figures_dir ~= '' then dirs[#dirs + 1] = figures_dir end
+  dirs[#dirs + 1] = chapter_dir
   -- '' first: some refs already carry their extension (…/sources-real.pdf),
   -- and appending another would find nothing.
+  for _, dir in ipairs(dirs) do
   for _, ext in ipairs({'', '.pdf', '.tex', '.pgf'}) do
     -- io.open, not file_exists(): that helper is defined further down in the
     -- notebook-includes section and is still nil at this point.
-    local f = io.open(chapter_dir .. '/' .. media_rel .. ext, 'r')
+    local f = io.open(dir .. '/' .. media_rel .. ext, 'r')
     if f then
       f:close()
       -- The ABSOLUTE path, not the basename. A basename resolves fine through
@@ -901,8 +909,9 @@ local function resolve_media_src(src)
       -- rerunning — leaving every cross-reference undefined in a PDF that
       -- otherwise built clean. resolve_asset returns absolute paths for the
       -- same reason.
-      return chapter_dir .. '/' .. media_rel
+      return dir .. '/' .. media_rel
     end
+  end
   end
   -- Left as-is rather than dropped: it might still resolve through another
   -- TEXINPUTS entry (assets/), and removing a figure is worse than keeping a

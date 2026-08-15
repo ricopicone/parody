@@ -6,6 +6,12 @@ media/
 build/
 *.pdf
 
+# ...but figure SOURCES are tracked. Artwork (Illustrator, or a PDF exported
+# from something that has no other source) is as much a source as a .tex
+# fragment; only what `parody figures` BUILDS from them is disposable, and
+# that lands in build/figures/.
+!figures/**
+
 # Execution byproducts
 .jupytext_cache.json
 .autofig_log.jsonl

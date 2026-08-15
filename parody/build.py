@@ -103,6 +103,14 @@ def _stage_referenced_media(output, source_root, media_dir):
     # section is gated (preview), where the figure shows normally to the owner.
     refs -= _rights_withheld_refs(output)
     index = {}  # basename -> source path
+    # build/figures holds what `parody figures` produced — the web form of a
+    # figure is the .svg there. Indexed FIRST so a built figure wins over any
+    # stale copy left beside a section.
+    figures_build = Path(source_root) / "build" / "figures"
+    if figures_build.is_dir():
+        for f in sorted(figures_build.iterdir()):
+            if f.is_file():
+                index.setdefault(f.name, f)
     for root, dirs, files in os.walk(source_root):
         dirs[:] = [d for d in dirs
                    if d not in _STAGE_SKIP_DIRS and not d.startswith(".")]

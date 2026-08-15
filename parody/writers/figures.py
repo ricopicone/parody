@@ -12,10 +12,20 @@ class and the preamble — ``parody-standalone.sty``, which fixes the type size
 at 8pt for every figure in the book. The figure then renders at its natural
 size in print, with labels that already match.
 
-Sources live beside the section that uses them, named for the figure they
-produce::
+Sources are tracked, built artwork is not::
 
-    chapters/<chapter>/<name>.tex   ->   chapters/<chapter>/<name>.pdf
+    figures/<name>.tex        a fragment parody compiles      TRACKED
+    figures/<name>.ai         Illustrator artwork             TRACKED
+    figures/preamble.tex      the book's drawing vocabulary   TRACKED
+    build/figures/<name>.pdf  for print                       gitignored
+    build/figures/<name>.svg  for web                         gitignored
+
+Illustrator files need no special handling: a .ai IS a PDF (Illustrator writes
+PDF-compatible files), so the same pdftocairo that makes every other SVG reads
+it directly.
+
+Figure sources kept beside their section (chapters/<chapter>/<name>.tex) are
+still built, in place, so books predating this layout keep working.
 """
 
 import os
@@ -49,14 +59,55 @@ def is_fragment(path):
     return not any(marker in head for marker in DOCUMENT_MARKERS)
 
 
+# Artwork parody passes through rather than compiles. A .ai is a PDF, so both
+# reach the same converter; anything else raster stays as it is.
+ARTWORK_SUFFIXES = (".ai", ".pdf", ".png", ".jpg", ".jpeg")
+
+FIGURES_DIRNAME = "figures"
+BUILD_SUBPATH = ("build", "figures")
+
+
+def figures_dir(project):
+    return Path(project.directory) / FIGURES_DIRNAME
+
+
+def figures_build_dir(project):
+    return Path(project.directory).joinpath(*BUILD_SUBPATH)
+
+
 def figure_sources(project):
-    """Every figure fragment in the project, in chapter order."""
+    """Every figure source in the project.
+
+    The canonical home is figures/. Fragments kept beside their section are
+    still picked up so books predating that layout keep building.
+    """
     out = []
+    root = figures_dir(project)
+    if root.is_dir():
+        for path in sorted(root.iterdir()):
+            if path.name == "preamble.tex":
+                continue
+            if path.suffix == ".tex" and is_fragment(path):
+                out.append(path)
+            elif path.suffix.lower() in ARTWORK_SUFFIXES:
+                out.append(path)
     for chapter in project.chapters:
         for tex in sorted(Path(chapter.directory).glob("*.tex")):
             if is_fragment(tex):
                 out.append(tex)
     return out
+
+
+def output_dir_for(project, source):
+    """Where this source's built PDF/SVG belong.
+
+    figures/ sources build into build/figures/, which is gitignored. A source
+    still living beside its section builds in place, where that book's
+    references already point.
+    """
+    if source.parent == figures_dir(project):
+        return figures_build_dir(project)
+    return source.parent
 
 
 def _needs_build(source, pdf, extra_deps=()):
@@ -67,12 +118,15 @@ def _needs_build(source, pdf, extra_deps=()):
                for d in (source, *extra_deps) if d.is_file())
 
 
-def build_figure(source, style_dir=SHARED_PROFILE_DIR, extra_preamble=""):
-    """Compile one fragment to a PDF beside it. Returns the PDF path or None."""
+def build_figure(source, style_dir=SHARED_PROFILE_DIR, extra_preamble="",
+                 out_dir=None):
+    """Compile one fragment to a PDF. Returns the PDF path or None."""
     # absolute: the compile runs in a temp cwd, so every TEXINPUTS entry
     # derived from this path has to be absolute to resolve
     source = Path(source).resolve()
-    pdf = source.with_suffix(".pdf")
+    out_dir = Path(out_dir).resolve() if out_dir else source.parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pdf = out_dir / (source.stem + ".pdf")
     body = source.read_text(encoding="utf-8").strip()
     doc = WRAPPER % {"body": body,
                      "extra": extra_preamble and extra_preamble + "\n" or ""}
@@ -132,20 +186,59 @@ def book_preamble(project):
     return "\\input{%s}" % path.as_posix()
 
 
+def place_artwork(source, out_dir):
+    """Put ready artwork where the built figures live.
+
+    A .ai is a PDF — Illustrator writes PDF-compatible files — so it becomes
+    the figure's .pdf directly. Anything else is copied under its own name.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    suffix = ".pdf" if source.suffix.lower() in (".ai", ".pdf") else source.suffix
+    dest = out_dir / (source.stem + suffix)
+    if dest.resolve() != source.resolve():
+        shutil.copy2(source, dest)
+    return dest
+
+
+def build_svg(pdf, svg=None):
+    """The web form of a built figure. Returns the SVG path or None."""
+    from .preview import _normalise_svg_size, _pdf_to_svg
+
+    pdf = Path(pdf)
+    if pdf.suffix.lower() != ".pdf":
+        return None  # raster artwork is already web-ready
+    svg = Path(svg) if svg else pdf.with_suffix(".svg")
+    if not _pdf_to_svg(pdf, svg):
+        return None
+    _normalise_svg_size(svg)
+    return svg
+
+
 def build_figures(project, force=False, extra_preamble=""):
-    """Compile every out-of-date figure fragment. Returns (built, skipped)."""
+    """Build every out-of-date figure to PDF + SVG. Returns (built, skipped)."""
     extra_preamble = extra_preamble or book_preamble(project)
-    if not have_tool("lualatex"):
+    sources = figure_sources(project)
+    if any(s.suffix == ".tex" for s in sources) and not have_tool("lualatex"):
         print("⚠️  lualatex not found — standalone figures not rebuilt")
         return [], []
     style = SHARED_PROFILE_DIR / "parody-standalone.sty"
     built, skipped, failed = [], [], []
-    for source in figure_sources(project):
-        pdf = source.with_suffix(".pdf")
-        if not force and not _needs_build(source, pdf, (style,)):
+    for source in sources:
+        out_dir = output_dir_for(project, source)
+        pdf = out_dir / (source.stem + ".pdf")
+        svg = out_dir / (source.stem + ".svg")
+        deps = (style,) if source.suffix == ".tex" else ()
+        if not force and not _needs_build(source, pdf, deps) and svg.is_file():
             skipped.append(source)
             continue
-        if build_figure(source, extra_preamble=extra_preamble):
+        if source.suffix == ".tex":
+            made = build_figure(source, extra_preamble=extra_preamble,
+                                out_dir=out_dir)
+        else:
+            made = place_artwork(source, out_dir)
+        if made:
+            build_svg(made, svg)
             built.append(source)
         else:
             failed.append(source)

@@ -359,7 +359,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # Save/restore so the context never leaks past this build.
     _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
                  "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
-                 "PARODY_CLOZE_MODE")
+                 "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD")
     _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
     os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
     os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
@@ -367,6 +367,12 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # print.lua needs the mode only for figure variants; TeX branches on
     # \clozemode for everything else.
     os.environ["PARODY_CLOZE_MODE"] = cloze_mode
+    # Where `parody figures` puts what it built. Figures live there for books
+    # using the figures/ layout; books whose art still sits beside its section
+    # resolve from the chapter dir as before.
+    from .figures import figures_build_dir
+    _fig_build = figures_build_dir(project)
+    os.environ["PARODY_FIGURES_BUILD"] = str(_fig_build) if _fig_build.is_dir() else ""
     chapters_tex = []
     pagemap_order = []  # section keys in book order, for build_ranges
     # chapter_start: the number of the first (non-appendix) chapter (default 1).
@@ -525,6 +531,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # Section figures (\includegraphics, \inputpgf) stay in the content
     # repo's chapter/assets dirs; let kpathsea find them from the build dir.
     resource_dirs = [str(ch.directory) for ch in project.chapters]
+    if _fig_build.is_dir():
+        resource_dirs.insert(0, str(_fig_build))
     assets = project_dir / "assets"
     if assets.is_dir():
         resource_dirs.append(str(assets))
