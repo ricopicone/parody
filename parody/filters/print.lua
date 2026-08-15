@@ -714,20 +714,34 @@ local function exercise_solution(el)
     '\\end{exercise}\n\\begin{solution}\n' .. content .. '\n\\end{solution}')
 end
 
+-- Demote and unnumber headers inside an exercise or its solution.
+local function demote_header(inner)
+  inner.level = inner.level + 2
+  inner.classes[#inner.classes + 1] = 'unnumbered'
+  return inner
+end
+
 local function exerciser(el)
   if not is_latex() then return el end
+  -- Lift the nested solution OUT of the exercise body rather than letting it
+  -- emit the exercise's closing tag from inside itself. The old arrangement
+  -- had exerciser open \begin{exercise} and leave it open, with
+  -- exercise_solution supplying \end{exercise} — so ANY hiccup that cost us
+  -- the solution div (raw \begin{align*} swallowing its closing fence, in the
+  -- case that surfaced this) left the exercise unterminated, which aborts
+  -- latexmk and takes every cross-reference in the book down with it.
+  local solutions = {}
   local el_walked = pandoc.walk_block(el, {
     Div = function(inner)
-      if inner.classes:includes('exercise-solution') or inner.classes:includes('solution') then
-        return exercise_solution(inner)
+      if inner.classes:includes('exercise-solution')
+          or inner.classes:includes('solution') then
+        solutions[#solutions + 1] = pandoc.walk_block(
+          inner, { Header = demote_header })
+        return {}
       end
       return inner
     end,
-    Header = function(inner) -- demote and unnumber headers inside exercises
-      inner.level = inner.level + 2
-      inner.classes[#inner.classes + 1] = 'unnumbered'
-      return inner
-    end,
+    Header = demote_header,
   })
   el_walked = pandoc.walk_block(el_walked, interior_filter)
   el_walked = pandoc.walk_block(el_walked, image_filter)
@@ -746,9 +760,14 @@ local function exerciser(el)
   if hash ~= '' and hash ~= id then
     labels = labels .. '\\label{' .. hash .. '}'
   end
-  return pandoc.RawBlock('latex',
-    '\\begin{' .. env .. '}[ID=' .. hash .. ',hash=' .. hash .. ']\n'
-    .. labels .. '\n' .. content)
+  local sol_env = el.classes:includes('lab') and 'labsolution' or 'solution'
+  local out = '\\begin{' .. env .. '}[ID=' .. hash .. ',hash=' .. hash .. ']\n'
+    .. labels .. '\n' .. content .. '\n\\end{' .. env .. '}'
+  for _, sol in ipairs(solutions) do
+    out = out .. '\n\\begin{' .. sol_env .. '}\n'
+      .. delimiter_dollar(walk_to_latex(sol)) .. '\n\\end{' .. sol_env .. '}'
+  end
+  return pandoc.RawBlock('latex', out)
 end
 
 local function example_solution(el)
@@ -876,7 +895,13 @@ local function resolve_media_src(src)
     local f = io.open(chapter_dir .. '/' .. media_rel .. ext, 'r')
     if f then
       f:close()
-      return media_rel
+      -- The ABSOLUTE path, not the basename. A basename resolves fine through
+      -- TEXINPUTS at compile time, but latexmk's dependency scan cannot see
+      -- it, reports "Missing input file", treats that as an error and stops
+      -- rerunning — leaving every cross-reference undefined in a PDF that
+      -- otherwise built clean. resolve_asset returns absolute paths for the
+      -- same reason.
+      return chapter_dir .. '/' .. media_rel
     end
   end
   -- Left as-is rather than dropped: it might still resolve through another

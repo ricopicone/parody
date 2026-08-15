@@ -245,6 +245,31 @@ def resolve_profile(profile):
     return Path(profile)
 
 
+_UNDEFINED_REF = re.compile(r"Reference `([^']*)' on page")
+_MISSING_CITE = re.compile(r"Citation `([^']*)' on page")
+
+
+def _report_log_problems(log_path):
+    """Say what the finished build still gets wrong.
+
+    latexmk runs in force_mode so the pass sequence completes even when the
+    document has non-fatal problems (see the profiles' latexmkrc) — which means
+    nothing else would ever mention them. An undefined cross-reference prints
+    as ?? in the PDF and is invisible unless someone reads that page.
+    """
+    log_path = Path(log_path)
+    if not log_path.is_file():
+        return
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    for label, pattern in (("undefined cross-reference", _UNDEFINED_REF),
+                           ("missing citation", _MISSING_CITE)):
+        names = sorted(set(pattern.findall(text)))
+        if names:
+            shown = ", ".join(names[:5])
+            more = f" …and {len(names) - 5} more" if len(names) > 5 else ""
+            print(f"⚠️  {len(names)} {label}(s): {shown}{more}")
+
+
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
               profile_dir=None, keep_build=False, build_dir=None,
               cloze_mode=None, pagemap=True, edition=None):
@@ -526,6 +551,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     output_pdf = Path(output_pdf)
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(produced, output_pdf)
+    _report_log_problems(build_dir / "main.log")
+
     if pagemap:
         starts = read_pagemap(build_dir / "main.aux")
         end_page = starts.get("@end")

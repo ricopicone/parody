@@ -3,3 +3,16 @@
 $pdf_mode = 4;
 $lualatex = 'lualatex -interaction=nonstopmode -file-line-error -shell-escape -synctex=1 %O %S';
 $bibtex_use = 2;
+
+# Complete the pass sequence even when something in the document is wrong.
+#
+# latexmk stops rerunning the moment it sees an error, and a book-scale
+# document has plenty that are not fatal: a missing citation, a figure it
+# cannot dependency-track. Stopping early leaves EVERY cross-reference
+# undefined — measured on the electronics book, one missing bib key cost 73 of
+# them — in a PDF that otherwise built clean, and latexmk still exits 0. So
+# push through and let build_pdf report what the final log actually says.
+$force_mode = 1;
+# biblatex, xsim, rerunfilecheck and zref (the page map) each ask for reruns
+# and do not settle together; 5 is not enough for a book this size.
+$max_repeat = 10;

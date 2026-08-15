@@ -53,7 +53,11 @@ def test_captionless_idless_standalone_resolves(notebook_chapter):
                  notebook_chapter)
     assert "notebooks/book/sec-widget" not in out, out
     assert "\\includestandalone" in out
-    assert "{sec-widget}" in out
+    # the ABSOLUTE path: a basename resolves via TEXINPUTS but latexmk's
+    # dependency scan cannot see it, and it stops rerunning (see the module
+    # docstring's note on undefined references)
+    assert "sec-widget}" in out
+    assert str(notebook_chapter) in out
 
 
 def test_identified_standalone_still_resolves(notebook_chapter):
@@ -89,7 +93,8 @@ def test_subfigure_srcs_resolve_too(notebook_chapter):
         notebook_chapter)
     assert "notebooks/book/sec-left" not in out, out
     assert "notebooks/book/sec-right" not in out, out
-    assert "{sec-left}" in out
+    assert "sec-left}" in out
+    assert str(notebook_chapter) in out
     assert "\\subcaptionbox" in out
 
 
