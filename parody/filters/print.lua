@@ -862,6 +862,30 @@ function imager(el)
   local is_pgf_or_standalone = el.classes:includes('standalone')
     or el.classes:includes('pgf') or el.src:match('%.pgf$')
   local notebook_ctx = os.getenv('PARODY_PROJECT_DIR') ~= nil
+  if notebook_ctx and is_pgf_or_standalone then
+    -- A standalone/pgf src written in the MEDIA hierarchy
+    -- (notebooks/<slug>/<name>) is a web-side path: \includestandalone hands
+    -- it to kpathsea, which searches TEXINPUTS (the chapter dirs + assets) for
+    -- that literal relative path and never finds it — silently, so the figure
+    -- is simply absent from the PDF. The web path resolves such refs by
+    -- BASENAME against the source tree; do the same here, which is all
+    -- TEXINPUTS needs. Conservative: only rewrite when the file really is in
+    -- this chapter, so srcs that already resolve (rtc, math) are untouched.
+    local media_rel = el.src:match('^notebooks/[^/]+/(.*)$')
+    local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
+    if media_rel and chapter_dir then
+      for _, ext in ipairs({'.pdf', '.tex', '.pgf'}) do
+        -- io.open, not file_exists(): that helper is defined further down in
+        -- the notebook-includes section and is still nil at this point.
+        local f = io.open(chapter_dir .. '/' .. media_rel .. ext, 'r')
+        if f then
+          f:close()
+          el.src = media_rel
+          break
+        end
+      end
+    end
+  end
   if notebook_ctx and not is_pgf_or_standalone then
     local resolved = resolve_asset(el.src, nil)
     if resolved == nil then
