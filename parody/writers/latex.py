@@ -114,6 +114,57 @@ def _externalize_exercise_verbatim(tex, output_tex):
     return _EXERCISE_ENV_RE.sub(externalize, tex)
 
 
+def section_frontmatter(md_path):
+    """The section's YAML front matter as a dict ({} when it has none)."""
+    import yaml
+
+    raw = Path(md_path).read_text(encoding="utf-8")
+    if not raw.startswith("---"):
+        return {}
+    parts = raw.split("---", 2)
+    if len(parts) != 3:
+        return {}
+    try:
+        return yaml.safe_load(parts[1]) or {}
+    except yaml.YAMLError:
+        return {}
+
+
+# \section / \section* / \lab — the commands print.lua emits for a section's
+# OWN heading. \subsection and below are headings WITHIN a section and must not
+# be mistaken for one (a book whose sections open with ## would otherwise keep
+# losing its titles).
+_OWN_HEADING = re.compile(r"\\(?:section\*?|lab)\s*[\[{]")
+
+
+def synthesize_section_heading(tex, meta, slug):
+    """Prepend ``\\section{title}`` when the section carries no heading itself.
+
+    Across parody books a section's title lives in front matter and the
+    CONSUMER renders it — parody-web's template does (``title_in_html``). Print
+    had no such step, so a book following the convention lost every section
+    heading: no title, no TOC entry, subsections dropping to 1.0.x, and no
+    \\label, so cross-references to the section dangled.
+
+    Returns ``tex`` unchanged when the section already owns a heading, or when
+    it is a chapter lead-in (whose heading is the ``\\chapter`` itself, exactly
+    as parody-web renders it).
+    """
+    if slug == "lead-in" or _OWN_HEADING.search(tex):
+        return tex
+    title = str(meta.get("title") or "").strip()
+    if not title:
+        return tex
+    heading = "\\section{%s}" % title
+    # The same labels headerer_latex hangs off a real heading, so \cref to the
+    # section's id or short hash resolves.
+    for key in ("id", "hash"):
+        value = str(meta.get(key) or "").strip()
+        if value and value != slug:
+            heading += "\n\\label{%s}" % value
+    return heading + "\n\n" + tex
+
+
 def strip_frontmatter(md_path, dest_path, transform=None):
     """Write a copy of the section with YAML frontmatter removed (pandoc
     would otherwise interpret stray frontmatter keys), applying any
@@ -321,6 +372,14 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                 tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
                 print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
                 section_to_latex(stripped, tex_path, resource_dir=chapter.directory)
+                # The title lives in front matter for books that keep their
+                # sections heading-free; print has to render it, or the section
+                # arrives with no title, no TOC entry and no cross-ref target.
+                tex_path.write_text(
+                    synthesize_section_heading(
+                        tex_path.read_text(encoding="utf-8"),
+                        section_frontmatter(src), sec_slug),
+                    encoding="utf-8")
                 if pagemap:
                     if first_in_chapter:
                         # Marked at the chapter opening instead, so the range
