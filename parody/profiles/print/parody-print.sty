@@ -30,6 +30,13 @@
 \RequirePackage{fontawesome5}
 \RequirePackage{imakeidx}
 \RequirePackage{hyperref}
+% Links carry no visible border. hyperref's default draws a box around every
+% cross-reference, and this PDF is something students PRINT — a section at a
+% time, or the whole book — so 259 boxes would be 259 boxes on paper. Set via
+% \hypersetup rather than the `hidelinks` package option: a book preamble that
+% loads hyperref itself would make the option an unrecoverable clash, and
+% pdfborder is the form every hyperref version accepts.
+\hypersetup{pdfborder={0 0 0}}
 % No `capitalise`: cross-ref labels follow the case of the reference key, so
 % [@fig:foo] -> \cref -> "figure 1" and [@Fig:foo] -> \Cref -> "Figure 1"
 % (task #296). `capitalise` would force \cref to capitalize too, defeating
