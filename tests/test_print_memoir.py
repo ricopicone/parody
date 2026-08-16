@@ -90,11 +90,18 @@ def test_headings_are_title_cased():
     cls = (BUNDLED_PROFILES / "memoir" / "parody-memoir.cls").read_text()
     assert "\\RequirePackage{titlecaps}" in cls
     assert "\\setsecheadstyle{\\normalfont\\large\\bfseries\\boldmath"\
-           "\\raggedright\\titlecap}" in cls
+           "\\raggedright\\parodytitlecap}" in cls
+    # \emph is swapped for \textit before casing (titlecaps mangles \emph),
+    # and the entry macro must be robust or hyperref's bookmark pass breaks it
+    assert "\\tl_replace_all:Nnn \\l__parody_tc_tl { \\emph } { \\textit }" in cls
+    assert "\\DeclareRobustCommand{\\parody@tcentry}" in cls
+    assert "\\pdfstringdefDisableCommands" in cls
     # the contents has to be cased on the way IN — by \l@section time hyperref
     # has wrapped the entry in \hyperlink and titlecap sees a macro, not words
     assert "\\let\\addcontentsline\\parody@acl" in cls
-    assert "\\protect\\titlecap" in cls
+    assert "\\protect\\parody@tcentry" in cls
+    # the number is held out of titlecap — see the spacing assertion below
+    assert "\\def\\parody@tc@num\\numberline#1#2\\parody@tc@end" in cls
 
 
 @pytest.mark.pdf
@@ -106,6 +113,10 @@ def test_heading_and_contents_agree_on_title_case(tiny_project):  # noqa: F811
     text = squashed(pdf)
     assert text.count("ASectionAbouttheThing") >= 2
     assert "ASectionaboutthething" not in text
+    # ...and the contents entry keeps the gap its \numberline box sets. Running
+    # the number through titlecap collapses that box: the title butts against
+    # its own number and wrapped entries fall back under it instead of hanging.
+    assert "1.1 A Section About the Thing" in pdf_text(pdf)
 
 
 def test_toc_leaders_keep_stretchable_glue():

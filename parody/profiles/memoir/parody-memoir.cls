@@ -45,6 +45,26 @@
 % applied as the LAST macro of a heading style, which is memoir's documented
 % idiom for "hand the heading text to this one-argument command".
 \RequirePackage{titlecaps}
+% titlecaps recurses into \textit, \textbf and \texttt so their contents get
+% cased along with everything else — but it has no case for \emph, which is
+% exactly what pandoc emits for *emphasis*. An unhandled macro is not skipped,
+% it is mangled: "Algebra \emph{ex nihilo}" set only the "e" italic and
+% doubled the space before it.
+%
+% So the \emph TOKENS are swapped for \textit before casing. Teaching titlecaps
+% about \emph directly does not work — \emph is robust, and giving it \textit's
+% internal treatment duplicated and reordered the trailing words ("Algebra
+% \emph{ex nihilo} and beyond" came out "and beyond and beyond and
+% beyondAlgebra Ex Nihilo"). Inside a heading the two are interchangeable: they
+% differ only in how they nest, and a heading is never already italic.
+\ExplSyntaxOn
+\NewDocumentCommand{\parodytitlecap}{m}{
+  \tl_set:Nn \l__parody_tc_tl {#1}
+  \tl_replace_all:Nnn \l__parody_tc_tl { \emph } { \textit }
+  \exp_args:NV \titlecap \l__parody_tc_tl
+}
+\tl_new:N \l__parody_tc_tl
+\ExplSyntaxOff
 % Articles, coordinating conjunctions and short prepositions only. Verbs stay
 % capitalised even when short ("Is", "Are", "Be"), which is why they are not
 % on this list.
@@ -65,8 +85,8 @@
 \makeoddhead{parody}{\small\itshape\rightmark}{}{\small\thepage}
 \makeevenfoot{parody}{}{}{}
 \makeoddfoot{parody}{}{}{}
-\renewcommand{\chaptermark}[1]{\markboth{\thechapter.\ \titlecap{#1}}{}}
-\renewcommand{\sectionmark}[1]{\markright{\thesection\ \ \titlecap{#1}}}
+\renewcommand{\chaptermark}[1]{\markboth{\thechapter.\ \parodytitlecap{#1}}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ \ \parodytitlecap{#1}}}
 \makepsmarks{parody}{}% marks set by \chaptermark/\sectionmark above
 \aliaspagestyle{chapter}{plain}
 \pagestyle{parody}
@@ -117,14 +137,14 @@
   % The rule lives with the title, not the number, so an unnumbered chapter
   % (Contents, Bibliography) still opens under it.
   \renewcommand*{\printchaptertitle}[1]{%
-    \parody@chaprule\chaptitlefont\titlecap{##1}}%
+    \parody@chaprule\chaptitlefont\parodytitlecap{##1}}%
 }
 \chapterstyle{parodygraphic}
 
 % ---- section heads: bold, bold math (an MIT touch), ragged right -------
-\setsecheadstyle{\normalfont\large\bfseries\boldmath\raggedright\titlecap}
-\setsubsecheadstyle{\normalfont\normalsize\bfseries\raggedright\titlecap}
-\setsubsubsecheadstyle{\normalfont\normalsize\itshape\raggedright\titlecap}
+\setsecheadstyle{\normalfont\large\bfseries\boldmath\raggedright\parodytitlecap}
+\setsubsecheadstyle{\normalfont\normalsize\bfseries\raggedright\parodytitlecap}
+\setsubsubsecheadstyle{\normalfont\normalsize\itshape\raggedright\parodytitlecap}
 \setbeforesecskip{-1.2\onelineskip plus -.4\onelineskip minus -.2\onelineskip}
 \setaftersecskip{0.6\onelineskip plus .2\onelineskip}
 % Number down to subsubsection, but list only to subsection: the deepest heads
@@ -144,18 +164,41 @@
 \renewcommand{\cftsectionleader}{\hfill}
 \renewcommand{\cftsubsectionleader}{\hfill}
 \setlength{\cftbeforechapterskip}{0.6\onelineskip}
-% The contents is written from the authored (sentence-case) argument, so it
-% has to be title-cased on the way out or it would disagree with the headings
-% it points at. \cft<level>font is a plain declaration — it never sees the
-% entry text — so the wrap goes on \l@<level>, which does. The \numberline
-% that prefixes #1 passes through titlecap untouched.
-% Title-cased on the way INTO the .toc, not on the way out. By the time an
+% The contents is written from the authored (sentence-case) argument, so it is
+% title-cased on the way INTO the .toc — not on the way out. By the time an
 % entry reaches \l@<level> hyperref has wrapped it in \hyperlink, so titlecap
-% sees a macro rather than words and does nothing. \protect keeps \titlecap
-% from expanding as the line is written; it runs when the .toc is read back.
+% would see a macro rather than words and do nothing. \protect keeps the cased
+% call from expanding as the line is written; it runs when the .toc is read
+% back (\@starttoc reads it under \makeatletter, so @-names are safe).
 % Deferred to \AtBeginDocument because hyperref redefines \addcontentsline
 % itself, and it loads after this class. Restricted to the toc: figure and
 % table captions travel through here too, and they are not title case.
+%
+% The entry arrives as "\numberline{1.1}Title" (chapters:
+% "\chapternumberline{1}Title"). The number must be held OUT of titlecap: it
+% collapses the \numberline box, and that box is what sets the gap after the
+% number and the hanging indent a wrapped entry falls back to — run it through
+% and the title butts against its own number and long entries collide with it.
+\def\parody@tc@num\numberline#1#2\parody@tc@end{\numberline{#1}\parodytitlecap{#2}}
+\def\parody@tc@chap\chapternumberline#1#2\parody@tc@end{%
+  \chapternumberline{#1}\parodytitlecap{#2}}
+\def\parody@tc@plain#1\parody@tc@end{\parodytitlecap{#1}}
+\def\parody@tc@sniff{%
+  \@ifnextchar\numberline{\parody@tc@num}{%
+    \@ifnextchar\chapternumberline{\parody@tc@chap}{\parody@tc@plain}}}
+% Robust, and disabled inside PDF strings. hyperref expands each toc entry a
+% second time to build the bookmark, and a fragile macro breaks there: the
+% \@ifnextchar sniff falls apart and \parody@tc@end — a delimiter that is
+% never \def'ed — is left to execute, one "Undefined control sequence" per
+% heading. Bookmarks carry the plain title; casing is a typographic matter.
+\DeclareRobustCommand{\parody@tcentry}[1]{\parody@tc@sniff#1\parody@tc@end}
+\AtBeginDocument{%
+  \providecommand{\pdfstringdefDisableCommands}[1]{}%
+  \pdfstringdefDisableCommands{%
+    \let\parody@tcentry\@firstofone
+    \let\parodytitlecap\@firstofone
+    \let\titlecap\@firstofone}}
+
 \def\parody@toclist{toc}
 % Defined at top level, not inside the hook: parameter tokens do not survive
 % \AtBeginDocument intact, and writing the replacement there silently produced
@@ -163,7 +206,7 @@
 \newcommand{\parody@acl}[3]{%
   \def\parody@acl@file{#1}%
   \ifx\parody@acl@file\parody@toclist
-    \parody@addcontentsline{#1}{#2}{\protect\titlecap{#3}}%
+    \parody@addcontentsline{#1}{#2}{\protect\parody@tcentry{#3}}%
   \else
     \parody@addcontentsline{#1}{#2}{#3}%
   \fi}
