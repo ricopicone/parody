@@ -7,8 +7,11 @@ into `build/figures/`, which does not.
 figures/<name>.tex     a fragment — a tikzpicture, a circuitikz, whatever draws.
                        parody supplies the class and the type size (8pt), so
                        the fragment carries no \documentclass of its own.
-figures/<name>.ai      Illustrator artwork. A .ai is already a PDF, so parody
-                       uses it directly — no export step.
+figures/<name>.ai      Illustrator artwork. A .ai is already a PDF, so no
+                       export step — but it also carries Illustrator's own
+                       private data beside the drawing, so parody flattens it
+                       with ghostscript rather than copying it. Measured on one
+                       book's artwork: 3.8 MB of .ai, 216 kB of actual drawing.
 figures/preamble.tex   optional: this book's own tikz styles, macros and
                        fonts. Point parody.yaml at it:
 

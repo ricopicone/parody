@@ -136,3 +136,49 @@ def test_illustrator_artwork_becomes_a_pdf(figures_layout, tmp_path):
     out = place_artwork(src, tmp_path / "out")
     assert out.name == "art.pdf"
     assert out.read_bytes().startswith(b"%PDF")
+
+
+def test_artwork_falls_back_to_a_copy_without_ghostscript(figures_layout, tmp_path,
+                                                          monkeypatch):
+    """No gs is a smaller file, not a broken build."""
+    from parody.writers import figures as figmod
+
+    src = Path(figures_layout.directory) / "figures" / "art.ai"
+    src.write_bytes(b"%PDF-1.4\noriginal\n")
+    monkeypatch.setattr(figmod.shutil, "which", lambda *a, **k: None)
+    out = figmod.place_artwork(src, tmp_path / "out")
+    assert out.name == "art.pdf"
+    assert out.read_bytes() == b"%PDF-1.4\noriginal\n"
+
+
+def test_a_failed_flatten_still_produces_the_figure(figures_layout, tmp_path,
+                                                   monkeypatch):
+    from parody.writers import figures as figmod
+
+    src = Path(figures_layout.directory) / "figures" / "art.ai"
+    src.write_bytes(b"%PDF-1.4\noriginal\n")
+    monkeypatch.setattr(figmod, "flatten_pdf", lambda s, d: False)
+    out = figmod.place_artwork(src, tmp_path / "out")
+    assert out.is_file() and out.name == "art.pdf"
+
+
+@pytest.mark.pdf
+@pytest.mark.skipif(not have_tool("gs"), reason="ghostscript not available")
+def test_flatten_drops_the_editors_private_data(tmp_path):
+    """An .ai carries Illustrator's own stream beside the PDF rendering.
+
+    Copying keeps it — measured on the electronics artwork, 3.8 MB of .ai
+    against 216 kB of drawing. Ghostscript leaves it behind.
+    """
+    from parody.writers.figures import flatten_pdf
+
+    # a PDF carrying a private-data object, the shape an .ai has
+    src = tmp_path / "art.ai"
+    src.write_bytes(
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] >>\n"
+        b"endobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
+    dest = tmp_path / "art.pdf"
+    assert flatten_pdf(src, dest)
+    assert dest.is_file() and dest.read_bytes().startswith(b"%PDF")

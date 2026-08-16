@@ -20,9 +20,9 @@ Sources are tracked, built artwork is not::
     build/figures/<name>.pdf  for print                       gitignored
     build/figures/<name>.svg  for web                         gitignored
 
-Illustrator files need no special handling: a .ai IS a PDF (Illustrator writes
-PDF-compatible files), so the same pdftocairo that makes every other SVG reads
-it directly.
+Illustrator artwork is a source like any other: a .ai IS a PDF, but one
+carrying Illustrator's own private data alongside the drawing, so parody
+flattens it rather than copying it (see flatten_pdf).
 
 Figure sources kept beside their section (chapters/<chapter>/<name>.tex) are
 still built, in place, so books predating this layout keep working.
@@ -141,8 +141,6 @@ def build_figure(source, style_dir=SHARED_PROFILE_DIR, extra_preamble="",
         shutil.copy2(style_dir / "parody-standalone.sty",
                      td / "parody-standalone.sty")
         env = _tool_env()
-        # the figure's own directory, so a fragment can \input or
-        # \includegraphics things that sit next to it
         # the figure's own directory (so a fragment can \input its
         # neighbours), plus the project root and its profile/ — where a book
         # keeps the .sty its figure preamble loads
@@ -186,16 +184,55 @@ def book_preamble(project):
     return "\\input{%s}" % path.as_posix()
 
 
+def flatten_pdf(source, dest):
+    """Rewrite a PDF-shaped source, dropping what only its editor needs.
+
+    An .ai saved "PDF compatible" carries Illustrator's own PGF stream
+    ALONGSIDE the PDF rendering — five AIPrivateData objects and ~250kB of it
+    in a drawing whose art is 11kB. Copying the file keeps all of that in the
+    book.
+
+    Ghostscript re-writes the page and leaves the private data behind.
+    Measured on the electronics artwork: 259kB -> 12kB, and the rendered
+    result is identical bar antialiasing (mean pixel delta 0.04, 68 pixels
+    differing appreciably at 300dpi). pdftocairo goes smaller still but
+    genuinely redraws — mean delta 4.76 with full-scale differences across
+    5693 pixels — so it is not used here.
+
+    Returns True when the rewrite happened; False leaves the caller to copy.
+    """
+    gs = shutil.which("gs", path=_tool_env()["PATH"])
+    if not gs:
+        return False
+    result = subprocess.run(
+        [gs, "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
+         # /prepress keeps images and vectors at full fidelity; the win here
+         # is dropping the editor's private data, not recompressing art.
+         "-dPDFSETTINGS=/prepress", "-dCompatibilityLevel=1.5",
+         f"-sOutputFile={dest}", str(source)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    if result.returncode != 0 or not Path(dest).is_file():
+        print(f"⚠️  could not flatten {source.name}, copying as-is"
+              f"{': ' + result.stdout.strip()[:120] if result.stdout.strip() else ''}")
+        return False
+    return True
+
+
 def place_artwork(source, out_dir):
     """Put ready artwork where the built figures live.
 
-    A .ai is a PDF — Illustrator writes PDF-compatible files — so it becomes
-    the figure's .pdf directly. Anything else is copied under its own name.
+    A .ai IS a PDF — Illustrator writes PDF-compatible files — so it becomes
+    the figure's .pdf, but flattened first (see flatten_pdf). Anything else is
+    copied under its own name.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    suffix = ".pdf" if source.suffix.lower() in (".ai", ".pdf") else source.suffix
+    is_pdfish = source.suffix.lower() in (".ai", ".pdf")
+    suffix = ".pdf" if is_pdfish else source.suffix
     dest = out_dir / (source.stem + suffix)
+    if is_pdfish:
+        if flatten_pdf(source, dest):
+            return dest
     if dest.resolve() != source.resolve():
         shutil.copy2(source, dest)
     return dest
