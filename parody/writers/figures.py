@@ -184,6 +184,46 @@ def book_preamble(project):
     return "\\input{%s}" % path.as_posix()
 
 
+def _image_xobjects(path):
+    """How many raster images a PDF embeds."""
+    d = Path(path).read_bytes()
+    return d.count(b"/Subtype /Image") + d.count(b"/Subtype/Image")
+
+
+def warn_if_rasterized(source, dest):
+    """Say so if a conversion turned drawing into pixels.
+
+    Vector art must stay vector: a rasterized figure looks acceptable on
+    screen and falls apart in print, and nothing else in the pipeline would
+    mention it. Line art gains no raster images; a photo the artwork already
+    embedded is not a regression, so compare counts rather than testing for
+    any image at all.
+    """
+    dest = Path(dest)
+    if dest.suffix.lower() == ".svg":
+        body = dest.read_text(errors="replace")
+        if "data:image" in body:
+            print(f"⚠️  {dest.name}: the SVG embeds a raster image — vector "
+                  "content was rasterized in conversion")
+            return True
+        # pdftocairo DROPS raster images on the way to SVG rather than
+        # embedding them, so a figure that carried a photo comes out as an
+        # empty <svg> — the right size and nothing in it. Silent on the web.
+        if not any(tag in body for tag in
+                   ("<path", "<image", "<text", "<rect", "<circle", "<ellipse",
+                    "<line", "<polyline", "<polygon", "<use", "<g ")):
+            print(f"⚠️  {dest.name}: the SVG has no drawing in it — the "
+                  "converter dropped this figure's content")
+            return True
+        return False
+    before, after = _image_xobjects(source), _image_xobjects(dest)
+    if after > before:
+        print(f"⚠️  {dest.name}: conversion added {after - before} raster "
+              "image(s) — vector content was rasterized")
+        return True
+    return False
+
+
 def flatten_pdf(source, dest):
     """Rewrite a PDF-shaped source, dropping what only its editor needs.
 
@@ -208,13 +248,24 @@ def flatten_pdf(source, dest):
         [gs, "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
          # /prepress keeps images and vectors at full fidelity; the win here
          # is dropping the editor's private data, not recompressing art.
-         "-dPDFSETTINGS=/prepress", "-dCompatibilityLevel=1.5",
+         "-dPDFSETTINGS=/prepress",
+         # 1.5 keeps transparency NATIVE. Targeting 1.3 or lower makes
+         # ghostscript flatten transparency groups, and flattening is where
+         # vector art turns into pixels.
+         "-dCompatibilityLevel=1.5",
+         # If artwork does embed a photo, keep it as it was: no downsampling,
+         # no re-encoding to JPEG.
+         "-dDownsampleColorImages=false", "-dDownsampleGrayImages=false",
+         "-dDownsampleMonoImages=false",
+         "-dAutoFilterColorImages=false", "-dAutoFilterGrayImages=false",
+         "-dColorImageFilter=/FlateEncode", "-dGrayImageFilter=/FlateEncode",
          f"-sOutputFile={dest}", str(source)],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if result.returncode != 0 or not Path(dest).is_file():
         print(f"⚠️  could not flatten {source.name}, copying as-is"
               f"{': ' + result.stdout.strip()[:120] if result.stdout.strip() else ''}")
         return False
+    warn_if_rasterized(source, dest)
     return True
 
 
@@ -249,6 +300,7 @@ def build_svg(pdf, svg=None):
     if not _pdf_to_svg(pdf, svg):
         return None
     _normalise_svg_size(svg)
+    warn_if_rasterized(pdf, svg)
     return svg
 
 

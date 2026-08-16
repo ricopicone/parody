@@ -182,3 +182,66 @@ def test_flatten_drops_the_editors_private_data(tmp_path):
     dest = tmp_path / "art.pdf"
     assert flatten_pdf(src, dest)
     assert dest.is_file() and dest.read_bytes().startswith(b"%PDF")
+
+
+def test_a_rasterizing_conversion_is_reported(tmp_path, capsys):
+    """Vector art that becomes pixels must not pass in silence.
+
+    A rasterized figure looks acceptable on screen and falls apart in print,
+    and nothing else in the pipeline would mention it.
+    """
+    from parody.writers.figures import warn_if_rasterized
+
+    src = tmp_path / "a.pdf"
+    src.write_bytes(b"%PDF-1.5\n/Type /Page\n")            # pure vector
+    dest = tmp_path / "b.pdf"
+    dest.write_bytes(b"%PDF-1.5\n/Subtype /Image\n")        # now a bitmap
+    assert warn_if_rasterized(src, dest)
+    assert "rasterized" in capsys.readouterr().out
+
+
+def test_artwork_that_already_held_a_photo_is_not_flagged(tmp_path, capsys):
+    from parody.writers.figures import warn_if_rasterized
+
+    src = tmp_path / "a.pdf"
+    src.write_bytes(b"%PDF-1.5\n/Subtype /Image\n")
+    dest = tmp_path / "b.pdf"
+    dest.write_bytes(b"%PDF-1.5\n/Subtype /Image\n")
+    assert not warn_if_rasterized(src, dest)
+    assert capsys.readouterr().out == ""
+
+
+def test_an_svg_that_embeds_a_bitmap_is_reported(tmp_path, capsys):
+    from parody.writers.figures import warn_if_rasterized
+
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF-1.5\n")
+    svg = tmp_path / "a.svg"
+    svg.write_text('<svg><image href="data:image/png;base64,iVBORw0K"/></svg>')
+    assert warn_if_rasterized(pdf, svg)
+    assert "raster" in capsys.readouterr().out
+
+
+def test_an_empty_svg_is_reported(tmp_path, capsys):
+    """pdftocairo drops raster images on the way to SVG rather than embedding
+    them, so a figure carrying a photo comes out the right size and empty —
+    invisible on the web, with no error anywhere."""
+    from parody.writers.figures import warn_if_rasterized
+
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF-1.5\n")
+    svg = tmp_path / "a.svg"
+    svg.write_text('<?xml version="1.0"?><svg width="816" height="1056"></svg>')
+    assert warn_if_rasterized(pdf, svg)
+    assert "no drawing in it" in capsys.readouterr().out
+
+
+def test_a_normal_vector_svg_passes(tmp_path, capsys):
+    from parody.writers.figures import warn_if_rasterized
+
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF-1.5\n")
+    svg = tmp_path / "a.svg"
+    svg.write_text('<svg><g><path d="M0 0 L2 2"/></g></svg>')
+    assert not warn_if_rasterized(pdf, svg)
+    assert capsys.readouterr().out == ""
