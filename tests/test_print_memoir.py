@@ -105,6 +105,11 @@ def test_boxes_are_bracket_framed_not_filled():
     assert "colback=parodythmback" not in env
     assert "colback=parodyinfoback" not in env
     assert "colback=parodyexback" not in env
+    # print.lua emits \tcblower between an example's statement and solution;
+    # `empty` turns the segmentation rule off, and for a breakable box only an
+    # overlay draw brings it back (segmentation code/style do not).
+    assert "\\parody@brk@seg" in env
+    assert "\\tcbsegmentstate" in env
 
 
 def pdf_text(pdf):

@@ -182,6 +182,17 @@
 \tikzset{parodybracketline/.style={line width=0.9pt, line cap=round}}
 % #1 = hue. Four cases because a breakable box draws its own overlay per
 % fragment: only the first fragment has a title, only the last has a foot.
+% print.lua emits \tcblower to separate an example's statement from its
+% solution. `empty` blanks the segmentation drawing along with the frame, and
+% for a breakable box restoring `segmentation code` does not bring it back —
+% so the rule is drawn in the overlay, on whichever fragment carries the
+% segment (\tcbsegmentstate = 1). Without this the boundary vanishes silently.
+\newcommand{\parody@brk@seg}[1]{%
+  \ifnum\tcbsegmentstate=1
+    \draw[#1,dashed,line width=0.5pt]
+      ([xshift=\parody@brkoff]segmentation.west) --
+      ([xshift=-\parody@brkoff]segmentation.east);
+  \fi}
 % Both verticals start just under the title, so the pair reads as one frame
 % embracing the content with the title labelling it from above. (Hanging the
 % right one from frame.north instead leaves the two starting at different
@@ -196,7 +207,8 @@
     ([xshift=-\parodybracketlen]frame.east |- title.south west) --
     ([xshift=-\parody@brkoff]frame.east |- title.south west) --
     ([xshift=-\parody@brkoff]frame.south east) --
-    ([xshift=-\parodybracketlen]frame.south east);}
+    ([xshift=-\parodybracketlen]frame.south east);
+  \parody@brk@seg{#1}}
 \newcommand{\parody@brk@first}[1]{%
   \draw[#1,parodybracketline]
     ([xshift=\parodybracketlen]title.south west) --
@@ -205,14 +217,16 @@
   \draw[#1,parodybracketline]
     ([xshift=-\parodybracketlen]frame.east |- title.south west) --
     ([xshift=-\parody@brkoff]frame.east |- title.south west) --
-    ([xshift=-\parody@brkoff]frame.south east);}
+    ([xshift=-\parody@brkoff]frame.south east);
+  \parody@brk@seg{#1}}
 \newcommand{\parody@brk@mid}[1]{%
   \draw[#1,parodybracketline]
     ([xshift=\parody@brkoff]frame.north west) --
     ([xshift=\parody@brkoff]frame.south west);
   \draw[#1,parodybracketline]
     ([xshift=-\parody@brkoff]frame.north east) --
-    ([xshift=-\parody@brkoff]frame.south east);}
+    ([xshift=-\parody@brkoff]frame.south east);
+  \parody@brk@seg{#1}}
 \newcommand{\parody@brk@last}[1]{%
   \draw[#1,parodybracketline]
     ([xshift=\parody@brkoff]frame.north west) --
@@ -221,7 +235,8 @@
   \draw[#1,parodybracketline]
     ([xshift=-\parody@brkoff]frame.north east) --
     ([xshift=-\parody@brkoff]frame.south east) --
-    ([xshift=-\parodybracketlen]frame.south east);}
+    ([xshift=-\parodybracketlen]frame.south east);
+  \parody@brk@seg{#1}}
 \tcbset{
   parodyboxbase/.style={
     enhanced, breakable, empty,
