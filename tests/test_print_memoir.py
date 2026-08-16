@@ -75,6 +75,39 @@ def test_chapter_opener_is_the_graphic_style():
     assert "\\parody@chapbleed" in cls  # numeral + rule hang into the margin
 
 
+def test_chapter_opener_stays_inside_the_measure():
+    cls = (BUNDLED_PROFILES / "memoir" / "parody-memoir.cls").read_text()
+    assert "\\setlength{\\parody@chapbleed}{0pt}" in cls
+
+
+def test_lists_are_set_tight():
+    env = (BUNDLED_PROFILES / "memoir" / "parody-environments.sty").read_text()
+    assert "\\RequirePackage{enumitem}" in env
+    assert "itemsep=0pt" in env and "parsep=0pt" in env
+
+
+def test_headings_are_title_cased():
+    cls = (BUNDLED_PROFILES / "memoir" / "parody-memoir.cls").read_text()
+    assert "\\RequirePackage{titlecaps}" in cls
+    assert "\\setsecheadstyle{\\normalfont\\large\\bfseries\\boldmath"\
+           "\\raggedright\\titlecap}" in cls
+    # the contents has to be cased on the way IN — by \l@section time hyperref
+    # has wrapped the entry in \hyperlink and titlecap sees a macro, not words
+    assert "\\let\\addcontentsline\\parody@acl" in cls
+    assert "\\protect\\titlecap" in cls
+
+
+@pytest.mark.pdf
+@needs_tex
+def test_heading_and_contents_agree_on_title_case(tiny_project):  # noqa: F811
+    # authored "A section about the thing"; both the heading and its contents
+    # entry must print title case, or they disagree with each other
+    pdf = build_pdf(tiny_project, profile_dir="memoir")
+    text = squashed(pdf)
+    assert text.count("ASectionAbouttheThing") >= 2
+    assert "ASectionaboutthething" not in text
+
+
 def test_toc_leaders_keep_stretchable_glue():
     # \hspace*{1.5em} left the line with no stretch, so TeX stretched the
     # interword space of the title instead ("Voltage,   current,   ...").

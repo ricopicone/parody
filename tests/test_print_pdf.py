@@ -14,7 +14,7 @@ title: A Section
 slug: a-section
 ---
 
-# A Section {#sec-a shortid="sec:a"}
+# A section about the thing {#sec-a shortid="sec:a"}
 
 Body text with a [keyword]{.keyword}, math $x^2$, and a citation
 [@doe2020]. See [sec:a]{.hashref}.

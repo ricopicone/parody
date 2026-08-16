@@ -37,6 +37,20 @@
 \setheaderspaces{*}{1.6\onelineskip}{*}
 \checkandfixthelayout
 
+% ---- headings are title case, mechanically ------------------------------
+% Sections are authored in sentence case ("Voltage, current, resistance, and
+% all that"); the house style sets them in title case. titlecaps does the
+% capitalising so an author never has to think about it, and it carries no
+% default list of words to leave alone — hence the list below. \titlecap is
+% applied as the LAST macro of a heading style, which is memoir's documented
+% idiom for "hand the heading text to this one-argument command".
+\RequirePackage{titlecaps}
+% Articles, coordinating conjunctions and short prepositions only. Verbs stay
+% capitalised even when short ("Is", "Are", "Be"), which is why they are not
+% on this list.
+\Addlcwords{a an the and but or nor for so yet at by in of on to up via as
+  from into onto over with}
+
 % Accent colour for structural flourishes (the chapter number). A theme's
 % parody-theme-*.sty redefines parodyaccent; this \providecolor keeps the class
 % standalone if loaded without one.
@@ -51,8 +65,8 @@
 \makeoddhead{parody}{\small\itshape\rightmark}{}{\small\thepage}
 \makeevenfoot{parody}{}{}{}
 \makeoddfoot{parody}{}{}{}
-\renewcommand{\chaptermark}[1]{\markboth{\thechapter.\ #1}{}}
-\renewcommand{\sectionmark}[1]{\markright{\thesection\ \ #1}}
+\renewcommand{\chaptermark}[1]{\markboth{\thechapter.\ \titlecap{#1}}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ \ \titlecap{#1}}}
 \makepsmarks{parody}{}% marks set by \chaptermark/\sectionmark above
 \aliaspagestyle{chapter}{plain}
 \pagestyle{parody}
@@ -62,13 +76,13 @@
 %   ═══════════════════════════════════════════════════════════════════════
 %   Fundamentals
 %
-% The numeral and the rule both overhang the measure into the outer margin,
-% which is what gives the opening its snap. Chapters open recto (memoir's
-% `openright`), so the outer margin is the right-hand one. The overhang is
-% built by setting a box WIDER than \textwidth inside a \makebox that is
-% exactly \textwidth, so TeX's idea of the line width is unchanged.
+% The numeral and the rule align to the measure — nothing crosses into the
+% margin. \parody@chapbleed is the knob: set it to a positive length and both
+% overhang by that much, built by setting a box WIDER than \textwidth inside a
+% \makebox that is exactly \textwidth, so TeX's idea of the line width is
+% unchanged either way.
 \newlength{\parody@chapbleed}
-\setlength{\parody@chapbleed}{0.32in}
+\setlength{\parody@chapbleed}{0pt}
 % \textls comes from microtype (loaded by the theme). Keep the class usable
 % on its own: fall back to no letterspacing if the theme is absent.
 \AtBeginDocument{\providecommand{\textls}[2][]{#2}}
@@ -102,14 +116,15 @@
   \renewcommand*{\afterchapternum}{}%
   % The rule lives with the title, not the number, so an unnumbered chapter
   % (Contents, Bibliography) still opens under it.
-  \renewcommand*{\printchaptertitle}[1]{\parody@chaprule\chaptitlefont ##1}%
+  \renewcommand*{\printchaptertitle}[1]{%
+    \parody@chaprule\chaptitlefont\titlecap{##1}}%
 }
 \chapterstyle{parodygraphic}
 
 % ---- section heads: bold, bold math (an MIT touch), ragged right -------
-\setsecheadstyle{\normalfont\large\bfseries\boldmath\raggedright}
-\setsubsecheadstyle{\normalfont\normalsize\bfseries\raggedright}
-\setsubsubsecheadstyle{\normalfont\normalsize\itshape\raggedright}
+\setsecheadstyle{\normalfont\large\bfseries\boldmath\raggedright\titlecap}
+\setsubsecheadstyle{\normalfont\normalsize\bfseries\raggedright\titlecap}
+\setsubsubsecheadstyle{\normalfont\normalsize\itshape\raggedright\titlecap}
 \setbeforesecskip{-1.2\onelineskip plus -.4\onelineskip minus -.2\onelineskip}
 \setaftersecskip{0.6\onelineskip plus .2\onelineskip}
 % Number down to subsubsection, but list only to subsection: the deepest heads
@@ -129,6 +144,32 @@
 \renewcommand{\cftsectionleader}{\hfill}
 \renewcommand{\cftsubsectionleader}{\hfill}
 \setlength{\cftbeforechapterskip}{0.6\onelineskip}
+% The contents is written from the authored (sentence-case) argument, so it
+% has to be title-cased on the way out or it would disagree with the headings
+% it points at. \cft<level>font is a plain declaration — it never sees the
+% entry text — so the wrap goes on \l@<level>, which does. The \numberline
+% that prefixes #1 passes through titlecap untouched.
+% Title-cased on the way INTO the .toc, not on the way out. By the time an
+% entry reaches \l@<level> hyperref has wrapped it in \hyperlink, so titlecap
+% sees a macro rather than words and does nothing. \protect keeps \titlecap
+% from expanding as the line is written; it runs when the .toc is read back.
+% Deferred to \AtBeginDocument because hyperref redefines \addcontentsline
+% itself, and it loads after this class. Restricted to the toc: figure and
+% table captions travel through here too, and they are not title case.
+\def\parody@toclist{toc}
+% Defined at top level, not inside the hook: parameter tokens do not survive
+% \AtBeginDocument intact, and writing the replacement there silently produced
+% a .toc with no entries at all.
+\newcommand{\parody@acl}[3]{%
+  \def\parody@acl@file{#1}%
+  \ifx\parody@acl@file\parody@toclist
+    \parody@addcontentsline{#1}{#2}{\protect\titlecap{#3}}%
+  \else
+    \parody@addcontentsline{#1}{#2}{#3}%
+  \fi}
+\AtBeginDocument{%
+  \let\parody@addcontentsline\addcontentsline
+  \let\addcontentsline\parody@acl}
 
 % ---- title page: centred, folio-free, under the house rule -------------
 \aliaspagestyle{title}{empty}

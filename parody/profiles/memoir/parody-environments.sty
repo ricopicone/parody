@@ -27,6 +27,13 @@
 \RequirePackage{fontawesome5}
 \RequirePackage{imakeidx}
 \RequirePackage{etoolbox}
+% Lists set tight. Markdown separates list items with a blank line far more
+% often than the author means "loose list", and pandoc faithfully renders that
+% as \itemsep/\parsep — a blank line between every item. The house style takes
+% the decision away: items sit one line apart whether the source spaced them
+% or not, numbered and bulleted alike.
+\RequirePackage{enumitem}
+\setlist{itemsep=0pt, parsep=0pt, topsep=\smallskipamount, partopsep=0pt}
 \RequirePackage{hyperref}
 % Links carry no visible border. hyperref's default draws a box around every
 % cross-reference, and this PDF is something students PRINT — a section at a
