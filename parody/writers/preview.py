@@ -28,8 +28,16 @@ import tempfile
 from pathlib import Path
 
 STYLE = """\
+/* Palatino, because that is what the book is: print sets body and math in
+   newpxtext/newpxmath, standalone figures build against the same faces, and
+   parody-web serves TeX Gyre Pagella. A preview in Georgia put figure labels
+   in one alphabet and the prose around them in another, which is the one
+   thing a preview should not do. System faces rather than a bundled webfont —
+   this is a local build-side view, and on the machine an author previews
+   from, `Palatino` IS the face those clones are cloning. */
 body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem;
-       font: 1.05rem/1.6 Georgia, 'Times New Roman', serif; color: #1a1a1a; }
+       font: 1.05rem/1.6 Palatino, 'Palatino Linotype', 'Book Antiqua',
+             Georgia, serif; color: #1a1a1a; }
 nav.crumbs { font-family: system-ui, sans-serif; font-size: .85rem; margin-bottom: 2rem; }
 nav.pager { display: flex; justify-content: space-between;
             font-family: system-ui, sans-serif; font-size: .9rem; margin-top: 3rem; }
@@ -65,8 +73,12 @@ MATHJAX = (
     # \label is mapped to a no-op so a multi-label aligned block (whose raw
     # \label{eq:..}s the artifact keeps for the web renderer to turn into per-line
     # \tags) typesets cleanly in the build-side preview, which does no numbering.
-    "<script>window.MathJax={tex:{macros:{label:['',1]}}};</script>"
-    '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async>'
+    # mathjax-pagella so the math matches the body face above and the figure
+    # labels beside it. v4 only — v3 had no way to choose a font — and v4 drops
+    # the /es5 path segment and loads `defer` rather than `async`.
+    "<script>window.MathJax={output:{font:'mathjax-pagella'},"
+    "tex:{macros:{label:['',1]}}};</script>"
+    '<script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-chtml.js" defer>'
     "</script>"
 )
 

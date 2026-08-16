@@ -119,7 +119,7 @@ def _needs_build(source, pdf, extra_deps=()):
 
 
 def build_figure(source, style_dir=SHARED_PROFILE_DIR, extra_preamble="",
-                 out_dir=None):
+                 out_dir=None, project_dir=None):
     """Compile one fragment to a PDF. Returns the PDF path or None."""
     # absolute: the compile runs in a temp cwd, so every TEXINPUTS entry
     # derived from this path has to be absolute to resolve
@@ -141,13 +141,31 @@ def build_figure(source, style_dir=SHARED_PROFILE_DIR, extra_preamble="",
         shutil.copy2(style_dir / "parody-standalone.sty",
                      td / "parody-standalone.sty")
         env = _tool_env()
-        # the figure's own directory (so a fragment can \input its
-        # neighbours), plus the project root and its profile/ — where a book
-        # keeps the .sty its figure preamble loads
-        roots = [source.parent, source.parent.parent.parent,
-                 source.parent.parent.parent / "profile"]
+        # The book's root, and its profile/ — where a book keeps the .sty its
+        # figure preamble loads. Counting parents off the source cannot find
+        # it: figures/<name>.tex sits one level shallower than
+        # chapters/<ch>/<name>.tex, so the same arithmetic that lands on the
+        # project for one layout lands ABOVE it for the other. build_figures
+        # knows the project and says so; the old guess stays as the fallback
+        # for a direct caller that doesn't.
+        root = (Path(project_dir).resolve() if project_dir
+                else source.parent.parent.parent)
+        profile = root / "profile"
+        # the figure's own directory too, so a fragment can \input its
+        # neighbours
+        roots = [source.parent, root, profile]
         env["TEXINPUTS"] = (os.pathsep.join(str(r) for r in roots) + os.pathsep
                             + env.get("TEXINPUTS", ""))
+        # luaotfload resolves \setmainfont{Family} against OSFONTDIR, not
+        # TEXINPUTS. The print build points it at its build dir, where it has
+        # staged the profile's fonts; a figure compiles in a temp dir with
+        # nothing staged, so point it at the profile itself. Without this a
+        # book that bundles a licensed face — latex.py's example, a
+        # Palatino.ttc copied in with the profile — gets that face in its body
+        # text but not in its figures, and only on a machine where the font
+        # also happens to be installed system-wide. The two would disagree on
+        # the author's Mac and both fail in the print container.
+        env["OSFONTDIR"] = str(profile) + os.pathsep + env.get("OSFONTDIR", "")
         result = subprocess.run(
             ["lualatex", "-interaction=nonstopmode", "-halt-on-error",
              f"{job}.tex"],
@@ -323,7 +341,8 @@ def build_figures(project, force=False, extra_preamble=""):
             continue
         if source.suffix == ".tex":
             made = build_figure(source, extra_preamble=extra_preamble,
-                                out_dir=out_dir)
+                                out_dir=out_dir,
+                                project_dir=project.directory)
         else:
             made = place_artwork(source, out_dir)
         if made:
