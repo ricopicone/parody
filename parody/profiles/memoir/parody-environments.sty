@@ -171,12 +171,85 @@
 \AtBeginEnvironment{labsolution}{\renewcommand{\clozemode}{full}}
 
 
+% ---- the house box: open frame, corner brackets, no fill ----------------
+% An accent-coloured bold title over an open frame with bracket strokes at the
+% corners — the same vocabulary parody-web uses for examples (task #318),
+% rather than a tinted panel with a solid title bar. Each box type carries its
+% own hue so a reader can tell a definition from a worked example at a glance,
+% matching the web's per-type hue tokens (task #565).
+\newlength{\parodybracketlen}\setlength{\parodybracketlen}{20pt}
+\def\parody@brkoff{0.5pt}
+\tikzset{parodybracketline/.style={line width=0.9pt, line cap=round}}
+% #1 = hue. Four cases because a breakable box draws its own overlay per
+% fragment: only the first fragment has a title, only the last has a foot.
+% Both verticals start just under the title, so the pair reads as one frame
+% embracing the content with the title labelling it from above. (Hanging the
+% right one from frame.north instead leaves the two starting at different
+% heights — the frame top sits below the attached title.)
+\newcommand{\parody@brk@un}[1]{%
+  \draw[#1,parodybracketline]
+    ([xshift=\parodybracketlen]title.south west) --
+    ([xshift=\parody@brkoff]title.south west) --
+    ([xshift=\parody@brkoff]frame.south west) --
+    ([xshift=\parodybracketlen]frame.south west);
+  \draw[#1,parodybracketline]
+    ([xshift=-\parodybracketlen]frame.east |- title.south west) --
+    ([xshift=-\parody@brkoff]frame.east |- title.south west) --
+    ([xshift=-\parody@brkoff]frame.south east) --
+    ([xshift=-\parodybracketlen]frame.south east);}
+\newcommand{\parody@brk@first}[1]{%
+  \draw[#1,parodybracketline]
+    ([xshift=\parodybracketlen]title.south west) --
+    ([xshift=\parody@brkoff]title.south west) --
+    ([xshift=\parody@brkoff]frame.south west);
+  \draw[#1,parodybracketline]
+    ([xshift=-\parodybracketlen]frame.east |- title.south west) --
+    ([xshift=-\parody@brkoff]frame.east |- title.south west) --
+    ([xshift=-\parody@brkoff]frame.south east);}
+\newcommand{\parody@brk@mid}[1]{%
+  \draw[#1,parodybracketline]
+    ([xshift=\parody@brkoff]frame.north west) --
+    ([xshift=\parody@brkoff]frame.south west);
+  \draw[#1,parodybracketline]
+    ([xshift=-\parody@brkoff]frame.north east) --
+    ([xshift=-\parody@brkoff]frame.south east);}
+\newcommand{\parody@brk@last}[1]{%
+  \draw[#1,parodybracketline]
+    ([xshift=\parody@brkoff]frame.north west) --
+    ([xshift=\parody@brkoff]frame.south west) --
+    ([xshift=\parodybracketlen]frame.south west);
+  \draw[#1,parodybracketline]
+    ([xshift=-\parody@brkoff]frame.north east) --
+    ([xshift=-\parody@brkoff]frame.south east) --
+    ([xshift=-\parodybracketlen]frame.south east);}
+\tcbset{
+  parodyboxbase/.style={
+    enhanced, breakable, empty,
+    attach boxed title to top left,
+    minipage boxed title,
+    boxed title style={empty, size=minimal, toprule=0pt, top=3pt,
+      left=0pt, bottom=2pt, overlay={}},
+    fonttitle=\bfseries,
+    parbox=false,
+    before upper={\setlength{\parindent}{0pt}\noindent},
+    boxsep=0pt, left=5pt, right=5pt, top=5pt, bottom=3pt,
+    pad at break=0mm,
+    before skip=8pt, after skip=8pt,
+  },
+  parodybox/.style n args={1}{
+    parodyboxbase,
+    coltitle=#1,
+    overlay unbroken={\parody@brk@un{#1}},
+    overlay first={\parody@brk@first{#1}},
+    overlay middle={\parody@brk@mid{#1}},
+    overlay last={\parody@brk@last{#1}},
+  },
+}
+
 % ---- theorem-like environments: \begin{<env>}{title}{label} ----
 \newcounter{thmctr}
-\newtcolorbox{parodythmbox}[2]{%
-  enhanced, breakable, colback=parodythmback, colframe=parodythmframe,
-  title={\textbf{#1}\if\relax\detokenize{#2}\relax\else\quad\textit{#2}\fi},
-}
+\newtcolorbox{parodythmbox}[2]{parodybox=parodyaccent,
+  title={#1\if\relax\detokenize{#2}\relax\else\ \textnormal{\itshape #2}\fi}}
 \newenvironment{definition}[2]
   {\refstepcounter{thmctr}%
    \if\relax\detokenize{#2}\relax\else\label{#2}\fi
@@ -208,10 +281,9 @@
 \newcounter{infoboxctr}
 \newenvironment{infobox}[2][]
   {\refstepcounter{infoboxctr}%
-   \begin{tcolorbox}[enhanced, breakable, colback=parodyinfoback,
-     colframe=parodyinfoframe,
-     title={\textbf{Box~\theinfoboxctr}%
-       \if\relax\detokenize{#2}\relax\else: #2\fi}, #1]}
+   \begin{tcolorbox}[parodybox=parodyinfoframe,
+     title={Box~\theinfoboxctr%
+       \if\relax\detokenize{#2}\relax\else\ \textnormal{\itshape #2}\fi}, #1]}
   {\end{tcolorbox}}
 \crefname{infoboxctr}{box}{boxes}
 
@@ -219,9 +291,8 @@
 \newcounter{examplectr}
 \newenvironment{myexample}[3][]
   {\refstepcounter{examplectr}%
-   \begin{tcolorbox}[enhanced, breakable, colback=parodyexback,
-     colframe=parodyexframe,
-     title={\textbf{Example~\theexamplectr}}]%
+   \begin{tcolorbox}[parodybox=parodyexframe,
+     title={Example~\theexamplectr}]%
    \if\relax\detokenize{#2}\relax\else\label{#2}\fi%
    \ifstrequal{#2}{#3}{}{\if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
   {\end{tcolorbox}}

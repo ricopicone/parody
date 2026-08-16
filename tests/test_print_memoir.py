@@ -68,6 +68,20 @@ def test_exercise_setup_names_problems():
     assert "\\Crefname{exercise}{Problem}{Problems}" in env
 
 
+def test_boxes_are_bracket_framed_not_filled():
+    env = (BUNDLED_PROFILES / "memoir" / "parody-environments.sty").read_text()
+    # the bracket shell exists and each box type picks its own hue
+    assert "parodyboxbase/.style" in env
+    assert "parodybox/.style n args" in env
+    assert "parodybox=parodyaccent" in env     # definition/theorem family
+    assert "parodybox=parodyinfoframe" in env  # infobox
+    assert "parodybox=parodyexframe" in env    # examples
+    # no tinted backgrounds left on the reader-facing boxes
+    assert "colback=parodythmback" not in env
+    assert "colback=parodyinfoback" not in env
+    assert "colback=parodyexback" not in env
+
+
 def pdf_text(pdf):
     """All text in a compiled PDF, pages joined by newlines."""
     from pypdf import PdfReader
