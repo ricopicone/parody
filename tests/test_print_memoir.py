@@ -60,6 +60,14 @@ def test_memoir_pdf_compiles(tiny_project):  # noqa: F811
     assert pdf is not None and pdf.exists() and pdf.stat().st_size > 10_000
 
 
+def test_exercise_setup_names_problems():
+    env = (BUNDLED_PROFILES / "memoir" / "parody-environments.sty").read_text()
+    assert "exercise/within=chapter" in env
+    assert "exercise/name=Problem" in env
+    assert "\\crefname{exercise}{problem}{problems}" in env
+    assert "\\Crefname{exercise}{Problem}{Problems}" in env
+
+
 def pdf_text(pdf):
     """All text in a compiled PDF, pages joined by newlines."""
     from pypdf import PdfReader

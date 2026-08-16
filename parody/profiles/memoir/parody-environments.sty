@@ -123,6 +123,9 @@
 
 % ---- exercises (xsim) ----
 \DeclareExerciseProperty{hash}
+% End-of-chapter problem sets: named "Problem" (the web says the same, task
+% #499) and numbered within the chapter, so print and web agree on "1.1".
+\xsimsetup{exercise/within=chapter, exercise/name=Problem}
 \ifdefined\issolution
   \xsimsetup{solution/print=true}
 \else
@@ -139,6 +142,27 @@
 \ifdefined\issolution
   \xsimsetup{labsolution/print=true}
 \fi
+
+% Run-in heading: "Problem 1.1" set bold on the same line as the problem's
+% first paragraph. xsim's `default` template sets a display heading instead.
+% (RTC's profile gets this from the MIT class's run-in \subsubsection*;
+% memoir's \subsubsection is a display head, so the run-in is spelled out.)
+\DeclareExerciseEnvironmentTemplate{parodyrunin}{%
+  \par\addvspace{\medskipamount}%
+  \noindent
+  {\bfseries\XSIMmixedcase{\GetExerciseName}\nobreakspace
+   \GetExerciseProperty{counter}}%
+  \hspace{0.75em}\ignorespaces
+}{\par\addvspace{\medskipamount}}
+\xsimsetup{exercise/template=parodyrunin, solution/template=parodyrunin}
+% Lab problems: same run-in style, numbered L<chapter>.n as on the web.
+\xsimsetup{
+  labexercise/name = Problem,
+  labexercise/within = chapter,
+  labexercise/the-counter = L\thechapter.\arabic{labexercise},
+  labexercise/template = parodyrunin,
+  labsolution/template = parodyrunin,
+}
 
 % A cloze inside a solution always renders full — an answer key must not blank
 % its own answers. Scoped to the environment, so the ambient \clozemode returns
@@ -324,8 +348,10 @@
 \providecommand{\maxwidth}{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
 \makeatother
 % hashref targets: exercises are cref'd by their hash labels
-\crefname{exercise}{exercise}{exercises}
-\crefname{labexercise}{lab exercise}{lab exercises}
+\crefname{exercise}{problem}{problems}
+\Crefname{exercise}{Problem}{Problems}
+\crefname{labexercise}{problem}{problems}
+\Crefname{labexercise}{Problem}{Problems}
 
 \endinput
 
