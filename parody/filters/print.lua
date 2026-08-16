@@ -1255,6 +1255,19 @@ local function get_table_id(el)
   return string.sub(id, 3, -2)
 end
 
+-- Drop a trailing {#id} the caption is still carrying literally.
+--
+-- Only needed on the branch get_table_id falls back to: where pandoc has NOT
+-- lifted the marker into the Table's identifier, it is still sitting in the
+-- caption inlines, and it must not reach the printed page. The catch is that
+-- these callers strip AFTER pandoc.write, which escapes the marker to
+-- \{\#id\} — so a pattern matching only the bare form silently passes it
+-- through, and the reader sees "A caption {#tbl:demo}" under the table.
+-- `\?` makes each backslash optional, so one pattern covers both forms.
+local function strip_caption_id(text)
+  return (text:gsub('%s*\\?{\\?#.-\\?}%s*$', ''))
+end
+
 -- ── Grouped-header tables ─────────────────────────────────────────────────
 -- Raw-HTML tables tagged `grouped-header` carry colspan/rowspan headers and
 -- `cmid`/`cmid-l`/`cmid-r` rule groups (e.g. tbl:steadystateerror). These can't
@@ -1383,8 +1396,9 @@ local function grouped_table_latex(el, identifier)
   local tabular = '\\begin{tabular}{@{}' .. table.concat(spec) .. '@{}}\n\\toprule\n'
     .. grouped_header_rows(el.head.rows, ncols) .. '\n'
     .. grouped_body_rows(el.bodies, strut) .. '\n\\bottomrule\n\\end{tabular}'
-  local caption_text = pandoc.write(pandoc.Pandoc(el.caption.long), 'latex')
-    :gsub('\n', ' '):gsub('%s+$', ''):gsub('%s*{#.*}$', '')
+  local caption_text = strip_caption_id(
+    pandoc.write(pandoc.Pandoc(el.caption.long), 'latex')
+      :gsub('\n', ' '):gsub('%s+$', ''))
   local caption_latex = ''
   if #caption_text > 0 or identifier ~= '' then
     caption_latex = '\\tabcaption[][nofloat]{' .. identifier .. '}{' .. caption_text .. '}\n'
@@ -1424,7 +1438,7 @@ local function tabler_latex(el)
   local caption_text = pandoc.write(
     pandoc.Pandoc({ pandoc.Plain(simple.caption) }), 'latex')
   caption_text = caption_text:gsub('\n', ' '):gsub('%s+$', '')
-  caption_text = string.gsub(caption_text, '%s*{#.*}$', '')
+  caption_text = strip_caption_id(caption_text)
   local content_latex = render_tabular(simple.headers, simple.rows)
   if string.len(caption_text) > 0 or identifier ~= '' then
     local caption_latex = '\\tabcaption[][nofloat]{' .. identifier .. '}{'

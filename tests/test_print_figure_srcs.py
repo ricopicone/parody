@@ -126,9 +126,14 @@ def test_an_unresolvable_media_path_warns(notebook_chapter):
     path = notebook_chapter / "absent.md"
     path.write_text("![](notebooks/book/sec-absent){.figure .standalone}\n",
                     encoding="utf-8")
+    # get_pandoc_path(), not a bare "pandoc": pypandoc-binary bundles the
+    # pinned pandoc inside site-packages and never puts it on PATH, so the bare
+    # name found only a system install. On a machine without one — CI — this
+    # died with FileNotFoundError, and on a machine with one it silently tested
+    # a pandoc the rest of the suite does not use.
     proc = subprocess.run(
-        ["pandoc", str(path), "-t", "latex", "-f", PANDOC_FROM,
-         f"--lua-filter={FILTER}", "--wrap=none"],
+        [pypandoc.get_pandoc_path(), str(path), "-t", "latex",
+         "-f", PANDOC_FROM, f"--lua-filter={FILTER}", "--wrap=none"],
         cwd=notebook_chapter, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert "sec-absent" in proc.stderr
