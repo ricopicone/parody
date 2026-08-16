@@ -23,6 +23,14 @@ Body text with a [keyword]{.keyword}, math $x^2$, and a citation
 A thing is a thing.
 :::
 
+::: {.infobox #box:note title="A Note"}
+Worth noticing.
+:::
+
+::: {.example #ex:one}
+An example of a thing.
+:::
+
 ::: {.exercise #exe:warmup title="Warmup"}
 Compute $1+1$.
 

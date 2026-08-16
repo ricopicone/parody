@@ -58,3 +58,28 @@ def test_memoir_sources_generated_without_tex(tiny_project, monkeypatch):  # noq
 def test_memoir_pdf_compiles(tiny_project):  # noqa: F811
     pdf = build_pdf(tiny_project, profile_dir="memoir")
     assert pdf is not None and pdf.exists() and pdf.stat().st_size > 10_000
+
+
+def pdf_text(pdf):
+    """All text in a compiled PDF, pages joined by newlines."""
+    from pypdf import PdfReader
+    return "\n".join(p.extract_text() or "" for p in PdfReader(str(pdf)).pages)
+
+
+def squashed(pdf):
+    """PDF text with all whitespace removed.
+
+    Letterspacing and justification make extracted text unstable at word
+    level; squashing lets an assertion pin the glyphs without pinning the
+    spacing.
+    """
+    return "".join(pdf_text(pdf).split())
+
+
+@pytest.mark.pdf
+@needs_tex
+def test_problems_are_named_and_numbered_by_chapter(tiny_project):  # noqa: F811
+    pdf = build_pdf(tiny_project, profile_dir="memoir")
+    text = squashed(pdf)
+    assert "Problem1.1" in text
+    assert "Exercise" not in text
