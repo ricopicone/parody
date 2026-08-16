@@ -347,6 +347,18 @@
 \makeatletter
 \providecommand{\maxwidth}{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
 \makeatother
+% ---- chapter-relative numbering ----------------------------------------
+% Figures, tables and sections already number within chapter (memoir default).
+% Everything parody counts follows: a reader looking at "Definition 1.6" knows
+% which chapter to turn to, and a book-wide counter reaching "Definition 47"
+% tells them nothing. Definitions and theorems deliberately SHARE thmctr.
+\numberwithin{equation}{chapter}
+\counterwithin{thmctr}{chapter}     % Definition/Theorem/Lemma/... N.M
+\counterwithin{infoboxctr}{chapter} % Box N.M
+\counterwithin{examplectr}{chapter} % Example N.M
+\counterwithin{listingctr}{chapter} % Listing N.M
+\counterwithin*{footnote}{chapter}  % restart each chapter (* = keep arabic)
+
 % hashref targets: exercises are cref'd by their hash labels
 \crefname{exercise}{problem}{problems}
 \Crefname{exercise}{Problem}{Problems}

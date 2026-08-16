@@ -91,3 +91,14 @@ def test_problems_are_named_and_numbered_by_chapter(tiny_project):  # noqa: F811
     text = squashed(pdf)
     assert "Problem1.1" in text
     assert "Exercise" not in text
+
+
+@pytest.mark.pdf
+@needs_tex
+def test_boxes_number_within_the_chapter(tiny_project):  # noqa: F811
+    pdf = build_pdf(tiny_project, profile_dir="memoir")
+    text = squashed(pdf)
+    assert "Definition1.1" in text
+    assert "Box1.1" in text
+    assert "Example1.1" in text
+    assert "Listing1.1" in text
