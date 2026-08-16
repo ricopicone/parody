@@ -68,6 +68,31 @@ def test_exercise_setup_names_problems():
     assert "\\Crefname{exercise}{Problem}{Problems}" in env
 
 
+def test_chapter_opener_is_the_graphic_style():
+    cls = (BUNDLED_PROFILES / "memoir" / "parody-memoir.cls").read_text()
+    assert "\\makechapterstyle{parodygraphic}" in cls
+    assert "\\chapterstyle{parodygraphic}" in cls
+    assert "\\parody@chapbleed" in cls  # numeral + rule hang into the margin
+
+
+def test_toc_leaders_keep_stretchable_glue():
+    # \hspace*{1.5em} left the line with no stretch, so TeX stretched the
+    # interword space of the title instead ("Voltage,   current,   ...").
+    cls = (BUNDLED_PROFILES / "memoir" / "parody-memoir.cls").read_text()
+    assert "\\hspace*{1.5em}" not in cls
+    assert "\\renewcommand{\\cftsectionleader}{\\hfill}" in cls
+
+
+def test_title_page_carries_no_folio():
+    cls = (BUNDLED_PROFILES / "memoir" / "parody-memoir.cls").read_text()
+    assert "\\aliaspagestyle{title}{empty}" in cls
+
+
+def test_theme_loads_microtype():
+    thm = (BUNDLED_PROFILES / "memoir" / "parody-theme-default.sty").read_text()
+    assert "\\RequirePackage{microtype}" in thm
+
+
 def test_boxes_are_bracket_framed_not_filled():
     env = (BUNDLED_PROFILES / "memoir" / "parody-environments.sty").read_text()
     # the bracket shell exists and each box type picks its own hue

@@ -38,4 +38,9 @@
   {\setmonofont{DejaVu Sans Mono}[Scale=MatchLowercase]}
   {\setmonofont{Latin Modern Mono}[Scale=MatchLowercase]}
 
+% microtype last, after the text fonts it tunes: protrusion and expansion are
+% what let a 6x9 measure sit quietly, and \textls supplies the chapter
+% opener's letterspaced small caps.
+\RequirePackage{microtype}
+
 \endinput

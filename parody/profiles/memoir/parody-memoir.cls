@@ -57,21 +57,54 @@
 \aliaspagestyle{chapter}{plain}
 \pagestyle{parody}
 
-% ---- chapter opener: large bold number, then large bold title ----------
-\makechapterstyle{parody}{%
-  \setlength{\beforechapskip}{10pt}%
-  \setlength{\midchapskip}{12pt}%
-  \setlength{\afterchapskip}{2.2\onelineskip}%
-  \renewcommand*{\chapnamefont}{\normalfont\large\scshape}%
-  \renewcommand*{\chapnumfont}{\normalfont\fontsize{52}{54}\selectfont\bfseries}%
-  \renewcommand*{\chaptitlefont}{\normalfont\Large\bfseries\raggedright}%
+% ---- chapter opener ----------------------------------------------------
+%   CHAPTER                                                              1
+%   ═══════════════════════════════════════════════════════════════════════
+%   Fundamentals
+%
+% The numeral and the rule both overhang the measure into the outer margin,
+% which is what gives the opening its snap. Chapters open recto (memoir's
+% `openright`), so the outer margin is the right-hand one. The overhang is
+% built by setting a box WIDER than \textwidth inside a \makebox that is
+% exactly \textwidth, so TeX's idea of the line width is unchanged.
+\newlength{\parody@chapbleed}
+\setlength{\parody@chapbleed}{0.32in}
+% \textls comes from microtype (loaded by the theme). Keep the class usable
+% on its own: fall back to no letterspacing if the theme is absent.
+\AtBeginDocument{\providecommand{\textls}[2][]{#2}}
+
+\newcommand{\parody@chapopener}[1]{%
+  \noindent\makebox[\textwidth][l]{%
+    \makebox[\dimexpr\textwidth+\parody@chapbleed\relax][s]{%
+      {\chapnamefont\color{parodyaccent}\textls[350]{\@chapapp}}%
+      \hfill
+      \smash{\raisebox{-0.2\height}{{\chapnumfont\color{parodyaccent}#1}}}%
+    }%
+  }\par\nobreak}
+
+\newcommand{\parody@chaprule}{%
+  \par\nobreak\vskip 6pt
+  \noindent\makebox[\textwidth][l]{%
+    {\color{parodyaccent}%
+     \rule{\dimexpr\textwidth+\parody@chapbleed\relax}{2pt}}}%
+  \par\nobreak\vskip 0.8\onelineskip}
+
+\makechapterstyle{parodygraphic}{%
+  \setlength{\beforechapskip}{6pt}%
+  \setlength{\midchapskip}{0pt}%
+  \setlength{\afterchapskip}{2.4\onelineskip}%
+  \renewcommand*{\chapnamefont}{\normalfont\footnotesize\scshape}%
+  \renewcommand*{\chapnumfont}{\normalfont\fontsize{80}{80}\selectfont\bfseries}%
+  \renewcommand*{\chaptitlefont}{\normalfont\HUGE\bfseries\raggedright}%
   \renewcommand*{\printchaptername}{}%
   \renewcommand*{\chapternamenum}{}%
-  \renewcommand*{\printchapternum}{{\color{parodyaccent}\chapnumfont\thechapter}}%
-  \renewcommand*{\afterchapternum}{\par\nobreak\vskip\midchapskip}%
-  \renewcommand*{\printchaptertitle}[1]{\chaptitlefont ##1}%
+  \renewcommand*{\printchapternum}{\parody@chapopener{\thechapter}}%
+  \renewcommand*{\afterchapternum}{}%
+  % The rule lives with the title, not the number, so an unnumbered chapter
+  % (Contents, Bibliography) still opens under it.
+  \renewcommand*{\printchaptertitle}[1]{\parody@chaprule\chaptitlefont ##1}%
 }
-\chapterstyle{parody}
+\chapterstyle{parodygraphic}
 
 % ---- section heads: bold, bold math (an MIT touch), ragged right -------
 \setsecheadstyle{\normalfont\large\bfseries\boldmath\raggedright}
@@ -90,16 +123,30 @@
 \renewcommand{\cftchapterpagefont}{\bfseries}
 \renewcommand{\cftchapterleader}{\hfill}
 \renewcommand{\cftchapterafterpnum}{}
-\renewcommand{\cftsectionleader}{\hspace*{1.5em}}
-\renewcommand{\cftsubsectionleader}{\hspace*{1.5em}}
+% \hfill, not a fixed \hspace: a fixed skip leaves the line with no
+% stretchable glue, so TeX stretches the interword space of the entry title
+% instead ("Voltage,   current,   resistance,   and   all   that   1").
+\renewcommand{\cftsectionleader}{\hfill}
+\renewcommand{\cftsubsectionleader}{\hfill}
 \setlength{\cftbeforechapterskip}{0.6\onelineskip}
 
-% ---- title page: restrained, ragged-right ------------------------------
-\pretitle{\vspace*{\fill}\begin{flushright}\Huge\bfseries}
-\posttitle{\par\end{flushright}\vskip 1.5em}
-\preauthor{\begin{flushright}\Large}
-\postauthor{\par\end{flushright}}
-\predate{\begin{flushright}\large}
-\postdate{\par\end{flushright}\vspace*{\fill}}
+% ---- title page: centred, folio-free, under the house rule -------------
+\aliaspagestyle{title}{empty}
+% memoir's \maketitle does not end the page, and \tableofcontents* opens its
+% chapter head without a \clearpage — so without this the contents lands on
+% the title page (and takes the chapter page style's folio with it).
+% hooka runs on the title page itself. The \aliaspagestyle above is not
+% enough on its own — memoir applies \thispagestyle{title} too late for it
+% to beat the running head already set for the page.
+\renewcommand{\maketitlehooka}{\thispagestyle{empty}}
+\renewcommand{\maketitlehookd}{\clearpage}
+\pretitle{\vspace*{0.22\textheight}\begin{center}\Huge\bfseries}
+\posttitle{\par\end{center}\vskip 0.9em
+  \begin{center}{\color{parodyaccent}\rule{0.38\textwidth}{2pt}}\end{center}
+  \vskip 1.6em}
+\preauthor{\begin{center}\Large}
+\postauthor{\par\end{center}\vspace*{\fill}}
+\predate{\begin{center}\large}
+\postdate{\par\end{center}}
 
 \endinput
