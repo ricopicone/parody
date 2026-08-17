@@ -108,6 +108,11 @@
 % applied to \usebox would do nothing. Only `blank` needs the box (to measure
 % the passage); key and full typeset in place. \clozemode cannot change inside
 % the environment, so both halves always take the same branch.
+% A blanked block is ONE framed box the height of what it hides, not a stack of
+% ruled lines. Ruled lines read as several separate answers and are hard to
+% pick out from every other rule on a typeset page; a box says "one thing goes
+% here" and gives its own margins to write in.
+\newlength{\parodyclozeht}
 \newenvironment{clozeblock}
   {\parody@clozeswitch
      {\begin{lrbox}{\parodyclozebox}\begin{minipage}{\linewidth}}
@@ -115,11 +120,16 @@
      {\par}}
   {\parody@clozeswitch
      {\end{minipage}\end{lrbox}%
-      \@tempcnta=\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax
-      \@tempcntb=\baselineskip
-      \divide\@tempcnta by \@tempcntb
-      \advance\@tempcnta by 1
-      \parody@rulelines{\@tempcnta}}
+      \setlength{\parodyclozeht}{\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax}%
+      % Never so short that there is nowhere to write: a one-line equation
+      % still needs room for a hand, which is taller than the type it replaces.
+      \ifdim\parodyclozeht<2.6\baselineskip
+        \setlength{\parodyclozeht}{2.6\baselineskip}%
+      \fi
+      \par\nobreak\medskip
+      \noindent\framebox[\linewidth]{%
+        \rule{0pt}{\parodyclozeht}\rule{0pt}{0pt}}%
+      \par\medskip}
      {\par\egroup\medskip}
      {\par}}
 

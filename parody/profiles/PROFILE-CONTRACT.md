@@ -34,7 +34,7 @@ and `\printindex`.
 - `mintedwrapper`, `algorithmcenter`, `algorithm[H]`, `formattedoutput`.
 - xsim: `exercise`/`solution` and `labexercise`/`labsolution`, with
   `\DeclareExerciseProperty{hash}` and `solution/print` gated on `\issolution`.
-- `clozeblock` — fill-in-the-blank passage; blanks to its own measured height
+- `clozeblock` — fill-in-the-blank passage; in `blank` mode ONE framed box the height of what it hides (not ruled lines), with a floor so there is always room to write
   in `blank` mode, prints its content in `full`.
 
 ## Commands
