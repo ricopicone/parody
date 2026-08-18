@@ -869,10 +869,14 @@ end
 -- custom property because CSS cannot read an attribute into a length (attr()
 -- outside `content` is not portable), and parody-web needs the count to size
 -- the ruled area: height = var(--cloze-lines) * line-height.
-local function cloze_lines_html(n)
+-- `extra` distinguishes the two: a hidden passage is ONE box (print draws it
+-- the same way), while `::: {.blank lines=6}` really is ruled writing space
+-- and stays ruled. Same element and same measurement either way; only the
+-- class differs, so parody-web decides how each is drawn.
+local function cloze_lines_html(n, extra)
   return string.format(
-    '<div class="cloze-lines" data-lines="%d" style="--cloze-lines: %d"></div>',
-    n, n)
+    '<div class="cloze-lines%s" data-lines="%d" style="--cloze-lines: %d"></div>',
+    extra and (' ' .. extra) or '', n, n)
 end
 
 local function blank_div(el)
@@ -889,7 +893,7 @@ local function cloze_div(el)
   end
   local chars = pandoc.text.len(pandoc.utils.stringify(el.content))
   return pandoc.RawBlock('html', cloze_lines_html(
-    math.max(1, math.ceil(chars / 90))))
+    math.max(1, math.ceil(chars / 90)), 'cloze-box'))
 end
 
 -- ---- solutions-only ------------------------------------------------------

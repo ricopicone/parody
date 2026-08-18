@@ -222,7 +222,22 @@ def test_web_hidden_block_hides_its_text():
     md = "::: {.cloze}\nA whole hidden paragraph of derivation.\n:::"
     out = web(md, "blank")
     assert "derivation" not in out
-    assert 'class="cloze-lines"' in out
+    assert "cloze-lines" in out
+
+
+def test_web_hidden_block_is_marked_as_a_box():
+    """A hidden passage is ONE box on the web, as it is in print. Ruled lines
+    read as several separate answers."""
+    out = web("::: {.cloze}\nHidden.\n:::", "blank")
+    assert "cloze-box" in out
+
+
+def test_web_manual_blank_stays_ruled_lines():
+    """`::: {.blank lines=6}` really is ruled writing space — only a hidden
+    passage becomes a box."""
+    out = web("::: {.blank lines=6}\n:::", "blank")
+    assert "cloze-lines" in out
+    assert "cloze-box" not in out
 
 
 def test_web_hidden_block_shows_text_in_key_and_full():
