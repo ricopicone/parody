@@ -12,6 +12,7 @@ for images carrying a non-empty identifier, so a captionless, id-less
 electronics book rendered as missing figures.
 """
 
+import re
 from pathlib import Path
 
 import pypandoc
@@ -200,6 +201,23 @@ def test_the_default_is_natural_size(notebook_chapter):
                  notebook_chapter)
     assert "width=\\maxwidth" in out, out
     assert "scale=" not in out
+
+
+def test_unlabelled_subfigure_groups_get_distinct_labels(notebook_chapter):
+    r"""Two unlabelled groups in one section both used to emit \label{fig:sub-1}
+    and \label{fig:sub-2}: the index was per-group, and LaTeX's "multiply
+    defined" is only a warning, so both shipped and a \ref picked one."""
+    (notebook_chapter / "sec-left.pdf").write_bytes(b"%PDF-1.7\n")
+    (notebook_chapter / "sec-right.pdf").write_bytes(b"%PDF-1.7\n")
+    group = ("::: {.figure .subfigures rows=1}\n\n"
+             "![](notebooks/book/sec-left){.subfigure .figure .standalone}\n\n"
+             "![](notebooks/book/sec-right){.subfigure .figure .standalone}\n\n"
+             "A pair.\n"
+             ":::\n")
+    out = render(group + "\n" + group, notebook_chapter)
+    labels = re.findall(r"\\label\{(fig:sub-[^}]*)\}", out)
+    assert len(labels) == 4, out
+    assert len(set(labels)) == 4, f"duplicate generated labels: {labels}"
 
 
 def test_a_subfigure_scales_itself_too(notebook_chapter):

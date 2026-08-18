@@ -42,6 +42,17 @@ local function is_latex()
 end
 
 -- Forward declarations so the interior filter late-binds to the handlers.
+-- Generated subfigure labels have to be unique across the whole BOOK, but this
+-- filter runs once per section, so a counter alone repeats itself in every one.
+-- The section's own file name namespaces it.
+local subfig_group_seq = 0
+local function subfig_scope()
+  local files = PANDOC_STATE and PANDOC_STATE.input_files or {}
+  local name = files[1] or ''
+  name = name:gsub('%.%w+$', ''):gsub('.*[/\\]', ''):gsub('[^%w]+', '-')
+  return name ~= '' and (name .. '-') or ''
+end
+
 local coder_latex, citer, pandoccrossrefer
 local moving_code_to_latex -- safe rendering of inline code in moving arguments
 local resolve_asset -- defined in the notebook-includes section below
@@ -1112,7 +1123,12 @@ local function figurediver(el)
       labels[i] = el.content[i].identifier
     end
     if labels[i] == nil or labels[i] == '' then
-      labels[i] = 'fig:sub-' .. i
+      -- Unique per DOCUMENT, not per group: an index alone gave every
+      -- unlabelled group the same \label{fig:sub-1}, \label{fig:sub-2}, …, and
+      -- "multiply defined" is only a LaTeX warning — both shipped, and a \ref
+      -- resolved to whichever came last.
+      subfig_group_seq = subfig_group_seq + 1
+      labels[i] = 'fig:sub-' .. subfig_scope() .. subfig_group_seq
     end
     classes[i] = img.classes or {}
     local a = (img.attr and img.attr.attributes) or {}
