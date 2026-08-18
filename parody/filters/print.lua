@@ -170,8 +170,32 @@ local function blanker_latex(el)
   return pandoc.RawInline('tex', '\\clozeblank{' .. cloze_manual_width(el) .. '}')
 end
 
+-- The label of a display equation inside a cloze block, if it has one.
+--
+-- Read out of the RENDERED LaTeX, and in TWO forms, because this filter runs
+-- BEFORE pandoc-crossref: an equation inside a cloze still carries its
+-- pandoc-crossref attribute as literal text, which pandoc escapes to
+-- `\{\#eq:foo\}`. Only equations OUTSIDE a cloze reach crossref and come back
+-- as `\label{eq:foo}`. Both are the same authored `$$…$$ {#eq:foo}`.
+--
+-- Without this a clozed equation loses its number, and every reference to it
+-- is undefined — which is what `[@eq:noninverting-io]` did on the electronics
+-- primer.
+local function cloze_equation_label(content)
+  return content:match('\\label{(eq:[^}]*)}')
+      or content:match('\\{\\#(eq:[%w_%-%.]+)\\}')
+end
+
 local function cloze_div_latex(el)
   local content = pandoc.write(pandoc.Pandoc(el.content), 'latex')
+  local label = cloze_equation_label(content)
+  if label then
+    -- Drop the unconsumed attribute text; clozeequation supplies the number.
+    content = content:gsub('%s*\\{\\#eq:[%w_%-%.]+\\}', '')
+    return pandoc.RawBlock('tex',
+      '\\begin{clozeequation}{' .. label .. '}\n' .. content
+      .. '\n\\end{clozeequation}')
+  end
   return pandoc.RawBlock('tex',
     '\\begin{clozeblock}\n' .. content .. '\n\\end{clozeblock}')
 end

@@ -108,11 +108,76 @@
 
 % Hidden block: capture the content, then blank it to its own height.
 \newsavebox{\parodyclozebox}
+\newlength{\parodyclozeht}
+% ONE framed box, not a stack of ruled lines. A stack reads as several separate
+% answers, and on a typeset page it is indistinguishable from every other rule
+% — table borders, heading rules, fraction bars. A box says "one thing goes
+% here" and gives its own margins to write in.
+%
+% Built from primitives rather than \fbox or a tcolorbox, and both were tried:
+% \framebox drew the top and bottom but no sides, and a tcolorbox blew LuaTeX's
+% input stack inside an xsim exercise, where several clozes live — xsim writes
+% exercise bodies out and re-reads them, and the box did not survive the trip.
+% Two \hrules and an hbox between two \vrules cannot recurse.
+%
+% Floored so there is always somewhere to write: a one-line equation still
+% needs room for a hand, which is taller than the type it replaces.
+\newcommand{\parody@clozebox}[1]{% #1 = width
+  \ifdim\parodyclozeht<2.6\baselineskip
+    \setlength{\parodyclozeht}{2.6\baselineskip}%
+  \fi
+  \vbox{%
+    \hrule height 0.4pt
+    \hbox to #1{%
+      \vrule width 0.4pt height \parodyclozeht depth 0pt
+      \hfil
+      \vrule width 0.4pt height \parodyclozeht depth 0pt}%
+    \hrule height 0.4pt}}
+\newcommand{\parody@clozeframe}{%
+  \par\nobreak\medskip
+  \noindent\parody@clozebox{\linewidth}%
+  \par\medskip}
+
+% A blanked equation KEEPS ITS NUMBER. Clozed equations are often the ones the
+% prose refers to by number, and blanking the equation blanked its number with
+% it, leaving [@eq:foo] pointing at nothing.
+%
+% The counter is stepped by hand and the number set beside the box, rather than
+% making the box an equation body: the frame is a \vbox and cannot live in math
+% mode.
+% The counter is stepped and the label set HERE, not left to the hidden
+% content. \label writes through a whatsit that only fires when its box is
+% shipped out to the page, and the measuring box never is — so the content's
+% own \label reaches the .aux never, and every reference to it stays undefined.
+\newlength{\parodyclozenumwd}
+\setlength{\parodyclozenumwd}{4em}
+\newcommand{\parody@clozenumbered}[1]{%
+  \par\nobreak\medskip
+  \refstepcounter{equation}\label{#1}%
+  \noindent\hbox to \linewidth{%
+    \parody@clozebox{\dimexpr\linewidth-\parodyclozenumwd\relax}%
+    \hfil
+    \raisebox{0.42\parodyclozeht}{(\theequation)}}%
+  \par\medskip}
 % The mode is chosen at \begin, not at \end: content captured into an lrbox
 % keeps whatever colour was in force at capture time, so a key-mode accent
 % applied to \usebox would do nothing. Only `blank` needs the box (to measure
 % the passage); key and full typeset in place. \clozemode cannot change inside
 % the environment, so both halves always take the same branch.
+\newenvironment{clozeequation}[1]
+  {\def\parody@clozelabel{#1}%
+   \parody@clozeswitch
+     {\begin{lrbox}{\parodyclozebox}\begin{minipage}{\linewidth}}
+     {\par\medskip\bgroup\color{parodyaccent}}
+     {\par}}
+  {\parody@clozeswitch
+     {\end{minipage}\end{lrbox}%
+      \setlength{\parodyclozeht}%
+        {\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax}%
+      \parody@clozenumbered{\parody@clozelabel}}
+     {\par\egroup\medskip}
+     {\par}}
+
 \newenvironment{clozeblock}
   {\parody@clozeswitch
      {\begin{lrbox}{\parodyclozebox}\begin{minipage}{\linewidth}}
@@ -120,11 +185,9 @@
      {\par}}
   {\parody@clozeswitch
      {\end{minipage}\end{lrbox}%
-      \@tempcnta=\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax
-      \@tempcntb=\baselineskip
-      \divide\@tempcnta by \@tempcntb
-      \advance\@tempcnta by 1
-      \parody@rulelines{\@tempcnta}}
+      \setlength{\parodyclozeht}%
+        {\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax}%
+      \parody@clozeframe}
      {\par\egroup\medskip}
      {\par}}
 
