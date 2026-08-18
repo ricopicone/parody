@@ -302,6 +302,46 @@ def test_web_display_math_cloze():
     assert "frac" not in out
 
 
+# A bare \begin{align} … \end{align} — no $$ around it — is not a Math node.
+# pandoc parses it as raw tex and its --mathjax HTML writer wraps it in a math
+# span on the way out, so the reader sees it TYPESET while the filter's Math
+# handler never saw it. In blank mode that printed the answer on the page.
+RAW_ENV_MD = "\\begin{align}\n  F(s) &= \\cloze{\\int_0^\\infty f\\,dt} \\\\\n  &= 1\n\\end{align}\n"
+
+
+def test_web_raw_math_environment_cloze_hidden():
+    out = web(RAW_ENV_MD, "blank")
+    assert "int_0" not in out, "the answer reached the page through raw math"
+    assert "underline" in out
+    assert "math display" in out, "the equation itself must still render"
+
+
+def test_web_raw_math_environment_cloze_key():
+    out = web(RAW_ENV_MD, "key")
+    assert "int_0" in out
+    assert r"\class{cloze-key}" in out
+
+
+def test_web_raw_math_environment_cloze_full():
+    out = web(RAW_ENV_MD, "full")
+    assert "int_0" in out
+    assert "cloze" not in out
+
+
+def test_web_raw_math_environment_manual_blank():
+    out = web("\\begin{align}\n  H(s) &= \\clozeblank{1em} s + 1\n\\end{align}\n",
+              "blank")
+    assert "underline" in out
+    assert "clozeblank" not in out
+
+
+def test_web_raw_text_macro_is_not_treated_as_math():
+    """Only math environments get the rewrite: everything else pandoc drops
+    from HTML anyway, and \\underline{\\hspace{…}} would be nonsense in it."""
+    out = web("\\marginnote{\\cloze{secret}}\n", "blank")
+    assert "underline" not in out
+
+
 def test_web_math_without_cloze_untouched():
     out = web(r"$E = mc^2$", "blank")
     assert "mc^2" in out

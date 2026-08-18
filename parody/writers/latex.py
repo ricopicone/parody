@@ -491,6 +491,26 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # wants clozes filled and exercise solutions hidden.
     flags.append("\\def\\clozemode{%s}" % cloze_mode)
 
+    # The book's own preamble — its MATH vocabulary, in practice. parody owns
+    # the house style, but \diff, \abs and \Transpose belong to the book, and
+    # until this seam existed print had nowhere to put them: every one reached
+    # lualatex undefined, printing its argument with the operator dropped,
+    # while latexmk's nonstopmode carried on and logged nothing a build gate
+    # matching "LaTeX Error" would catch. The web half of the same vocabulary
+    # has always been there (parody-web's MathJax macros).
+    #
+    # A .sty is a package (\makeatletter is implicit inside one, which these
+    # macro files rely on); anything else is \input verbatim.
+    rel = ((active_meta.get("print") or {}).get("preamble") or "").strip()
+    if rel:
+        src = project_dir / rel
+        if src.is_file():
+            shutil.copy2(src, build_dir / src.name)
+            flags.append("\\usepackage{%s}" % src.stem if src.suffix == ".sty"
+                         else "\\input{%s}" % src.name)
+        else:
+            print(f"⚠️  print.preamble not found: {rel}")
+
     # Companion-site base URL (book.companion_url in parody.yaml). A profile
     # can use it to build printed QR codes / short links (\companionurl/<hash>).
     book = active_meta.get("book") or {}

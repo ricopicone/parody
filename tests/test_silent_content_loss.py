@@ -35,6 +35,16 @@ def _convert(markdown):
     return proc.stdout, proc.stderr
 
 
+def _convert_mathjax(markdown):
+    """As `_convert`, but with --mathjax — which is what the artifact writer
+    passes, and what decides whether raw math environments survive."""
+    proc = subprocess.run(
+        [pypandoc.get_pandoc_path(), "-f", "markdown", "-t", "html",
+         "--mathjax", f"--lua-filter={FILTER}"],
+        input=markdown, capture_output=True, text=True)
+    return proc.stdout, proc.stderr
+
+
 # ---- dropped raw LaTeX ----------------------------------------------------
 
 def test_bare_macro_is_reported():
@@ -64,6 +74,22 @@ def test_math_is_not_reported():
     # \frac and friends live inside math, which survives to MathJax
     _, err = _convert("Inline $\\frac{a}{b}$ and $$\\sqrt{x}$$ are fine.\n")
     assert "dropped raw LaTeX" not in err
+
+
+def test_a_raw_math_environment_is_not_reported():
+    r"""`\begin{align}…\end{align}` with no $$ around it parses as raw TeX, but
+    it is NOT lost: the writer parody uses (--mathjax, on every section and
+    solution) wraps raw math environments in a math span and MathJax typesets
+    them. 26 of System Dynamics' 29 reports were this, all rendering."""
+    _, err = _convert_mathjax(
+        "\\begin{align}\n  \\tau &= RC \\tag{time constant}\n\\end{align}\n")
+    assert "dropped raw LaTeX" not in err
+
+
+def test_a_non_math_environment_is_still_reported():
+    _, err = _convert_mathjax(
+        "\\begin{center}\n\\textbf{Read this part twice}\n\\end{center}\n")
+    assert "dropped raw LaTeX" in err
 
 
 def test_the_report_names_the_chapter(monkeypatch):

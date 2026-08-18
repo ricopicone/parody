@@ -844,23 +844,46 @@ end
 --     loader: {load: ['[tex]/html']},
 --     tex: {packages: {'[+]': ['html']}}
 -- With only the second, \class renders as a red undefined-macro error.
-function Math(el)
-  if not el.text:find('\\cloze') then  -- also catches \clozeblank
-    return el
-  end
-  local t = cloze_rewrite_macro(el.text, 'cloze', function(arg)
+local function cloze_rewrite_math_text(text)
+  local t = cloze_rewrite_macro(text, 'cloze', function(arg)
     if CLOZE_MODE == 'full' then return arg end
     if CLOZE_MODE == 'key' then
       return '\\class{cloze-key}{' .. arg .. '}'
     end
     return '\\underline{\\hspace{' .. cloze_estimate_width(arg) .. '}}'
   end)
-  t = cloze_rewrite_macro(t, 'clozeblank', function(arg)
+  return cloze_rewrite_macro(t, 'clozeblank', function(arg)
     if CLOZE_MODE == 'full' then return '' end
     return '\\underline{\\hspace{' .. arg .. '}}'
   end)
-  el.text = t
+end
+
+function Math(el)
+  if not el.text:find('\\cloze') then  -- also catches \clozeblank
+    return el
+  end
+  el.text = cloze_rewrite_math_text(el.text)
   return el
+end
+
+-- A math environment written WITHOUT $$ around it — `\begin{align} … \end{align}`
+-- on its own — never becomes a Math node: pandoc parses it as raw TeX. It still
+-- reaches the reader typeset, because the --mathjax HTML writer wraps raw math
+-- environments in a `<span class="math display">\[…\]</span>` on the way out.
+-- So Math() above never sees it, and in `blank` mode the answer inside a
+-- \cloze went straight onto the page. Migrated books are full of this form.
+local MATH_ENVS = {
+  align = true, ['align*'] = true, alignat = true, ['alignat*'] = true,
+  aligned = true, eqnarray = true, ['eqnarray*'] = true,
+  equation = true, ['equation*'] = true, flalign = true, ['flalign*'] = true,
+  gather = true, ['gather*'] = true, gathered = true,
+  multline = true, ['multline*'] = true, split = true,
+}
+
+local function raw_math_env(el)
+  if tostring(el.format) ~= "tex" then return nil end
+  local env = el.text:match("^%s*\\begin%s*{([%a%*]+)}")
+  return env and MATH_ENVS[env] and env or nil
 end
 
 -- Block forms. `::: {.blank lines=6}` is empty work space; `::: {.cloze}`
@@ -1444,6 +1467,10 @@ end
 
 local function report_dropped_tex(el)
   if tostring(el.format) ~= "tex" then return nil end
+  -- A raw math environment is NOT dropped — the --mathjax writer wraps it in a
+  -- math span and MathJax typesets it. Reporting those is crying wolf: they are
+  -- 26 of System Dynamics' 29 reports, and every one of them renders.
+  if raw_math_env(el) then return nil end
   if not has_prose_argument(el.text) then return nil end
   local where = os.getenv("PARODY_CHAPTER_SLUG") or "?"
   -- Both of these are byte-safety, not tidiness. Lua strings are bytes, and
@@ -1463,7 +1490,15 @@ local function report_dropped_tex(el)
   return nil
 end
 
-function RawInline(el) return report_dropped_tex(el) end
-function RawBlock(el) return report_dropped_tex(el) end
+local function raw_tex(el)
+  if raw_math_env(el) and el.text:find('\\cloze') then
+    el.text = cloze_rewrite_math_text(el.text)
+    return el
+  end
+  return report_dropped_tex(el)
+end
+
+function RawInline(el) return raw_tex(el) end
+function RawBlock(el) return raw_tex(el) end
 
 -- Remove explicit return table to allow Pandoc to find all global functions
