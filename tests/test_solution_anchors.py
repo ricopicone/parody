@@ -1,5 +1,4 @@
 """Anchors for labelled items inside a solution."""
-import json
 import pytest
 from parody.writers.artifact import load_section
 
