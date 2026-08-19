@@ -228,8 +228,12 @@
 \posttitle{\par\end{center}\vskip 0.9em
   \begin{center}{\color{parodyaccent}\rule{0.38\textwidth}{2pt}}\end{center}
   \vskip 1.6em}
-\preauthor{\begin{center}\Large}
-\postauthor{\par\end{center}\vspace*{\fill}}
+% memoir's \and expands to \end{tabular}\hskip 1em\begin{tabular}[t]{c},
+% so the author block MUST open a tabular — a plain \begin{center} leaves the
+% second author's \end{tabular} unmatched and every book with two authors
+% dies at \maketitle with "\begin{center} ended by \end{tabular}".
+\preauthor{\begin{center}\Large\begin{tabular}[t]{c}}
+\postauthor{\end{tabular}\par\end{center}\vspace*{\fill}}
 \predate{\begin{center}\large}
 \postdate{\par\end{center}}
 

@@ -60,6 +60,22 @@ def test_memoir_pdf_compiles(tiny_project):  # noqa: F811
     assert pdf is not None and pdf.exists() and pdf.stat().st_size > 10_000
 
 
+@pytest.mark.pdf
+@needs_tex
+def test_memoir_pdf_compiles_with_two_authors(tiny_project):  # noqa: F811
+    # memoir's \and expands to \end{tabular}…\begin{tabular}, so the author
+    # block has to open a tabular of its own: with a plain \begin{center} the
+    # second author's \end{tabular} is unmatched and \maketitle dies
+    # ("\begin{center} ended by \end{tabular}"). Every book with co-authors
+    # failed this way.
+    meta = tiny_project / "parody.yaml"
+    meta.write_text(meta.read_text().replace(
+        "authors: [Tester]", "authors: [Tester, Second Author]"))
+    pdf = build_pdf(tiny_project, profile_dir="memoir")
+    assert pdf is not None and pdf.exists() and pdf.stat().st_size > 10_000
+    assert "Second Author" in pdf_text(pdf)
+
+
 def test_exercise_setup_names_problems():
     env = (BUNDLED_PROFILES / "memoir" / "parody-environments.sty").read_text()
     assert "exercise/within=chapter" in env
