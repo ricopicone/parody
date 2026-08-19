@@ -2,14 +2,15 @@ r"""A label two headings claim is not labelled in print.
 
 A heading id only has to be unique inside its own file, but print.lua labels
 every heading with that id and the whole book shares one LaTeX namespace. Three
-sections opening "## Stability" all emitted \label{stability}; "multiply
+sections opening "## Stability" all emitted \label{stability} — and so do
+headings with NO id, because pandoc generates one from the title. "Multiply
 defined" is a warning, so it shipped and a \ref took whichever came last.
 System Dynamics had 16 of them.
 """
 
 import pytest
 
-from parody.writers.latex import ambiguous_heading_labels, build_pdf
+from parody.writers.latex import build_pdf, drop_duplicate_labels
 
 SEC_A = """\
 ---
@@ -21,6 +22,8 @@ hash: aa
 # Alpha {#alpha h="aa"}
 
 ## Stability {#stability h="s1"}
+
+### Lumping {-}
 
 Text.
 """
@@ -35,6 +38,8 @@ hash: bb
 # Beta {#beta h="bb"}
 
 ## Stability {#stability h="s2"}
+
+### Lumping {-}
 
 More text.
 """
@@ -65,24 +70,21 @@ def no_tex(monkeypatch):
     monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
 
 
-def test_the_census_finds_the_clash(project):
-    found = ambiguous_heading_labels(
-        [project / "chapters" / "one" / "alpha.md",
-         project / "chapters" / "one" / "beta.md"], [("one", "c1")])
-    assert "stability" in found
-    # the unique ones are left alone
-    assert "s1" not in found and "aa" not in found and "alpha" not in found
+def test_a_repeated_label_is_dropped_from_every_file(tmp_path):
+    a = tmp_path / "a.tex"
+    a.write_text(r"\section{A}\label{same}\label{one}")
+    b = tmp_path / "b.tex"
+    b.write_text(r"\section{B}\label{same}\label{two}")
+    assert drop_duplicate_labels([a, b]) == {"same"}
+    assert a.read_text() == r"\section{A}\label{one}"
+    assert b.read_text() == r"\section{B}\label{two}"
 
 
-def test_a_heading_id_clashing_with_a_hash_counts(project):
-    # System Dynamics had one: a section whose hash was "qa" also carried an
-    # inner heading written {#qa}.
-    (project / "chapters" / "one" / "beta.md").write_text(
-        SEC_B.replace('{#stability h="s2"}', '{#aa h="s2"}'))
-    found = ambiguous_heading_labels(
-        [project / "chapters" / "one" / "alpha.md",
-         project / "chapters" / "one" / "beta.md"], [])
-    assert "aa" in found
+def test_a_unique_label_is_left_alone(tmp_path):
+    a = tmp_path / "a.tex"
+    a.write_text(r"\label{only}")
+    assert drop_duplicate_labels([a]) == set()
+    assert a.read_text() == r"\label{only}"
 
 
 def test_the_clashing_label_is_not_emitted(project, no_tex):
@@ -97,6 +99,26 @@ def test_the_clashing_label_is_not_emitted(project, no_tex):
     assert "\\label{s2}" in b
 
 
+def test_a_pandoc_generated_id_counts_too(project, no_tex):
+    """"### Lumping {-}" declares no id at all; pandoc generates `lumping`
+    from the title, and print.lua labels it. Counting the markdown could not
+    see these — counting the emitted .tex does."""
+    build_pdf(project)
+    build = project / "build" / "print"
+    for name in ("alpha", "beta"):
+        assert "\\label{lumping}" not in (
+            build / "sections" / "one" / f"{name}.tex").read_text()
+
+
+def test_a_chapter_label_wins_over_a_section_heading(tmp_path):
+    """A heading whose id is a chapter slug loses its label; the chapter, which
+    is what a reader means by that name, keeps the one main.tex emits."""
+    a = tmp_path / "a.tex"
+    a.write_text(r"\section{Introduction}\label{introduction}\label{jx}")
+    assert drop_duplicate_labels([a], reserved=["introduction"]) == {"introduction"}
+    assert a.read_text() == r"\section{Introduction}\label{jx}"
+
+
 def test_an_unambiguous_id_is_still_labelled(project, no_tex):
     build_pdf(project)
     a = (project / "build" / "print" / "sections" / "one" / "alpha.tex").read_text()
@@ -105,4 +127,5 @@ def test_an_unambiguous_id_is_still_labelled(project, no_tex):
 
 def test_the_build_says_which_labels_it_dropped(project, no_tex, capsys):
     build_pdf(project)
-    assert "stability" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "stability" in out and "lumping" in out

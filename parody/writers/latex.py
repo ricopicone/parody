@@ -303,43 +303,49 @@ def _report_log_problems(log_path):
 
 
 # A heading's id only has to be unique inside its own file; print.lua labels
-# every heading with that id AND its short hash, and the chapter with its slug
-# and hash — one flat LaTeX namespace for the whole book. Three sections that
-# each open "## Stability" therefore all emit \label{stability}. LaTeX calls
-# that "multiply defined" and carries on, so it ships, and a \ref resolves to
-# whichever came last. The build knows every section, so it can spot the clashes
-# the filter (which sees one section at a time) never could.
-_HEADING_LABEL_RE = re.compile(
-    r'^#{1,6}[ \t]+.+?[ \t]+\{#([\w:.-]+)((?:\s[^}]*)?)\}[ \t]*$', re.M)
-_LABEL_ATTR_RE = re.compile(r'\b(?:h|hash|shortid)="?([\w:.-]+)"?')
+# every heading with that id, and the whole book shares one flat LaTeX label
+# namespace. Three sections that each open "## Stability" all emit
+# \label{stability} — and so do headings with no id at all, because pandoc
+# generates one from the title ("### Lumping {-}" -> lumping). LaTeX calls that
+# "multiply defined" and carries on, so it ships, and a \ref resolves to
+# whichever came last.
+#
+# Counted on the EMITTED .tex rather than the markdown: that is the only place
+# both kinds are visible, and it needs no second implementation of pandoc's
+# id-generation rules to drift out of step with pandoc's.
+_LABEL_RE = re.compile(r"\\label\{([^}]*)\}")
 
 
-def ambiguous_heading_labels(sources, chapters=()):
-    """Label strings that more than one place in the book claims.
+def drop_duplicate_labels(tex_paths, reserved=()):
+    r"""Delete every \label whose name more than one place claims.
 
-    `sources` is an iterable of section markdown paths, `chapters` of (slug,
-    hash) pairs. Returns the set of clashing strings, which the filter is told
-    to stop labelling: the hash label stays, and it is unique per book, so the
-    cross-reference that matters still resolves. A reference written to the
-    ambiguous id itself becomes an undefined-reference warning instead of
-    silently pointing at one of several — loud beats arbitrary.
+    Returns the set of names dropped. Deleting ALL of them, rather than keeping
+    one, is the point: a reference to an ambiguous name becomes a loud undefined
+    reference instead of silently pointing at whichever heading came last. Each
+    heading also carries its short hash, which IS unique per book, so the
+    cross-references books actually write still resolve.
     """
-    census = collections.Counter()
-    for slug, hsh in chapters:
-        census[slug] += 1
-        if hsh and hsh != slug:
-            census[hsh] += 1
-    for path in sources:
+    # `reserved` names are claimed elsewhere in the document (the chapter
+    # labels main.tex emits). They are counted but never rewritten, so a section
+    # heading that collides with a chapter slug loses ITS label and the
+    # chapter — the target a reader means by that name — keeps one.
+    census = collections.Counter(reserved)
+    texts = {}
+    for path in tex_paths:
         try:
-            text = Path(path).read_text(encoding="utf-8")
+            texts[path] = Path(path).read_text(encoding="utf-8")
         except OSError:
             continue
-        text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-        for m in _HEADING_LABEL_RE.finditer(text):
-            census[m.group(1)] += 1
-            for extra in _LABEL_ATTR_RE.findall(m.group(2) or ""):
-                census[extra] += 1
-    return {name for name, n in census.items() if n > 1}
+        census.update(_LABEL_RE.findall(texts[path]))
+    dupes = {name for name, n in census.items() if n > 1}
+    if not dupes:
+        return dupes
+    for path, text in texts.items():
+        new = _LABEL_RE.sub(
+            lambda m: "" if m.group(1) in dupes else m.group(0), text)
+        if new != text:
+            Path(path).write_text(new, encoding="utf-8")
+    return dupes
 
 
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
@@ -399,7 +405,6 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # so hand it the project/chapter context and an svg-conversion cache.
     # Save/restore so the context never leaks past this build.
     _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
-                 "PARODY_AMBIGUOUS_IDS",
                  "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
                  "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD")
     _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
@@ -427,30 +432,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         chapters_tex.append(f"\\setcounter{{chapter}}{{{chapter_start - 1}}}")
     appendix_started = False
     try:
-        # Which label strings more than one heading claims (see
-        # ambiguous_heading_labels). The filter sees one section at a time and
-        # cannot know; it is told, and stops emitting the id label for those.
-        _sources, _chapter_labels = [], []
-        for _ch in project.chapters:
-            _slugs = _ch.section_slugs
-            if section:
-                _want_ch, _, _want_sec = section.partition("/")
-                if _ch.slug != _want_ch:
-                    continue
-                _slugs = [s for s in _slugs if s == _want_sec]
-            _chapter_labels.append((_ch.slug, _ch.hash))
-            for _s in _slugs:
-                _name = (_resolve_section_file(_ch.directory, _s, edition["id"])
-                         if edition else f"{_s}.md")
-                if _name:
-                    _sources.append(Path(_ch.directory) / _name)
-        ambiguous = ambiguous_heading_labels(_sources, _chapter_labels)
-        if ambiguous:
-            print(f"⚠️  {len(ambiguous)} label(s) are claimed by more than one "
-                  "heading and are not labelled in print (the short hash still "
-                  "is): " + ", ".join(sorted(ambiguous)))
-        os.environ["PARODY_AMBIGUOUS_IDS"] = ",".join(sorted(ambiguous))
-
+        emitted_tex, chapter_labels = [], []
         for chapter in project.chapters:
             sections = chapter.section_slugs
             if section:
@@ -473,9 +455,11 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                     appendix_started = True
                 chapter_tex = f"\\chapter{{{chapter.title or chapter.slug}}}"
                 chapter_tex += f"\\label{{{chapter.slug}}}"
+                chapter_labels.append(chapter.slug)
                 if chapter.hash and chapter.hash != chapter.slug:
                     # chapter-level hashref target
                     chapter_tex += f"\\label{{{chapter.hash}}}"
+                    chapter_labels.append(chapter.hash)
                 if chapter.hash:
                     # companion QR at the chapter opening (profile renders it;
                     # \parodyqrch aligns to the tall chapter title, vs sections)
@@ -519,12 +503,21 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                                 tex_path.read_text(encoding="utf-8"), key),
                             encoding="utf-8")
                 first_in_chapter = False
+                emitted_tex.append(tex_path)
                 chapters_tex.append(f"\\input{{sections/{chapter.slug}/{sec_slug}.tex}}")
                 if pagemap:
                     # End mark, so a section that does NOT share its last sheet
                     # with the next one (a chapter break forces a new page)
                     # does not swallow the next chapter's opening page.
                     chapters_tex.append(f"\\parodypagemark{{{key}@end}}")
+
+        # One flat LaTeX label namespace for the whole book: drop the names more
+        # than one heading claims (see drop_duplicate_labels).
+        dropped = drop_duplicate_labels(emitted_tex, reserved=chapter_labels)
+        if dropped:
+            print(f"⚠️  {len(dropped)} label(s) are claimed by more than one "
+                  "heading and are left unlabelled (each heading's short hash "
+                  "still is): " + ", ".join(sorted(dropped)))
     finally:
         for k, v in _saved_env.items():
             if v is None:
