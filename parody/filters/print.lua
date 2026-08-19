@@ -41,6 +41,13 @@ local function is_latex()
   return FORMAT:match 'latex' or FORMAT:match 'beamer'
 end
 
+-- Label strings claimed by more than one heading in this book, from the build;
+-- see writers/latex.py::ambiguous_heading_labels.
+local AMBIGUOUS_LABELS = {}
+for id in (os.getenv('PARODY_AMBIGUOUS_IDS') or ''):gmatch('[^,]+') do
+  AMBIGUOUS_LABELS[id] = true
+end
+
 -- Forward declarations so the interior filter late-binds to the handlers.
 -- Generated subfigure labels have to be unique across the whole BOOK, but this
 -- filter runs once per section, so a counter alone repeats itself in every one.
@@ -296,6 +303,12 @@ local function headerer_latex(el)
   local cmds = { 'section', 'subsection', 'subsubsection' }
   local star = el.classes:includes('unnumbered') and '*' or ''
   local label = el.attr.attributes['shortid'] or el.identifier
+  -- A label more than one heading in the book claims is not labelled at all:
+  -- LaTeX's "multiply defined" is only a warning, so it used to ship and a
+  -- \ref resolved to whichever came last. The short hash below IS unique per
+  -- book, so the reference that matters still lands. The build works out the
+  -- set (it can see every section; this filter sees one) and passes it in.
+  if label and AMBIGUOUS_LABELS[label] then label = nil end
   -- Lab sections render via the MIT-class-private \lab command (each print
   -- profile styles it); other levels/sections use the standard sectioning.
   local sec_tex

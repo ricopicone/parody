@@ -861,6 +861,19 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
     anchor_ids = extract_anchor_ids(content_without_solutions,
                                     with_hashes=with_hashes)
 
+    # A labelled item inside a SOLUTION is a cross-reference target too, and the
+    # solution bucket is the only place it survives — the html above has the
+    # solutions stripped out. With no anchor it can never resolve: 27 of System
+    # Dynamics' unresolved web references pointed at one, most of them from
+    # inside another solution. Each carries the exercise it belongs to, so the
+    # renderer can number it on its own S-series (figure S4.1) and link to the
+    # solution's own page rather than the section's.
+    for exercise_id, solution_data in solutions_markdown.items():
+        for anchor in extract_anchor_ids(solution_data['content'],
+                                         with_hashes=with_hashes):
+            anchor['solution'] = exercise_id
+            anchor_ids.append(anchor)
+
     # Section-level short hash (schema v2): front matter `hash:` key
     section_hash = None
     if with_hashes and meta.get('hash') is not None:

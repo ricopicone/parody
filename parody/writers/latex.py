@@ -12,6 +12,7 @@ environments; book-private classes/fonts (MIT Press) come from the content
 repo via profile_dir override.
 """
 
+import collections
 import os
 import re
 import shutil
@@ -301,6 +302,46 @@ def _report_log_problems(log_path):
             print(f"⚠️  {len(names)} {label}(s): {shown}{more}")
 
 
+# A heading's id only has to be unique inside its own file; print.lua labels
+# every heading with that id AND its short hash, and the chapter with its slug
+# and hash — one flat LaTeX namespace for the whole book. Three sections that
+# each open "## Stability" therefore all emit \label{stability}. LaTeX calls
+# that "multiply defined" and carries on, so it ships, and a \ref resolves to
+# whichever came last. The build knows every section, so it can spot the clashes
+# the filter (which sees one section at a time) never could.
+_HEADING_LABEL_RE = re.compile(
+    r'^#{1,6}[ \t]+.+?[ \t]+\{#([\w:.-]+)((?:\s[^}]*)?)\}[ \t]*$', re.M)
+_LABEL_ATTR_RE = re.compile(r'\b(?:h|hash|shortid)="?([\w:.-]+)"?')
+
+
+def ambiguous_heading_labels(sources, chapters=()):
+    """Label strings that more than one place in the book claims.
+
+    `sources` is an iterable of section markdown paths, `chapters` of (slug,
+    hash) pairs. Returns the set of clashing strings, which the filter is told
+    to stop labelling: the hash label stays, and it is unique per book, so the
+    cross-reference that matters still resolves. A reference written to the
+    ambiguous id itself becomes an undefined-reference warning instead of
+    silently pointing at one of several — loud beats arbitrary.
+    """
+    census = collections.Counter()
+    for slug, hsh in chapters:
+        census[slug] += 1
+        if hsh and hsh != slug:
+            census[hsh] += 1
+    for path in sources:
+        try:
+            text = Path(path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+        for m in _HEADING_LABEL_RE.finditer(text):
+            census[m.group(1)] += 1
+            for extra in _LABEL_ATTR_RE.findall(m.group(2) or ""):
+                census[extra] += 1
+    return {name for name, n in census.items() if n > 1}
+
+
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
               profile_dir=None, keep_build=False, build_dir=None,
               cloze_mode=None, pagemap=True, edition=None):
@@ -358,6 +399,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # so hand it the project/chapter context and an svg-conversion cache.
     # Save/restore so the context never leaks past this build.
     _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
+                 "PARODY_AMBIGUOUS_IDS",
                  "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
                  "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD")
     _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
@@ -385,6 +427,30 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         chapters_tex.append(f"\\setcounter{{chapter}}{{{chapter_start - 1}}}")
     appendix_started = False
     try:
+        # Which label strings more than one heading claims (see
+        # ambiguous_heading_labels). The filter sees one section at a time and
+        # cannot know; it is told, and stops emitting the id label for those.
+        _sources, _chapter_labels = [], []
+        for _ch in project.chapters:
+            _slugs = _ch.section_slugs
+            if section:
+                _want_ch, _, _want_sec = section.partition("/")
+                if _ch.slug != _want_ch:
+                    continue
+                _slugs = [s for s in _slugs if s == _want_sec]
+            _chapter_labels.append((_ch.slug, _ch.hash))
+            for _s in _slugs:
+                _name = (_resolve_section_file(_ch.directory, _s, edition["id"])
+                         if edition else f"{_s}.md")
+                if _name:
+                    _sources.append(Path(_ch.directory) / _name)
+        ambiguous = ambiguous_heading_labels(_sources, _chapter_labels)
+        if ambiguous:
+            print(f"⚠️  {len(ambiguous)} label(s) are claimed by more than one "
+                  "heading and are not labelled in print (the short hash still "
+                  "is): " + ", ".join(sorted(ambiguous)))
+        os.environ["PARODY_AMBIGUOUS_IDS"] = ",".join(sorted(ambiguous))
+
         for chapter in project.chapters:
             sections = chapter.section_slugs
             if section:
