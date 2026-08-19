@@ -338,8 +338,14 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
 
     # Pattern for typed anchors: {#prefix:label} or {#prefix-label}
     # (figures, tables, equations, definitions, comments, theorems, exercises,
-    # examples). Allow attributes like width, height after the label
-    typed_pattern = r'\{#(fig|tbl|eq|def|cmt|thm|exe|exa)([:\-])([A-Za-z0-9_-]+)([^}]*)\}'
+    # examples). Allow attributes like width, height after the label.
+    #
+    # The label admits a colon of its own: a migrated book writes
+    # {#fig:totoro:01}, and a label class without ':' matched only "totoro",
+    # recording the anchor as `fig:totoro` — so the reference to fig:totoro:01
+    # never resolved, the number attached to an id nobody wrote, and two
+    # figures in one section (…:01, …:02) collapsed onto a single anchor.
+    typed_pattern = r'\{#(fig|tbl|eq|def|cmt|thm|exe|exa)([:\-])([A-Za-z0-9_:-]+)([^}]*)\}'
 
     # Pattern for div environments: ::: {.type ... #id ...}
     # Captures the environment type and the ID. Handles both
@@ -868,9 +874,18 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
     # inside another solution. Each carries the exercise it belongs to, so the
     # renderer can number it on its own S-series (figure S4.1) and link to the
     # solution's own page rather than the section's.
+    #
+    # Headings are skipped: only things that carry a NUMBER become targets, and
+    # a solution's own headings are not numbered by any consumer. Collecting
+    # them would also fail the build for no reader-visible gain — migrated books
+    # give two solutions in one section the same "### Matlab {h=ep}", which is
+    # invisible while nothing reads those anchors and a duplicate-hash error the
+    # moment something does.
     for exercise_id, solution_data in solutions_markdown.items():
         for anchor in extract_anchor_ids(solution_data['content'],
                                          with_hashes=with_hashes):
+            if anchor.get('type') == 'heading':
+                continue
             anchor['solution'] = exercise_id
             anchor_ids.append(anchor)
 
