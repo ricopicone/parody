@@ -135,8 +135,17 @@ def _stage_referenced_media(output, source_root, media_dir):
             dest = Path(media_dir) / target
             if not dest.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                ok = (_pgf_to_svg(src, dest) if src.suffix.lower() == ".pgf"
-                      else _pdf_to_svg(src, dest))
+                # A browser-ready sibling beside the source beats re-deriving
+                # it: converting a .pgf needs lualatex and a .pdf pdftocairo,
+                # and a CI runner has neither — the fallback below then copies
+                # the SOURCE into the media tree and the page ends up with
+                # <img src="….pgf">, which nothing renders and nothing reports.
+                # The migrator ships these siblings for exactly this reason.
+                sibling = src.with_suffix(".svg")
+                ok = sibling.is_file() and bool(shutil.copy2(sibling, dest))
+                if not ok:
+                    ok = (_pgf_to_svg(src, dest) if src.suffix.lower() == ".pgf"
+                          else _pdf_to_svg(src, dest))
                 if not ok:  # converter unavailable -> keep the source as-is
                     target = ref if os.path.splitext(ref)[1] else ref + src.suffix
                     dest = Path(media_dir) / target
