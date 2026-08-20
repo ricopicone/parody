@@ -470,6 +470,17 @@ local function comment(el)
   end
 end
 
+-- A caption rendered with pandoc.write's DEFAULTS came out wrapped at 72
+-- columns and with its maths turned into <em>x</em> HTML: the wrap broke every
+-- downstream regex that expects `<span class="citation" …>` on one line (a
+-- cross-reference in a subfigure caption stayed raw on the page), and the maths
+-- never reached MathJax. The document-level build passes --wrap=none and
+-- --mathjax; these nested writes have to say so themselves.
+local CAPTION_WRITER = pandoc.WriterOptions {
+  wrap_text = "none",
+  html_math_method = "mathjax",
+}
+
 local function theorem(el)
   -- Apply interior filter to the content
   local title = el.attr.attributes['title'] or "Theorem"
@@ -635,7 +646,7 @@ local function subfigures(el)
   -- with its sub-caption on Figure.caption; the trailing Para is the main caption.
   local function blocks_html(blocks)
     if not blocks or #blocks == 0 then return "" end
-    return (pandoc.write(pandoc.Pandoc(blocks), "html")
+    return (pandoc.write(pandoc.Pandoc(blocks), "html", CAPTION_WRITER)
       :gsub("^%s*<p>(.-)</p>%s*$", "%1"):gsub("%s+$", ""))
   end
   local panels, caption_blocks, panel_n = {}, {}, 0
@@ -697,7 +708,7 @@ local function subtables(el)
   if not FORMAT:match 'html' then return el end
   local function blocks_html(blocks)
     if not blocks or #blocks == 0 then return "" end
-    return (pandoc.write(pandoc.Pandoc(blocks), "html")
+    return (pandoc.write(pandoc.Pandoc(blocks), "html", CAPTION_WRITER)
       :gsub("^%s*<p>(.-)</p>%s*$", "%1"):gsub("%s+$", ""))
   end
   local panels, caption_blocks = {}, {}
