@@ -371,7 +371,10 @@ end
 
 local function keyworder(el)
   if not is_latex() then return el end
-  local content = pandoc.utils.stringify(el.content)
+  -- stringify would drop the $…$ around any maths in the term, and the
+  -- Statistics chapter names four of them ("mean of means $\\overline{\\overline{X}_i}$")
+  -- — in text mode that is "Missing $ inserted", fatal, no PDF at all.
+  local content = inlines_to_latex(el.content)
   return pandoc.RawInline('latex', '\\keyword{' .. content .. '}')
 end
 
