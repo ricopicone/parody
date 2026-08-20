@@ -492,6 +492,35 @@ local function theorem(el)
   end
 end
 
+-- Theorem's siblings. print.lua has rendered .lemma/.corollary/.proposition
+-- as boxed environments since the beginning; the web had no branch for them
+-- at all, so five lemmas in the maths notes' Calculus of Variations reached
+-- the page as bare divs — no box, no number, no cross-reference target, and
+-- their title= attribute shown nowhere. Same markup as theorem() above so the
+-- frozen box shape stays one shape; only the type and default title differ.
+local THEOREM_LIKE = { lemma = "Lemma", corollary = "Corollary",
+                       proposition = "Proposition" }
+
+local function theorem_like(el, envtype)
+  local title = el.attr.attributes['title'] or THEOREM_LIKE[envtype]
+  local identifier = el.identifier or ""
+
+  if FORMAT:match 'html' then
+    return pandoc.Div({
+      pandoc.Div({
+        pandoc.Header(3, title, { class = "text-lg font-semibold text-purple-900" })
+      }, { class = "px-4 py-2 border-b border-purple-400 bg-purple-50 rounded-t" }),
+      pandoc.Div(el.content, { class = "px-4 py-3 text-sm text-gray-700" })
+    }, {
+      class = envtype .. " numbered-environment rounded border border-purple-400 shadow-md my-4 bg-white scroll-mt-20",
+      id = identifier,
+      ["data-env-type"] = envtype
+    })
+  else
+    return el
+  end
+end
+
 local function exercise(el)
   -- Apply interior filter to the content, but remove exercise-solution divs
   local title = el.attr.attributes['title'] or "Exercise"
@@ -955,6 +984,12 @@ function Div(el)
     return comment(el)
   elseif el.classes:includes("theorem") then
     return theorem(el)
+  elseif el.classes:includes("lemma") then
+    return theorem_like(el, "lemma")
+  elseif el.classes:includes("corollary") then
+    return theorem_like(el, "corollary")
+  elseif el.classes:includes("proposition") then
+    return theorem_like(el, "proposition")
   elseif el.classes:includes("exercise") then
     return exercise(el)
   elseif el.classes:includes("example") then

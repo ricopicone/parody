@@ -32,8 +32,11 @@ CHAPTER_RE = re.compile(
 # brackets ([Notebooks [Outlined]]); anchor on the last three brace groups
 CHAPTER_HEADER_RE = re.compile(
     r"\\chapter.*\{([\w-]+)\}\{([\w-]+)\}\{(.+)\}\s*$", re.M)
-# bare appendix input (after \appendix): \input{chx-foo} with \chapter inline
-APPENDIX_CHAPTER_RE = re.compile(r"^\\input\{(chx-[\w-]+)\}\s*$")
+# bare appendix input (after \appendix): \input{chx-foo} — or \input{ap_01},
+# the maths notes' spelling — with \chapter inline. Any root-level file will
+# do; the \chapter header is what makes it a chapter, and parse_chapters
+# skips a match with no such file or no header.
+APPENDIX_CHAPTER_RE = re.compile(r"^\\input\{([\w-]+)\}\s*$")
 # auto-generated appendix skipped (just \listoffigures/\listoftables)
 _SKIP_APPENDIX = {"chx-lists-of-figures-tables"}
 INCLUDESECTION_RE = re.compile(r"^\s*\\includesection\{([\w-]+)\}")
@@ -190,6 +193,10 @@ class MetaBookMigrator:
                 if not wrapper.is_file():
                     continue
                 header_text = wrapper.read_text()
+                if not CHAPTER_HEADER_RE.search(header_text):
+                    # a plain \input of something that is not a chapter
+                    # (an index, a bibliography stub) — not an appendix
+                    continue
                 title = ""
             else:
                 continue

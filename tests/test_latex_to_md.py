@@ -55,6 +55,55 @@ def test_sectioning_and_markers(tmp_path):
     assert "PARODYSECATTR" not in out and "PARODYVERSIONED" not in out
 
 
+def test_a_plain_subsection_sits_under_its_section(tmp_path):
+    """A latex-only chapter may mix the meta 3-arg form with plain LaTeX.
+    Only the meta forms were shifted to compensate for the filter's
+    one-level promotion, so a plain \\subsection came out as an H1 — a peer
+    of the sections around it. The Mathematics Reference appendix opened
+    "Completing the square" that way, level with "Trigonometry"."""
+    src = tmp_path / "plain"
+    src.mkdir()
+    tex = src / "plain.tex"
+    tex.write_text(textwrap.dedent(r"""
+        \section[Quadratic]{quadratic-forms}{0n}{Quadratic Forms}
+
+        Prose.
+
+        \subsection{Completing the square}
+
+        More prose.
+
+        \subsubsection*{A step}
+
+        Even more.
+        """))
+    headers = [ln for ln in convert_latex_file(tex, src).splitlines()
+               if ln.startswith("#")]
+    assert headers[0].startswith("# Quadratic Forms ")
+    assert headers[1].startswith("## Completing the square")
+    assert headers[2].startswith("### A step")
+
+
+def test_a_table_header_is_one_row_and_keeps_its_maths(tmp_path):
+    """to_simple_table's `header` is ONE row — a list of cells. Iterating it
+    as a list of rows gave every heading a row of its own, so the Laplace
+    transform table opened with two one-cell rows and the z-score table with
+    eleven, and stringify dropped the maths out of them as well."""
+    src = tmp_path / "tbl"
+    src.mkdir()
+    tex = src / "tbl.tex"
+    tex.write_text(textwrap.dedent(r"""
+        \begin{tabular}{cc}
+        $f(t)$ & $F(s)$ \\ \hline
+        $\delta(t)$ & $1$ \\
+        \end{tabular}
+        """))
+    out = convert_latex_file(tex, src)
+    assert out.count("<th>") == 2, out
+    assert out.count("<tr>") == 2, "one header row plus one body row"
+    assert "$f(t)$" in out and "$F(s)$" in out, "maths dropped from the header"
+
+
 def test_myindex_spans(tmp_path):
     out = convert(tmp_path)
     assert "[Memory]{.index .start}" in out

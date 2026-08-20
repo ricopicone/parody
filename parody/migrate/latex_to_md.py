@@ -39,6 +39,13 @@ _SECTION3_RE = re.compile(
 # the 2-arg versioned-pull form: \subsection{slug}{hash} with NO third group
 _SECTION2_RE = re.compile(
     r"\\(subsection|subsubsection)\{([\w-]+)\}\{([\w-]+)\}(?!\{)")
+# the plain LaTeX form, \subsection{Title} with no meta args at all. It needs
+# the same one-level shift the meta forms get below, or the filter's promotion
+# lands it a level too high — a \subsection came out as an H1, a peer of the
+# sections around it. The lookahead keeps the meta forms above out.
+_SECTION1_RE = re.compile(
+    r"\\(section|subsection|subsubsection)(\*?)"
+    r"(\{(?:[^{}]|\{[^{}]*\})*\})(?!\s*\{)")
 
 # The filter promotes headers by one level (its original exercises.tex
 # diet parsed one level deep); emit one level deeper to compensate.
@@ -83,6 +90,10 @@ def preprocess(tex_text):
     # separately); drop standalone \chapter lines so chapter-body
     # conversion doesn't emit a spurious top heading
     tex_text = re.sub(r"^\\chapter\b[^\n]*$", "", tex_text, flags=re.M)
+    tex_text = _SECTION1_RE.sub(
+        lambda m: (m.group(0) if _commented(m.string, m.start())
+                   else f"\\{_LEVEL_CMD[m.group(1)]}{m.group(2)}{m.group(3)}"),
+        tex_text)
     tex_text = _SECTION3_RE.sub(sec3, tex_text)
     tex_text = _SECTION2_RE.sub(sec2, tex_text)
     # raw \includesection{hash} inside latex prose: same versioned pull

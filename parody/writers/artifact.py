@@ -397,6 +397,13 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         # what authored `::: {.example #exa:…}` blocks rely on.
         'exa': 'example',
     }
+    # A figure may declare itself by CLASS rather than by id prefix:
+    # ![cap](x.pdf){#brew_1 .figure}. The prefix scan above cannot see it, so
+    # the figure got no anchor at all — no number and no cross-reference
+    # target on the web — while print numbered it from the same source.
+    figure_class_pattern = (
+        r'\]\([^)\s]*\)\{#(?!(?:fig|tbl)[:\-])(?P<figid>[A-Za-z0-9_:.-]+)'
+        r'(?P<figattr>(?:[^}]|\n)*?\.figure(?:[^}]|\n)*?)\}')
     typed_re = (
         typed_pattern
         + r'|<(?:table|figure)\b[^>]*\bid="((?:fig|tbl)[:\-][A-Za-z0-9_-]+)"'
@@ -409,6 +416,8 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         # parent \label is consumed here so it is not also taken as a plain eq.
         typed_re += (r'|\\begin\{subequations\}'
                      r'(?:[ \t]*\\label\{(eq:[A-Za-z0-9_:-]+)\})?')
+    # last: its groups come after the optional subequations group
+    typed_re += "|" + figure_class_pattern
     typed_or_html = re.compile(typed_re)
     subeq_n = [0]
     for match in typed_or_html.finditer(markdown_content):
@@ -421,6 +430,9 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         elif match.group(6):                     # \label{eq:..} in display math
             anchor_id = match.group(6)
             prefix, attr = 'eq', ''
+        elif match.group('figid'):               # ![cap](x.pdf){#id .figure}
+            anchor_id = match.group('figid')
+            prefix, attr = 'fig', match.group('figattr')
         else:                                    # \begin{subequations}[\label{..}]
             parent = match.group(7)
             if not parent:
@@ -450,6 +462,11 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         'definition': 'definition',
         'comment': 'comment',
         'theorem': 'theorem',
+        # theorem's siblings: print has boxed them all along, and filter.lua
+        # now does too, so they need anchors to be numbered and referred to
+        'lemma': 'lemma',
+        'corollary': 'corollary',
+        'proposition': 'proposition',
         # v1 too: consumers number examples from a v1 artifact, so an
         # ::: {.example #exa:…} block must resolve to type "example" rather
         # than falling through to the generic "anchor". exercise/infobox stay

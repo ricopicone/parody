@@ -104,6 +104,36 @@ def test_migrate_meta_book(tmp_path):
     }]
 
 
+def test_migrate_appendix_input_without_a_chx_prefix(tmp_path):
+    """An appendix chapter is often a bare file at the source root, and the
+    maths notes name theirs ap_01/ap_02 rather than chx-something. Matching
+    only the chx- form dropped all three of that book's appendices — the
+    distribution tables, the transform tables and the whole mathematics
+    reference — with no warning anywhere."""
+    src = make_meta_src(tmp_path)
+    (src / "mini-0.tex").write_text(
+        "\\input{chx-one/chx-one} % One\n"
+        "\\appendix\n"
+        "\\input{ap_01}\n"
+        "\\backmatter\n"
+        "\\input{0-bib}\n")
+    (src / "ap_01.tex").write_text(
+        "\\chapter[Tables]{distribution-tables}{yd}{Distribution Tables}\n"
+        "\n"
+        "This appendix collects the tables.\n")
+    dest = make_dest(tmp_path)
+    migrate_meta_book(src, dest)
+
+    cfg = yaml.safe_load((dest / "parody.yaml").read_text())
+    appendix = [c for c in cfg["chapters"] if c.get("appendix")]
+    assert [c["slug"] for c in appendix] == ["distribution-tables"], \
+        "the ap_NN appendix never reached parody.yaml"
+    assert appendix[0]["hash"] == "yd"
+    assert appendix[0]["title"] == "Distribution Tables"
+    body = (dest / "chapters" / "distribution-tables" / "lead-in.md").read_text()
+    assert "This appendix collects the tables." in body
+
+
 def test_rehash_duplicates(tmp_path):
     src = make_meta_src(tmp_path)
     dest = make_dest(tmp_path)

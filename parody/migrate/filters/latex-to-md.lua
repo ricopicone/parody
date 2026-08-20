@@ -1114,31 +1114,34 @@ end
 function Table (tbl)
   local tbl = pandoc.utils.to_simple_table(tbl)
 
-  local function render_row (row)
+  -- Write the cell to markdown, not html: html turns math into plain text,
+  -- and these tables are mostly math.
+  local function render_cell (cell)
+    local doc = pandoc.Pandoc(cell)
+    return pandoc.utils.stringify(
+      pandoc.write(doc, "markdown+tex_math_dollars+raw_tex"))
+  end
+
+  local function render_row (row, tag)
     local result = "<tr>"
     for _, cell in ipairs(row) do
-      -- Write the cell to html with MathJax support for math (i.e., LaTeX math)
-      -- cell = pandoc.walk_block(cell, block_filter)
-      local doc = pandoc.Pandoc(cell)
-      cell = pandoc.write(doc, "markdown+tex_math_dollars+raw_tex") -- Have to use markdown because html converts simple the math to text
-      result = result .. "\n\t<td>" .. pandoc.utils.stringify(cell) .. "</td>"
+      result = result .. "\n\t<" .. tag .. ">" .. render_cell(cell)
+                      .. "</" .. tag .. ">"
     end
     result = result .. "\n</tr>"
     return result
   end
 
   local result = "<table>\n"
-  if tbl.header ~= nil then
-    for _, header in ipairs(tbl.header) do
-      result = result .. "<tr>"
-      for _, h in ipairs(header) do
-        result = result .. "<th>" .. pandoc.utils.stringify(h) .. "</th>"
-      end
-      result = result .. "\n</tr>\n"
-    end
+  -- to_simple_table's `header` is ONE ROW: a list of cells. Iterating it as
+  -- if it were a list of rows put every heading in a row of its own — a
+  -- two-column transform table opened with two one-cell rows, and the z-score
+  -- table with eleven — and stringify dropped the maths out of them besides.
+  if tbl.header ~= nil and #tbl.header > 0 then
+    result = result .. render_row(tbl.header, "th") .. "\n"
   end
   for _, row in ipairs(tbl.rows) do
-    result = result .. render_row(row)
+    result = result .. render_row(row, "td")
   end
   result = result .. "\n</table>"
 
