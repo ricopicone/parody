@@ -435,6 +435,21 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         emitted_tex, chapter_labels = [], []
         for chapter in project.chapters:
             sections = chapter.section_slugs
+            if chapter.draft and not section:
+                # Authored but not released: emit no \chapter, no \label, no QR
+                # and none of its sections — but still consume the number, so a
+                # released later chapter keeps the number the web shows it under.
+                #
+                # The \appendix switch still has to happen for a draft appendix
+                # chapter: \appendix resets the counter to letter numbering, so
+                # stepping before it would advance the arabic counter instead.
+                if chapter.appendix and not appendix_started:
+                    chapters_tex.append("\\appendix")
+                    appendix_started = True
+                # \stepcounter, not \refstepcounter: nothing labels a draft
+                # chapter, and refstep would leave \ref pointing at it.
+                chapters_tex.append("\\stepcounter{chapter}")
+                continue
             if section:
                 want_ch, _, want_sec = section.partition("/")
                 if chapter.slug != want_ch:

@@ -6,10 +6,12 @@ release, so a cross-reference or a number spoken in class silently means
 something different the following week. `draft: true` keeps the number and
 withholds the content.
 """
+import pytest
 import yaml
 
 from parody.build import build_project
 from parody.config import load_project
+from parody.writers.latex import build_pdf
 
 
 def _book(tmp_path, drafts=()):
@@ -65,3 +67,36 @@ def test_draft_does_not_change_the_numbering_of_other_chapters(tmp_path):
         art = build_project(root, base / "bk.json", convert_jupytext=False)
         outs.append([c["slug"] for c in art["chapters"]])
     assert outs[0] == outs[1] == ["one", "two", "three"]
+
+
+@pytest.fixture
+def no_tex(monkeypatch):
+    """build_pdf writes the whole LaTeX tree before it calls latexmk, so the
+    wiring is checkable by reading the generated sources with no TeX at all."""
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+
+
+def test_print_omits_a_draft_chapter_but_keeps_its_number(tmp_path, no_tex):
+    """A draft chapter must not print — but chapter three must still be
+    Chapter 3, or the printed book disagrees with the web and every reference
+    to a later chapter shifts as chapters are released."""
+    root = _book(tmp_path, drafts=("two",))
+    build_pdf(root)
+    main = (root / "build" / "print" / "main.tex").read_text()
+
+    assert "\\chapter{One}" in main
+    assert "\\chapter{Three}" in main
+    assert "\\chapter{Two}" not in main       # the draft does not print
+    assert "\\label{two}" not in main         # nor leaves a label behind
+    assert "Prose in two" not in main         # nor any of its content
+    assert "\\stepcounter{chapter}" in main   # but it consumes its number
+
+
+def test_print_without_drafts_is_unchanged(tmp_path, no_tex):
+    """The guard must be inert for a book that marks nothing draft."""
+    root = _book(tmp_path)
+    build_pdf(root)
+    main = (root / "build" / "print" / "main.tex").read_text()
+    assert "\\stepcounter{chapter}" not in main
+    for ch in ("One", "Two", "Three"):
+        assert f"\\chapter{{{ch}}}" in main
