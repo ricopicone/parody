@@ -9,10 +9,20 @@ emits into section html is fetchable by any reader.
 """
 
 import os
+import re
 from contextlib import contextmanager
 from pathlib import Path
 
 import pypandoc
+import pytest
+
+from parody.writers.latex import have_tool
+from tests.test_print_pdf import tiny_project  # noqa: F401  (pytest fixture)
+
+needs_tex = pytest.mark.skipif(
+    not (have_tool("latexmk") and have_tool("lualatex")),
+    reason="TeX (latexmk + lualatex) not available",
+)
 
 FILTERS = Path(__file__).parent.parent / "parody" / "filters"
 
@@ -216,3 +226,95 @@ def test_print_still_uses_the_solution_environment_when_nested():
     out = latex(NESTED_MD)
     assert "\\begin{labsolution}" in out
     assert "SECRET-NESTED" in out
+
+
+# --- print: a bare .solutions-only div --------------------------------------
+# filter.lua's Div() has dropped this class since 0.29.3; print.lua's Div()
+# never got the matching branch, so the same div that is gated on the web
+# typeset as ordinary body text in the PDF — and section PDFs are sliced from
+# that build and served to readers.
+
+def test_print_gates_a_plain_solutions_only_div():
+    out = latex(PLAIN_MD)
+    assert "\\ifdefined\\issolution" in out
+    assert "The answer is 42." in out
+    assert out.index("\\ifdefined\\issolution") < out.index("The answer is 42.")
+    assert out.index("The answer is 42.") < out.rindex("\\fi")
+
+
+def test_print_div_gate_does_not_swallow_the_rest_of_the_section():
+    out = latex(PLAIN_MD + "\nOrdinary prose after the gate.\n")
+    assert "Ordinary prose after the gate." in out
+    assert out.rindex("\\fi") < out.index("Ordinary prose after the gate.")
+
+
+def test_print_keeps_the_listings_box_for_a_solutions_only_listing():
+    # `.listing .solutions-only` gates itself inside listinger, box and all —
+    # the Div branch must not claim it and render the code bare.
+    out = latex(LISTING_MD)
+    assert "\\begin{listingsbox}" in out
+    assert out.index("\\ifdefined\\issolution") < out.index("\\begin{listingsbox}")
+
+
+# --- print: the compiled PDF ------------------------------------------------
+# The filter assertions above read pandoc's LaTeX. What reaches a student is
+# the PDF — the whole book, and the per-section slices cut from it — so read
+# the answer back out of one lualatex actually produced.
+
+MANUAL_MD = """
+::: {.solutions-only}
+SUPERSECRETANSWER
+:::
+
+::: {.example .solutions-only}
+BOXEDSECRETANSWER
+:::
+"""
+
+
+@pytest.mark.pdf
+@needs_tex
+def test_the_answer_is_not_in_the_compiled_pdf(tiny_project):  # noqa: F811
+    from parody.writers.latex import build_pdf
+    from tests.test_print_memoir import squashed
+
+    section = tiny_project / "chapters" / "one" / "a-section.md"
+    section.write_text(section.read_text() + MANUAL_MD)
+    pdf = build_pdf(tiny_project, profile_dir="memoir")
+    assert pdf is not None and pdf.exists()
+    assert "SUPERSECRETANSWER" not in squashed(pdf)
+    assert "BOXEDSECRETANSWER" not in squashed(pdf)
+
+
+@pytest.mark.pdf
+@needs_tex
+def test_the_answer_IS_in_the_compiled_solutions_manual(tiny_project):  # noqa: F811
+    """The other direction, which a gate that fails closed would also pass.
+
+    `--solutions` defines \\issolution; the content is the whole point of that
+    build, so it has to be there — and a `.solutions-only` box has to still be
+    a box, which it was not while the gate replaced the routing instead of
+    wrapping it.
+    """
+    from parody.writers.latex import build_pdf
+    from tests.test_print_memoir import squashed
+
+    section = tiny_project / "chapters" / "one" / "a-section.md"
+    section.write_text(section.read_text() + MANUAL_MD)
+    pdf = build_pdf(tiny_project, solutions=True, profile_dir="memoir")
+    assert pdf is not None and pdf.exists()
+    text = squashed(pdf)
+    assert "SUPERSECRETANSWER" in text
+    # …and the boxed one is still IN ITS BOX: the example's numbered title sits
+    # immediately before the answer. Asserting the answer alone would pass on a
+    # gate that flattened the box away.
+    assert re.search(r"Example\d+\.\d+BOXEDSECRETANSWER", text), text[-400:]
+
+
+def test_print_keeps_the_box_for_a_solutions_only_example():
+    # The gate WRAPS the routed result: an example inside it is still an
+    # example environment in the manual, not flattened to body text.
+    out = latex("::: {.example .solutions-only}\nSECRET\n:::\n")
+    assert "\\begin{myexample}" in out
+    assert out.index("\\ifdefined\\issolution") < out.index("\\begin{myexample}")
+    assert out.index("\\end{myexample}") < out.rindex("\\fi")

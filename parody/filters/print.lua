@@ -1791,10 +1791,64 @@ local function orphan_solutioner(el)
     '\n\\ifdefined\\issolution\n' .. content .. '\n\\fi\n')
 end
 
+-- `.solutions-only` marks content that belongs to the SOLUTIONS MANUAL — the
+-- `parody pdf --solutions` build, where \issolution is defined. It has to
+-- disappear from the public PDF and print normally in the manual, so the gate
+-- WRAPS whatever the routing below produced rather than replacing it: a
+-- `.solutions-only .example` still gets its example box in the manual.
+--
+-- Blocks, not one raw string: the routed result is already LaTeX, and TeX's
+-- conditional skips the false branch token by token, blank lines included.
+-- A handler that answered with an inline (listinger's float) is put in a
+-- Plain, which is what pandoc does with such a return anyway.
+local BLOCK_TYPES = {
+  Plain = true, Para = true, LineBlock = true, CodeBlock = true,
+  RawBlock = true, BlockQuote = true, OrderedList = true, BulletList = true,
+  DefinitionList = true, Header = true, HorizontalRule = true, Table = true,
+  Figure = true, Div = true,
+}
+
+local function gate_solutions(res)
+  if res == nil then return nil end
+  local out = pandoc.List({ pandoc.RawBlock('latex', '\n\\ifdefined\\issolution\n') })
+  local function push(x)
+    if x.t and BLOCK_TYPES[x.t] then out:insert(x)
+    else out:insert(pandoc.Plain({ x })) end
+  end
+  if res.t then push(res) else
+    for _, x in ipairs(res) do push(x) end
+  end
+  out:insert(pandoc.RawBlock('latex', '\n\\fi\n'))
+  return out
+end
+
+local route_div
+
 function Div(el)
   if el.classes:includes('section') then
     return el -- section-divs pass through; versioning filters are Phase 4
   end
+  -- Nothing below gates this class, so a bare `::: {.solutions-only}` reached
+  -- no handler at all and fell through as ordinary body text — in the PDF the
+  -- per-section slices are cut from. filter.lua has dropped the class since
+  -- 0.29.3; print never got the match.
+  --
+  -- `.listing` is the exception: listinger already wraps its own float in this
+  -- same \ifdefined (it is the only shape any book uses), so gating it here
+  -- would only nest a second, identical conditional around it.
+  if el.classes:includes('solutions-only')
+      and not el.classes:includes('listing') then
+    local routed = route_div(el)
+    -- Unclaimed by every branch: the bare `::: {.solutions-only}` form, which
+    -- goes through orphan_solutioner like a standalone solution div — one raw
+    -- block, its interior walked, its \(…\) turned back into $…$.
+    if routed == nil or routed == el then return orphan_solutioner(el) end
+    return gate_solutions(routed)
+  end
+  return route_div(el)
+end
+
+function route_div(el)
   if el.classes:includes('exercise-solution')
       and not el.classes:includes('in-exercise') then
     return orphan_solutioner(el)
