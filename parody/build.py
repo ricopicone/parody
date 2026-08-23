@@ -455,6 +455,12 @@ def build_project(project_dir, output_path, convert_jupytext=True,
                     print(f"✓ Converted {len(converted)} jupytext files in chapter {chapter.slug}")
 
             chapter_data = {"title": chapter.title, "slug": chapter.slug, "sections": []}
+            # Unconditional, NOT under `if with_hashes` — that is exactly how the
+            # appendix flag below came to be silently dropped for every schema-1
+            # book, so a book declaring appendices got arabic chapter numbers on
+            # the web while print lettered them correctly.
+            if chapter.draft:
+                chapter_data["draft"] = True
             if with_hashes and chapter.hash:
                 chapter_data["hash"] = chapter.hash
             if with_hashes and chapter.appendix:

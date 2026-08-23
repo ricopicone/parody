@@ -32,6 +32,10 @@ class Chapter:
     section_slugs: list = field(default_factory=list)
     hash: str = ""  # stable short hash (schema v2 / hashref target)
     appendix: bool = False  # renders after \appendix (A.1, B.1 numbering)
+    # draft: authored and NUMBERED, but not yet released. Omitted from print and
+    # hidden on the web from readers the access policy excludes. It keeps its
+    # chapter number so releasing chapters one at a time never renumbers the book.
+    draft: bool = False
 
 
 @dataclass
@@ -142,6 +146,7 @@ def load_project(project_dir):
             section_slugs=sections,
             hash=str(ch.get("hash", "") or ""),
             appendix=bool(ch.get("appendix", False)),
+            draft=bool(ch.get("draft", False)),
         ))
 
     return Project(
