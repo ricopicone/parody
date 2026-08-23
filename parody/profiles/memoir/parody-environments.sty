@@ -15,6 +15,10 @@
 \RequirePackage{graphicx}
 \RequirePackage{float}
 \RequirePackage{booktabs}
+% array: the print filter gives a wide table wrapping p{} columns, and
+% sets them ragged-right — narrow measures justify horribly. See
+% PROFILE-CONTRACT.md.
+\RequirePackage{array}
 \RequirePackage{longtable} % pandoc emits it for pipe tables
 \RequirePackage{caption}
 \RequirePackage{subcaption}

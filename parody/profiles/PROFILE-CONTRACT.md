@@ -37,6 +37,13 @@ and `\printindex`.
 - `clozeblock` — fill-in-the-blank passage; in `blank` mode ONE framed box the height of what it hides (not ruled lines), with a floor so there is always room to write
   in `blank` mode, prints its content in `full`.
 
+## Packages the filter's output needs
+
+`booktabs` (`\toprule`/`\midrule`/`\bottomrule`) and `array` — a table wide
+enough for pandoc to measure is emitted with
+`>{\raggedright\arraybackslash}p{…}` columns so it wraps instead of running
+off the page.
+
 ## Commands
 
 - `\figcaption[short][float|nofloat]{id}{caption}`,

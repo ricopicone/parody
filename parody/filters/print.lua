@@ -1472,6 +1472,37 @@ local function tabler_latex(el)
     return table.concat(cells, ' & ') .. ' \\\\'
   end
 
+  -- Column spec. pandoc measures a wide markdown table and hands us a width
+  -- per column; throwing those away and using 'l' everywhere is what put four
+  -- of System Dynamics' tables OFF THE PAGE — one by 719pt, about three times
+  -- the measure. A width means a wrapping p{} column.
+  --
+  -- Widths are fractions of \linewidth that do not allow for the gap between
+  -- columns, so each loses its share of 2\tabcolsep (\dimexpr does the integer
+  -- arithmetic). Ragged-right, because a narrow measure justifies horribly;
+  -- `array` is a profile requirement (PROFILE-CONTRACT.md).
+  local function colspec(ncols)
+    local widths, any = {}, false
+    for i = 1, ncols do
+      local cs = el.colspecs and el.colspecs[i]
+      local w = cs and cs[2]
+      if type(w) == 'number' and w > 0 then widths[i] = w; any = true end
+    end
+    if not any then return string.rep('l', ncols) end
+    local spec = {}
+    for i = 1, ncols do
+      if widths[i] then
+        spec[i] = string.format(
+          '>{\\raggedright\\arraybackslash}'
+          .. 'p{\\dimexpr \\linewidth*%d/10000-2\\tabcolsep\\relax}',
+          math.floor(widths[i] * 10000 + 0.5))
+      else
+        spec[i] = 'l'
+      end
+    end
+    return table.concat(spec)
+  end
+
   local function render_tabular(header, rows)
     if rows == nil or #rows == 0 then return '' end
     local lines = { '\\toprule', render_row(header), '\\midrule' }
@@ -1479,7 +1510,7 @@ local function tabler_latex(el)
       lines[#lines + 1] = render_row(row)
     end
     lines[#lines + 1] = '\\bottomrule'
-    return '\\begin{tabular}{' .. string.rep('l', #rows[1]) .. '}\n'
+    return '\\begin{tabular}{' .. colspec(#rows[1]) .. '}\n'
       .. table.concat(lines, '\n') .. '\n\\end{tabular}'
   end
 
