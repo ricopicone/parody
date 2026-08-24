@@ -165,8 +165,47 @@ def section_frontmatter(md_path):
 # \section / \section* / \lab — the commands print.lua emits for a section's
 # OWN heading. \subsection and below are headings WITHIN a section and must not
 # be mistaken for one (a book whose sections open with ## would otherwise keep
-# losing its titles).
+# losing its titles) — UNLESS the subheading claims the section's own id or
+# short hash, which _promote_own_heading handles.
 _OWN_HEADING = re.compile(r"\\(?:section\*?|lab)\s*[\[{]")
+
+
+_SUB_HEADING = re.compile(r"\\(?:sub)+section(\*?)\s*\{")
+
+
+def _promote_own_heading(tex, labels):
+    r"""Raise a deeper heading that claims one of ``labels`` to ``\section``.
+
+    RTC writes one of its sections as ``## Title {#workspace h="xa"}``, which
+    pandoc renders as ``\subsection`` — so _OWN_HEADING misses it and a second,
+    synthesized heading used to go above it. That printed the title twice (the
+    synthesized copy carrying its markdown backticks, since it inserts the
+    front-matter string rather than the converted one) and claimed the section's
+    id and hash a SECOND time, so drop_duplicate_labels saw an ambiguous name
+    and dropped both — after which every ``[xa]{.hashref}`` printed as ``??``.
+
+    Merely leaving the subheading alone is not the fix either: the section then
+    nests under its predecessor, losing its TOC entry and its own number — which
+    is what print did before headings were synthesized at all. Promoting keeps
+    one title, at section level, with one set of labels.
+
+    Returns the rewritten tex, or None when no such heading is there (a ``##``
+    subheading claiming none of the section's names is a real subheading, and
+    the caller still synthesizes a title above it).
+    """
+    for value in labels:
+        m = re.search(r"\\label\{%s\}" % re.escape(value), tex)
+        if not m:
+            continue
+        # the nearest sectioning command BEFORE the label is the one carrying it
+        owner = None
+        for cand in _SUB_HEADING.finditer(tex, 0, m.start()):
+            owner = cand
+        if owner is None:
+            continue
+        return (tex[:owner.start()] + "\\section%s{" % owner.group(1)
+                + tex[owner.end():])
+    return None
 
 
 def synthesize_section_heading(tex, meta, slug):
@@ -180,7 +219,8 @@ def synthesize_section_heading(tex, meta, slug):
 
     Returns ``tex`` unchanged when the section already owns a heading, or when
     it is a chapter lead-in (whose heading is the ``\\chapter`` itself, exactly
-    as parody-web renders it).
+    as parody-web renders it). A deeper heading that claims the section's own id
+    or short hash is promoted rather than duplicated — see _promote_own_heading.
     """
     if slug == "lead-in" or _OWN_HEADING.search(tex):
         return tex
@@ -190,17 +230,11 @@ def synthesize_section_heading(tex, meta, slug):
     labels = [v for v in (str(meta.get(k) or "").strip() for k in ("id", "hash"))
               if v and v != slug]
     # A heading at ANY level that already CLAIMS this section's id or short hash
-    # is the section's own heading, whatever depth it renders at. RTC writes one
-    # section as `## Title {#workspace h="xa"}`: \subsection, so the check above
-    # misses it, and synthesizing a second heading printed the title twice (the
-    # copy carrying its markdown backticks) and claimed `workspace` and `xa` a
-    # second time — so drop_duplicate_labels dropped BOTH and every
-    # [xa]{.hashref} in the book printed as `??`. Matching on the label rather
-    # than the depth keeps the case above working: a `##` subheading that claims
-    # none of the section's names is still a subheading, and its title is still
-    # synthesized.
-    if any(re.search(r"\\label\{%s\}" % re.escape(v), tex) for v in labels):
-        return tex
+    # is the section's own heading, whatever depth it renders at — so promote it
+    # instead of writing a second one above it. See _promote_own_heading.
+    promoted = _promote_own_heading(tex, labels)
+    if promoted is not None:
+        return promoted
     heading = "\\section{%s}" % title
     # The same labels headerer_latex hangs off a real heading, so \cref to the
     # section's id or short hash resolves.

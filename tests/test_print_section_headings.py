@@ -120,8 +120,20 @@ def test_the_synthesized_heading_reaches_the_document(project):
 
 
 def test_an_h2_heading_that_carries_the_sections_own_id_is_its_heading(project):
+    # promoted, not duplicated and not left nested: the section keeps ONE title,
+    # at section level, so it still earns a TOC entry and its own number — and
+    # the title is the CONVERTED one, not the raw front-matter string
     build_pdf(project)
     out = tex(project, "owns-h2")
-    assert "\\section{Owns It Too}" not in out, out
+    assert out.count("\\section{") == 1, out
+    assert "\\subsection{" not in out, out
     assert out.count("\\label{workspace}") == 1, out
     assert out.count("\\label{xa}") == 1, out
+
+
+def test_a_promoted_heading_keeps_its_converted_title(project):
+    # the synthesized copy inserted the front-matter title verbatim, so RTC's
+    # `## The Eclipse workspace and \`hello-world\`` printed its backticks
+    build_pdf(project)
+    out = tex(project, "owns-h2")
+    assert "\\section{Owns It Too}" in out, out
