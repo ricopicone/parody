@@ -185,9 +185,15 @@ local function warn(fmt, ...)
   io.stderr:write('latex-to-md: ' .. string.format(fmt, ...) .. '\n')
 end
 
+-- The argument is content, not a string. Handing the raw string to a Span made
+-- it one Str, and writing that back out escaped the maths in it -- so
+-- `\keyword{inductance $L$}` migrated to `[inductance \$L\$]{.keyword}` and
+-- printed a raw dollar. `{(.-)}` also stopped at the first `}`, truncating
+-- `\keyword{mean of means $\overline{\overline{X}_i}$}` mid-term with no error.
 local function keyworder(element)
-  local main_text = element.text:match("{(.-)}")
-  return pandoc.Span(main_text,{class='keyword'})
+  local args = read_args(element.text, 1)
+  if not args then return element end
+  return pandoc.Span(convert_inlines(args[1]), {class = 'keyword'})
 end
 
 local function clozer(element)

@@ -340,3 +340,28 @@ def test_preprocess_postprocess_pure():
     assert "PARODYSECATTR slug-a q1" in pre
     md = postprocess("# Title A\n\nPARODYSECATTR slug-a q1\n")
     assert md.splitlines()[0] == '# Title A {#slug-a h="q1"}'
+
+
+# --- \keyword's argument is content, not a string (task #656) ---------------
+
+KEYWORD_TEX = textwrap.dedent(r"""
+    \section[S]{kw-sample}{bk}{Keyword sample}
+
+    The slope is the \keyword{inductance $L$} of the coil.
+
+    The \keyword{mean of means $\overline{\overline{X}_i}$} is best.
+    """)
+
+
+def test_keyword_argument_keeps_its_maths(tmp_path):
+    # stringifying the argument escaped the delimiters to \$L\$, so the term
+    # reached print as literal text and the page showed a raw dollar
+    out = convert_src(tmp_path, KEYWORD_TEX)
+    assert r"[inductance $L$]{.keyword}" in out, out
+    assert r"\$" not in out, out
+
+
+def test_keyword_argument_survives_nested_braces(tmp_path):
+    # `{(.-)}` stopped at the first `}`, truncating \overline{\overline{X}_i}
+    out = convert_src(tmp_path, KEYWORD_TEX)
+    assert r"\overline{\overline{X}_i}" in out, out

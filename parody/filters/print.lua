@@ -123,6 +123,41 @@ local function walk_to_latex(el)
   return pandoc.write(content_doc, 'latex')
 end
 
+-- ---- escaped maths inside a stringified span --------------------------------
+-- The LaTeX migration stringified the argument of \keyword and \cloze, so the
+-- maths in it came through as literal text and pandoc escaped it on the way
+-- out: `[inductance \$L\$]{.keyword}` reaches this filter as the single Str
+-- "inductance $L$". stringify used to hand that to TeX as raw LaTeX, where it
+-- typeset by luck; inlines_to_latex escapes it honestly, to \$L\$, and the page
+-- prints a raw dollar and unparsed maths. Four books carry terms written that
+-- way, so read the delimiters back as maths before rendering.
+--
+-- Deliberately narrow. Only a span whose content is ENTIRELY plain text is
+-- touched (real maths arrives as a Math inline, and that content is left
+-- alone), and only when a $…$ pair is actually there — RTC's problem tables
+-- price fruit at `\$0.50`, and a lone dollar must stay a dollar. Pandoc's own
+-- reader decides what pairs, so the rules match the ones the author wrote to.
+local function rescue_dollar_math(content)
+  local text = {}
+  for _, il in ipairs(content) do
+    if il.t == 'Str' then
+      text[#text + 1] = il.text
+    elseif il.t == 'Space' or il.t == 'SoftBreak' then
+      text[#text + 1] = ' '
+    else
+      return content -- not plain text; nothing was stringified here
+    end
+  end
+  text = table.concat(text)
+  if not text:match('%$[^%s%$][^%$]*%$') then return content end
+  -- a reader error here would abort the whole PDF build over one term
+  local ok, doc = pcall(pandoc.read, text, 'markdown+tex_math_dollars')
+  if not ok then return content end
+  local read = doc.blocks
+  if #read ~= 1 or read[1].t ~= 'Para' then return content end
+  return read[1].content
+end
+
 local function inlines_to_latex(content)
   local walked = pandoc.Para(content)
   -- inline code in a moving argument (section title, figure/table caption)
@@ -174,7 +209,7 @@ end
 
 local function clozer_latex(el)
   return pandoc.RawInline('tex',
-    '\\cloze{' .. inlines_to_latex(el.content) .. '}')
+    '\\cloze{' .. inlines_to_latex(rescue_dollar_math(el.content)) .. '}')
 end
 
 local function blanker_latex(el)
@@ -374,7 +409,7 @@ local function keyworder(el)
   -- stringify would drop the $…$ around any maths in the term, and the
   -- Statistics chapter names four of them ("mean of means $\\overline{\\overline{X}_i}$")
   -- — in text mode that is "Missing $ inserted", fatal, no PDF at all.
-  local content = inlines_to_latex(el.content)
+  local content = inlines_to_latex(rescue_dollar_math(el.content))
   return pandoc.RawInline('latex', '\\keyword{' .. content .. '}')
 end
 
