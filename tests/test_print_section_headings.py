@@ -22,7 +22,7 @@ authors: [Tester]
 chapters:
   - slug: one
     title: Chapter One
-    sections: [lead-in, headless, subs-only, owns-heading]
+    sections: [lead-in, headless, subs-only, owns-heading, owns-h2]
 """
 
 FM = "---\ntitle: {title}\nslug: {slug}\n{extra}---\n\n"
@@ -52,6 +52,16 @@ def project(tmp_path, monkeypatch):
     (ch / "owns-heading.md").write_text(
         FM.format(title="Owns It", slug="owns-heading", extra="")
         + "# Owns It {#owns-it}\n\nBody.\n")
+    # RTC writes ONE of its sections as `##`, and that heading carries the
+    # section's own id and hash — so it IS the section's heading, even though
+    # it renders as \subsection. Synthesizing a second one printed the title
+    # twice (the copy with its markdown backticks intact) and, worse, claimed
+    # `workspace` and `xa` a second time, so drop_duplicate_labels dropped
+    # both and all four `[xa]{.hashref}` refs printed as `??`.
+    (ch / "owns-h2.md").write_text(
+        FM.format(title="Owns It Too", slug="owns-h2",
+                  extra="id: workspace\nhash: xa\n")
+        + '## Owns It Too {#workspace h="xa"}\n\nBody.\n')
     return root
 
 
@@ -107,3 +117,11 @@ def test_the_synthesized_heading_reaches_the_document(project):
     main = (project / "build" / "print" / "main.tex").read_text()
     # chapter heading still comes from build_pdf, not from the lead-in
     assert "\\chapter{Chapter One}" in main
+
+
+def test_an_h2_heading_that_carries_the_sections_own_id_is_its_heading(project):
+    build_pdf(project)
+    out = tex(project, "owns-h2")
+    assert "\\section{Owns It Too}" not in out, out
+    assert out.count("\\label{workspace}") == 1, out
+    assert out.count("\\label{xa}") == 1, out

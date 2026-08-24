@@ -187,13 +187,25 @@ def synthesize_section_heading(tex, meta, slug):
     title = str(meta.get("title") or "").strip()
     if not title:
         return tex
+    labels = [v for v in (str(meta.get(k) or "").strip() for k in ("id", "hash"))
+              if v and v != slug]
+    # A heading at ANY level that already CLAIMS this section's id or short hash
+    # is the section's own heading, whatever depth it renders at. RTC writes one
+    # section as `## Title {#workspace h="xa"}`: \subsection, so the check above
+    # misses it, and synthesizing a second heading printed the title twice (the
+    # copy carrying its markdown backticks) and claimed `workspace` and `xa` a
+    # second time — so drop_duplicate_labels dropped BOTH and every
+    # [xa]{.hashref} in the book printed as `??`. Matching on the label rather
+    # than the depth keeps the case above working: a `##` subheading that claims
+    # none of the section's names is still a subheading, and its title is still
+    # synthesized.
+    if any(re.search(r"\\label\{%s\}" % re.escape(v), tex) for v in labels):
+        return tex
     heading = "\\section{%s}" % title
     # The same labels headerer_latex hangs off a real heading, so \cref to the
     # section's id or short hash resolves.
-    for key in ("id", "hash"):
-        value = str(meta.get(key) or "").strip()
-        if value and value != slug:
-            heading += "\n\\label{%s}" % value
+    for value in labels:
+        heading += "\n\\label{%s}" % value
     return heading + "\n\n" + tex
 
 
