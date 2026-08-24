@@ -203,6 +203,14 @@ def _promote_own_heading(tex, labels):
             owner = cand
         if owner is None:
             continue
+        # ...and a section's OWN heading opens it. A subheading further down
+        # that happens to claim one of the section's names is a subheading:
+        # promoting it would retitle the section after it and drop the real
+        # title entirely. Both of math's `problems` sections carry a front
+        # matter id naming a heading in their body, and they must keep saying
+        # "Problems".
+        if tex[:owner.start()].strip():
+            continue
         return (tex[:owner.start()] + "\\section%s{" % owner.group(1)
                 + tex[owner.end():])
     return None

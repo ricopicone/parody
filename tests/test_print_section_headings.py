@@ -137,3 +137,17 @@ def test_a_promoted_heading_keeps_its_converted_title(project):
     build_pdf(project)
     out = tex(project, "owns-h2")
     assert "\\section{Owns It Too}" in out, out
+
+
+def test_a_later_subheading_claiming_the_id_is_not_promoted(project, tmp_path):
+    # math's `problems` sections carry a front-matter id naming a heading in
+    # their BODY; promoting that heading would retitle the section after it
+    from parody.writers.latex import synthesize_section_heading
+    tex = ("\\begin{exercise}\nProse first.\n\\end{exercise}\n\n"
+           "\\subsection{Generating the data set}\n"
+           "\\label{generating-the-data-set}\n")
+    out = synthesize_section_heading(
+        tex, {"title": "Problems", "id": "generating-the-data-set",
+              "hash": "__pg"}, "problems")
+    assert out.startswith("\\section{Problems}"), out
+    assert "\\subsection{Generating the data set}" in out, out
