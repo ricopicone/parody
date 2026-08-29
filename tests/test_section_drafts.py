@@ -77,6 +77,18 @@ def test_sections_inherit_a_draft_chapter(tmp_path):
     assert all("draft" not in s for s in _sections(art, "one").values())
 
 
+def test_a_draft_chapter_says_so_on_every_one_of_its_sections(tmp_path):
+    """Never silently — see the comment in build_project. An artifact built
+    before this feature marks the chapter and says nothing about its sections,
+    so the importer must be able to tell the two apart."""
+    root = _book(tmp_path, chapter_drafts=("two",),
+                 section_drafts={"two/two-a": False})
+    art = build_project(root, tmp_path / "bk.json", convert_jupytext=False)
+    assert all("draft" in s for s in _sections(art, "two").values())
+    # A released chapter still says nothing about its released sections.
+    assert all("draft" not in s for s in _sections(art, "one").values())
+
+
 def test_a_published_section_survives_a_draft_chapter(tmp_path):
     """The override that makes the feature worth having: one ready section
     released out of a chapter still in development."""
@@ -84,7 +96,10 @@ def test_a_published_section_survives_a_draft_chapter(tmp_path):
                  section_drafts={"two/two-a": False})
     art = build_project(root, tmp_path / "bk.json", convert_jupytext=False)
     secs = _sections(art, "two")
-    assert "draft" not in secs["two-a"]
+    # Explicitly false, not absent: inside a draft chapter, silence is what an
+    # artifact built before 0.55.0 says about EVERY section, and a consumer
+    # reading that as "released" would publish the whole unreleased chapter.
+    assert secs["two-a"]["draft"] is False
     assert secs["two-b"]["draft"] is True
     # The chapter keeps its own flag: it still drives the staff badge and
     # print's whole-chapter skip.
@@ -105,3 +120,72 @@ def test_a_draft_section_does_not_renumber_the_book(tmp_path):
         orders.append([(c["slug"], [s["slug"] for s in c["sections"]])
                        for c in art["chapters"]])
     assert orders[0] == orders[1]
+
+
+@pytest.fixture
+def no_tex(monkeypatch):
+    """build_pdf writes the whole LaTeX tree before it calls latexmk, so the
+    wiring is checkable by reading the generated sources with no TeX at all."""
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+
+
+def test_print_omits_a_draft_section_but_keeps_its_number(tmp_path, no_tex):
+    root = _book(tmp_path, section_drafts={"one/one-a": True})
+    build_pdf(root)
+    build = root / "build" / "print"
+    main = (build / "main.tex").read_text()
+
+    assert "\\chapter{One}" in main                        # the chapter prints
+    assert "\\input{sections/one/one-b.tex}" in main
+    assert "\\input{sections/one/one-a.tex}" not in main   # the draft does not
+    assert not (build / "sections" / "one" / "one-a.tex").exists()
+    assert "\\stepcounter{section}" in main                # but takes its number
+
+
+def test_a_chapter_of_only_drafts_behaves_like_a_draft_chapter(tmp_path, no_tex):
+    root = _book(tmp_path, section_drafts={"two/two-a": True, "two/two-b": True})
+    build_pdf(root)
+    main = (root / "build" / "print" / "main.tex").read_text()
+    assert "\\chapter{Two}" not in main       # no heading
+    assert "\\label{two}" not in main         # no label
+    assert "\\stepcounter{chapter}" in main   # but it consumes its number
+
+
+def test_a_published_section_prints_out_of_a_draft_chapter(tmp_path, no_tex):
+    root = _book(tmp_path, chapter_drafts=("two",),
+                 section_drafts={"two/two-a": False})
+    build_pdf(root)
+    main = (root / "build" / "print" / "main.tex").read_text()
+    assert "\\chapter{Two}" in main
+    assert "\\input{sections/two/two-a.tex}" in main
+    assert "\\input{sections/two/two-b.tex}" not in main
+
+
+def test_print_without_drafts_is_unchanged(tmp_path, no_tex):
+    root = _book(tmp_path)
+    build_pdf(root)
+    main = (root / "build" / "print" / "main.tex").read_text()
+    assert "\\stepcounter{section}" not in main
+    assert "\\stepcounter{chapter}" not in main
+
+
+def test_the_counter_steps_only_for_a_section_that_would_have_a_heading():
+    r"""\stepcounter in place of a section that never emitted a \section would
+    hand it a number it never had — synthesize_section_heading leaves a lead-in
+    and a titleless, heading-less section alone."""
+    from parody.writers.latex import section_prints_a_heading
+    assert section_prints_a_heading("lead-in", {"title": "Intro"}, "text") is False
+    assert section_prints_a_heading("s", {"title": "T"}, "text") is True
+    assert section_prints_a_heading("s", {}, "text") is False
+    assert section_prints_a_heading("s", {}, "# Own heading\n\ntext") is True
+    assert section_prints_a_heading("s", {}, "## Own subheading\n\ntext") is True
+    assert section_prints_a_heading("s", {}, "### Deeper only\n\ntext") is False
+
+
+def test_a_draft_section_has_no_print_page_range(tmp_path, no_tex):
+    """Which is what makes section_pdf 404 on the web without its own gate."""
+    root = _book(tmp_path, section_drafts={"one/one-a": True})
+    build_pdf(root, pagemap=True)
+    main = (root / "build" / "print" / "main.tex").read_text()
+    assert "\\parodypagemark{one/one-b}" in main
+    assert "\\parodypagemark{one/one-a}" not in main

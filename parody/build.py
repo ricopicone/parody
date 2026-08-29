@@ -480,16 +480,28 @@ def build_project(project_dir, output_path, convert_jupytext=True,
                     chapter.directory, section_slug,
                     with_hashes=with_hashes, transform=transform,
                     section_file=section_file)
-                # Resolve the section's own `draft:` against its chapter's, and
-                # emit the flag only when the section is effectively a draft:
-                # `false` never reaches the artifact, so a book that marks
-                # nothing draft stays byte-identical (as with chapter_start).
+                # Resolve the section's own `draft:` against its chapter's.
                 # Unconditional, NOT under `if with_hashes` — that is how the
                 # appendix flag came to be silently dropped for every schema-1
                 # book.
+                #
+                # In a RELEASED chapter the key is emitted only when the section
+                # is a draft: absence means released, which is both the default
+                # and what every artifact built before this feature says, so a
+                # book that marks nothing draft stays byte-identical.
+                #
+                # In a DRAFT chapter it is emitted either way, including
+                # `false`. Silence there is ambiguous — an artifact built before
+                # 0.55.0 carries a draft chapter whose sections say nothing at
+                # all, and a consumer that read silence as "released" would
+                # publish every unreleased chapter in the book. Saying it
+                # explicitly leaves the importer's inheritance fallback firing
+                # only for those older artifacts, where it is right.
                 if resolve_section_draft(section_data.pop("draft", None),
                                          chapter.draft):
                     section_data["draft"] = True
+                elif chapter.draft:
+                    section_data["draft"] = False
                 # Print page range from `parody pdf`'s sidecar, when one was
                 # supplied. Sections the sidecar does not mention simply carry
                 # no print key, and the web side offers them no PDF.
