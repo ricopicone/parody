@@ -29,6 +29,7 @@ from .writers.artifact import (
     get_section_download_paths,
     get_source_commit,
     load_section,
+    resolve_section_draft,
 )
 
 _MEDIA_REF_RE = re.compile(r"\{%\s*media\s+'([^']+)'\s*%\}")
@@ -479,6 +480,16 @@ def build_project(project_dir, output_path, convert_jupytext=True,
                     chapter.directory, section_slug,
                     with_hashes=with_hashes, transform=transform,
                     section_file=section_file)
+                # Resolve the section's own `draft:` against its chapter's, and
+                # emit the flag only when the section is effectively a draft:
+                # `false` never reaches the artifact, so a book that marks
+                # nothing draft stays byte-identical (as with chapter_start).
+                # Unconditional, NOT under `if with_hashes` — that is how the
+                # appendix flag came to be silently dropped for every schema-1
+                # book.
+                if resolve_section_draft(section_data.pop("draft", None),
+                                         chapter.draft):
+                    section_data["draft"] = True
                 # Print page range from `parody pdf`'s sidecar, when one was
                 # supplied. Sections the sidecar does not mention simply carry
                 # no print key, and the web side offers them no PDF.

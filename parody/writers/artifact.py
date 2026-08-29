@@ -834,6 +834,19 @@ def convert_solution_to_html(solution_markdown, chapter_dir, cloze_mode=None,
     html = _post_process_html_for_anchors(html)
     return html
 
+def resolve_section_draft(declared, chapter_draft):
+    """Whether a section is effectively a draft.
+
+    One rule, in one place, because BOTH producers need it — the artifact
+    writer and the print writer — and a second copy is how they drift.
+    ``declared`` is the section's own front-matter ``draft:`` (None when it says
+    nothing): absent inherits the chapter, an explicit value overrides it in
+    either direction, so a draft section can sit in a released chapter and a
+    released section in a draft one.
+    """
+    return bool(chapter_draft) if declared is None else bool(declared)
+
+
 def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
                  section_file=None):
     # section_file overrides the default <slug>.md filename so an edition can
@@ -963,6 +976,13 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
     }
     if section_hash:
         result["hash"] = section_hash
+
+    # The section's own `draft:`, if it declared one. Left ABSENT when it did
+    # not, so build_project can tell "inherit" from "explicitly published" —
+    # the difference between the two is the whole feature. The resolution
+    # against the chapter happens there; load_section has no chapter in scope.
+    if meta.get("draft") is not None:
+        result["draft"] = bool(meta["draft"])
 
     # Add solutions if any were found
     if solutions_html:
