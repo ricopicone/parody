@@ -22,6 +22,7 @@ from pathlib import Path
 from string import Template
 
 from ..config import load_project
+from .artifact import resolve_section_draft
 from .pagemap import (build_ranges, insert_section_mark, read_pagemap,
                       write_sidecar)
 
@@ -251,6 +252,31 @@ def synthesize_section_heading(tex, meta, slug):
     return heading + "\n\n" + tex
 
 
+# An ATX heading of level 1 or 2 at the start of a line: the section's own
+# heading, which pandoc renders as \section (or as \subsection, which
+# _promote_own_heading raises when it claims the section's own id).
+_ATX_OWN_HEADING = re.compile(r"(?m)^#{1,2} \S")
+
+
+def section_prints_a_heading(slug, meta, body):
+    r"""Whether this section emits a ``\section`` — mirroring the branches of
+    synthesize_section_heading, read off the SOURCE markdown.
+
+    A draft section is skipped but must still consume its number, and the step
+    is only right for a section that had one: a chapter lead-in emits no
+    heading (the ``\chapter`` is its heading), and neither does a section
+    carrying no front-matter title and no heading of its own. Stepping for one
+    of those would hand the skipped section a number it never had, moving every
+    section after it — the exact disagreement between print and web that this
+    feature must not introduce.
+    """
+    if slug == "lead-in":
+        return False
+    if _ATX_OWN_HEADING.search(body or ""):
+        return True
+    return bool(str((meta or {}).get("title") or "").strip())
+
+
 def strip_frontmatter(md_path, dest_path, transform=None):
     """Write a copy of the section with YAML frontmatter removed (pandoc
     would otherwise interpret stray frontmatter keys), applying any
@@ -421,6 +447,13 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     active_meta = _meta_for_edition(project.meta, edition) if edition \
         else project.meta
 
+    def _section_src_name(chapter, slug, edition):
+        """The section's source filename: an edition's overlay when it has forked
+        one (<slug>.<edition>.md), else the shared <slug>.md."""
+        if edition:
+            return _resolve_section_file(chapter.directory, slug, edition["id"])
+        return f"{slug}.md"
+
     from ..config import resolve_cloze_mode
     cloze_mode = resolve_cloze_mode(active_meta, cloze_mode)
 
@@ -489,21 +522,6 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
         emitted_tex, chapter_labels = [], []
         for chapter in project.chapters:
             sections = chapter.section_slugs
-            if chapter.draft and not section:
-                # Authored but not released: emit no \chapter, no \label, no QR
-                # and none of its sections — but still consume the number, so a
-                # released later chapter keeps the number the web shows it under.
-                #
-                # The \appendix switch still has to happen for a draft appendix
-                # chapter: \appendix resets the counter to letter numbering, so
-                # stepping before it would advance the arabic counter instead.
-                if chapter.appendix and not appendix_started:
-                    chapters_tex.append("\\appendix")
-                    appendix_started = True
-                # \stepcounter, not \refstepcounter: nothing labels a draft
-                # chapter, and refstep would leave \ref pointing at it.
-                chapters_tex.append("\\stepcounter{chapter}")
-                continue
             if section:
                 want_ch, _, want_sec = section.partition("/")
                 if chapter.slug != want_ch:
@@ -517,7 +535,42 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                     s for s in sections
                     if _resolve_section_file(chapter.directory, s,
                                              edition["id"]) is not None]
-            if sections and not section:
+            # Resolve each section's draft status against its chapter's. A draft
+            # section does not print — and a chapter whose sections are ALL
+            # drafts (which is every section of a draft chapter that says
+            # nothing) prints nothing at all, which is the whole-chapter skip
+            # this used to spell out against chapter.draft.
+            #
+            # An explicit `--section ch/sec` overrides: an author asking for one
+            # section by name gets it, draft or not.
+            drafts = {}
+            if not section:
+                for s in sections:
+                    drafts[s] = resolve_section_draft(
+                        section_frontmatter(
+                            chapter.directory / _section_src_name(
+                                chapter, s, edition)).get("draft"),
+                        chapter.draft)
+            live = [s for s in sections if not drafts.get(s)]
+            if not live and not section:
+                # Nothing to print. Consume the chapter number, so a chapter
+                # released later keeps the number the web already shows it
+                # under. The \appendix switch still has to happen first: it
+                # resets the counter to letter numbering, so stepping before it
+                # would advance the arabic counter instead.
+                #
+                # `chapter.draft or sections`: a chapter left empty by an
+                # EDITION is absent from that edition entirely and consumes no
+                # number, which is the behaviour of the branch just above.
+                if chapter.draft or sections:
+                    if chapter.appendix and not appendix_started:
+                        chapters_tex.append("\\appendix")
+                        appendix_started = True
+                    # \stepcounter, not \refstepcounter: nothing labels a draft
+                    # chapter, and refstep would leave \ref pointing at it.
+                    chapters_tex.append("\\stepcounter{chapter}")
+                continue
+            if live and not section:
                 if chapter.appendix and not appendix_started:
                     # switch to A.1/B.1 numbering for the appendix chapters
                     chapters_tex.append("\\appendix")
@@ -536,8 +589,19 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                                     f"\\parodyqrch{{{chapter.hash}}}\\fi")
                 chapters_tex.append(chapter_tex)
             os.environ["PARODY_CHAPTER_DIR"] = str(Path(chapter.directory).resolve())
-            first_in_chapter = bool(sections) and not section
+            first_in_chapter = bool(live) and not section
             for sec_slug in sections:
+                if drafts.get(sec_slug):
+                    # Skipped, but it keeps its number — only if it would have
+                    # had one. Emitted in position, so every section after it
+                    # numbers exactly as it does on the web.
+                    draft_src = chapter.directory / _section_src_name(
+                        chapter, sec_slug, edition)
+                    if section_prints_a_heading(
+                            sec_slug, section_frontmatter(draft_src),
+                            draft_src.read_text(encoding="utf-8")):
+                        chapters_tex.append("\\stepcounter{section}")
+                    continue
                 key = f"{chapter.slug}/{sec_slug}"
                 pagemap_order.append(key)
                 if edition:
