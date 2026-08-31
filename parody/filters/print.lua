@@ -1878,7 +1878,14 @@ function Div(el)
   -- `.listing` is the exception: listinger already wraps its own float in this
   -- same \ifdefined (it is the only shape any book uses), so gating it here
   -- would only nest a second, identical conditional around it.
-  if el.classes:includes('solutions-only')
+  --
+  -- `.staff-only` rides the same gate. On the WEB the two are opposites — the
+  -- solutions-only div is deleted from public html, the staff-only div ships
+  -- and parody-web gates it per reader — but print has no reader to ask, and
+  -- the solutions manual is the only staff print artifact there is, so
+  -- \ifdefined\issolution is the exact question in both cases.
+  if (el.classes:includes('solutions-only')
+      or el.classes:includes('staff-only'))
       and not el.classes:includes('listing') then
     local routed = route_div(el)
     -- Unclaimed by every branch: the bare `::: {.solutions-only}` form, which
