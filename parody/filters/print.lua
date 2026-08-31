@@ -842,8 +842,15 @@ local function exerciser(el)
     labels = labels .. '\\label{' .. hash .. '}'
   end
   local sol_env = el.classes:includes('lab') and 'labsolution' or 'solution'
+  -- A starred problem is marked, not renumbered: same environment, same
+  -- counter. The mark opens the BODY rather than riding an xsim property,
+  -- because the two profiles disagree about who owns the heading — memoir
+  -- defines its own run-in template, the MIT print class supplies its own —
+  -- and a body token is correct under either. \parodystarmark is
+  -- \providecommand'd by every profile (PROFILE-CONTRACT.md).
+  local star = el.classes:includes('starred') and '\\parodystarmark{}' or ''
   local out = '\\begin{' .. env .. '}[ID=' .. hash .. ',hash=' .. hash .. ']\n'
-    .. labels .. '\n' .. content .. '\n\\end{' .. env .. '}'
+    .. labels .. '\n' .. star .. content .. '\n\\end{' .. env .. '}'
   for _, sol in ipairs(solutions) do
     out = out .. '\n\\begin{' .. sol_env .. '}\n'
       .. delimiter_dollar(walk_to_latex(sol)) .. '\n\\end{' .. sol_env .. '}'

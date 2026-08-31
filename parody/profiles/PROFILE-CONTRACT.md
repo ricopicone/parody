@@ -56,6 +56,13 @@ off the page.
   `\clozelines{n}` — fill-in-the-blank rendering; all three branch on
   `\clozemode`. Not `\blank`: memoir already defines it, and `\newcommand`
   over an existing macro errors and leaves the other definition in force.
+- `\parodystarmark` — the mark on a starred problem
+  (`::: {.exercise .starred}`). print.lua emits it as the first token of the
+  exercise BODY, not through an xsim property, because the profiles disagree
+  about who owns the exercise heading: memoir defines its own run-in template
+  and the MIT print class supplies one. A body token is correct under either.
+  Starring changes the mark and nothing else — same environment, same counter,
+  same number as an unstarred neighbour.
 
 ## Build flags (set via `\def` before the class options take effect)
 

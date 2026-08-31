@@ -568,6 +568,13 @@ local function exercise(el)
       classes[#classes + 1] = "lab"
       kv[#kv + 1] = {"data-lab", "1"}
     end
+    -- .starred is a MODIFIER, not a kind: it composes with .lab rather than
+    -- replacing it, and it changes no numbering. The renderer draws the mark;
+    -- what the star MEANS is the book's business, not parody's.
+    if el.classes:includes('starred') then
+      classes[#classes + 1] = "starred"
+      kv[#kv + 1] = {"data-starred", "1"}
+    end
     return pandoc.Div({
       pandoc.Div({
         pandoc.Header(3, title, { class = "text-lg font-semibold text-green-900" })

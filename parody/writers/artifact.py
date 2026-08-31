@@ -488,25 +488,33 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
             # only reflects the raw class list here; it is scoped to exercise
             # anchors below once the anchor's final type is resolved.
             is_lab = 'lab' in div_classes
+            # ::: {.exercise .starred} is a marked problem — harder, or set to a
+            # different cohort. Unlike .lab it is a MODIFIER, not a kind: no
+            # counter of its own, and it composes with .lab. Scoped to exercise
+            # anchors below for the same reason .lab is.
+            is_starred = 'starred' in div_classes
             # infoboxes are cross-referenced by their title, not a number, so
             # carry it through to the anchor (see numbering.py).
             tm = re.search(r'title="([^"]*)"', attr_text)
             title = tm.group(1) if tm else None
             if idm and env_class:
                 div_matches.append((env_class, idm.group(1),
-                                    _attr_hash(attr_text), title, is_lab))
+                                    _attr_hash(attr_text), title, is_lab,
+                                    is_starred))
             elif env_class:
                 # hash-only env (::: {.exercise h="8y"}): no explicit #id, so key
                 # the anchor on its short hash. The filter renders the box with
                 # id=hash, so cross-refs ([8y]{.hashref}) resolve and scroll to it.
                 h = _attr_hash(attr_text)
                 if h:
-                    div_matches.append((env_class, h, h, title, is_lab))
+                    div_matches.append((env_class, h, h, title, is_lab,
+                                        is_starred))
     else:
-        div_matches = [(m.group(1), m.group(2), None, None, False)
+        div_matches = [(m.group(1), m.group(2), None, None, False, False)
                        for m in re.finditer(div_pattern, markdown_content)]
 
-    for env_class, full_id, div_hash, div_title, div_lab in div_matches:
+    for (env_class, full_id, div_hash, div_title, div_lab,
+            div_starred) in div_matches:
         anchor_id = full_id
         anchor_type = class_type_map.get(env_class, 'anchor')
 
@@ -542,6 +550,11 @@ def extract_anchor_ids(markdown_content, with_hashes=False):
         # raw class list before the anchor's final type was resolved.
         if div_lab and anchor_type == 'exercise':
             anchor['lab'] = True
+        # Same guard, same reason: ::: {.example .starred} is an example that
+        # happens to carry the class, not a starred problem. Omitted rather
+        # than set False, so an unstarred book's artifact is unchanged.
+        if div_starred and anchor_type == 'exercise':
+            anchor['starred'] = True
         anchors.append(anchor)
         found_ids.add(anchor_id)
 
@@ -704,6 +717,9 @@ def extract_exercise_solutions(content):
             solutions[key] = {
                 'content': '\n'.join(lines[sol_open + 1:sol_close]).strip(),
                 'title': _fence_attr(attrs, 'title'),
+                # read off the EXERCISE's attrs, not the solution's: the mark
+                # belongs to the problem and the solution inherits it.
+                'starred': _fence_has_class(attrs, 'starred'),
             }
             cuts.append((sol_open, sol_close))
             break
@@ -731,6 +747,7 @@ def extract_exercise_problems(content):
         key: {
             'title': _fence_attr(attrs, 'title'),
             'content': '\n'.join(lines[open_index + 1:close_index]).strip(),
+            'starred': _fence_has_class(attrs, 'starred'),
         }
         for key, attrs, open_index, close_index in exercises
     }

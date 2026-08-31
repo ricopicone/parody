@@ -156,6 +156,13 @@
   \xsimsetup{labsolution/print=true}
 \fi
 
+% A starred problem (::: {.exercise .starred}) carries a mark and nothing else:
+% same environment, same counter, same number as its unstarred neighbours.
+% print.lua emits \parodystarmark as the first token of the exercise body, so
+% under the run-in template it sits just after "Problem 2.5" and under a
+% display heading it opens the first line. A house style may redefine it.
+\providecommand{\parodystarmark}{\textbf{$\star$}\enspace}
+
 % A cloze inside a solution always renders full — an answer key must not blank
 % its own answers. Scoped to the environment, so the ambient \clozemode returns
 % at \end. (\clozemode is \providecommand'd in the cloze block above.)
