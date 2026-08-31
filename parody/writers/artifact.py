@@ -896,7 +896,8 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
             solutions=True)
         solutions_html[exercise_id] = {
             'content': solution_content_html,
-            'title': solution_data.get('title')
+            'title': solution_data.get('title'),
+            'starred': bool(solution_data.get('starred')),
         }
 
     # Extract problem bodies (used by the exam print view). Runs on the
@@ -908,6 +909,7 @@ def load_section(chapter_dir, section_slug, with_hashes=False, transform=None,
         problems_html[exercise_id] = {
             'content': problem_content_html,
             'title': problem_data.get('title'),
+            'starred': bool(problem_data.get('starred')),
         }
 
     # Extract anchor IDs from the content (now without solutions)

@@ -171,3 +171,41 @@ def test_the_star_macro_is_defined_by_both_profiles():
     for sty in (profiles / "memoir" / "parody-environments.sty",
                 profiles / "print" / "parody-print.sty"):
         assert "\\parodystarmark" in sty.read_text(), sty
+
+
+# --- the real writer path --------------------------------------------------
+# The extractors above are only half the journey: load_section REBUILDS each
+# bucket entry around the converted html, so a key present on the extractor's
+# dict can still be dropped before it reaches the artifact. It was — the unit
+# tests above passed while the built artifact carried no `starred` at all, and
+# only a real build caught it.
+
+def test_the_built_artifact_carries_starred_on_both_buckets(tmp_path):
+    from parody.writers.artifact import load_section
+
+    (tmp_path / "starred.md").write_text(
+        '---\ntitle: Starred\nslug: starred\nid: starred\n---\n\n'
+        '# Starred {#starred}\n\n'
+        '::: {.exercise .starred #exe:star title="Starred"}\n'
+        'Do the harder thing.\n\n'
+        '::: {.exercise-solution}\n'
+        'The answer.\n'
+        ':::\n'
+        ':::\n\n'
+        '::: {.exercise #exe:plain title="Plain"}\n'
+        'Do the ordinary thing.\n\n'
+        '::: {.exercise-solution}\n'
+        'The other answer.\n'
+        ':::\n'
+        ':::\n')
+
+    sec = load_section(tmp_path, "starred", with_hashes=True)
+
+    assert sec["problems"]["exe:star"]["starred"] is True
+    assert sec["solutions"]["exe:star"]["starred"] is True
+    assert sec["problems"]["exe:plain"]["starred"] is False
+    assert sec["solutions"]["exe:plain"]["starred"] is False
+
+    anchors = {a["id"]: a for a in sec["anchors"]}
+    assert anchors["exe:star"].get("starred") is True
+    assert "starred" not in anchors["exe:plain"]
