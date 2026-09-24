@@ -86,6 +86,30 @@ def _rights_withheld_refs(output):
     return withheld
 
 
+def _closest_source(ref, candidates, source_root):
+    """The candidate whose path agrees with the ref's over the most trailing
+    directories; ties go to the earlier candidate (build/figures, then walk
+    order). Basenames repeat — a book whose figures are directories references
+    every one as ``…/<figure>/main.svg`` — so the basename alone would hand
+    all of them the first file met, and every such figure showed the same
+    drawing (mechatronics lab manual v0.2.0)."""
+    ref_dirs = Path(ref).parts[:-1][::-1]
+
+    def score(candidate):
+        try:
+            dirs = candidate.relative_to(source_root).parts[:-1][::-1]
+        except ValueError:
+            dirs = candidate.parts[:-1][::-1]
+        n = 0
+        for a, b in zip(ref_dirs, dirs):
+            if a != b:
+                break
+            n += 1
+        return n
+
+    return max(candidates, key=score)  # max keeps the first of equal scores
+
+
 def _stage_referenced_media(output, source_root, media_dir):
     """Stage every ``{% media 'ref' %}`` file into the media tree so a consumer
     serving ``MEDIA_URL/<ref>`` finds it, converting print figures to web form.
@@ -103,7 +127,7 @@ def _stage_referenced_media(output, source_root, media_dir):
     # public media tree (it'd be reachable by URL). Drop those refs unless the
     # section is gated (preview), where the figure shows normally to the owner.
     refs -= _rights_withheld_refs(output)
-    index = {}  # basename -> source path
+    index = {}  # basename -> candidate source paths, in priority order
     # build/figures holds what `parody figures` produced — the web form of a
     # figure is the .svg there. Indexed FIRST so a built figure wins over any
     # stale copy left beside a section.
@@ -111,22 +135,24 @@ def _stage_referenced_media(output, source_root, media_dir):
     if figures_build.is_dir():
         for f in sorted(figures_build.iterdir()):
             if f.is_file():
-                index.setdefault(f.name, f)
+                index.setdefault(f.name, []).append(f)
     for root, dirs, files in os.walk(source_root):
-        dirs[:] = [d for d in dirs
-                   if d not in _STAGE_SKIP_DIRS and not d.startswith(".")]
-        for f in files:
-            index.setdefault(f, Path(root) / f)
+        dirs[:] = sorted(d for d in dirs
+                         if d not in _STAGE_SKIP_DIRS and not d.startswith("."))
+        for f in sorted(files):
+            index.setdefault(f, []).append(Path(root) / f)
 
     staged, missing, rewrites = 0, [], {}
     for ref in refs:
         base = os.path.basename(ref)
-        src = index.get(base)
-        if src is None and not os.path.splitext(ref)[1]:
-            for ext in _IMG_EXTS:
-                src = index.get(base + ext)
-                if src is not None:
-                    break
+        names = [base]
+        if not os.path.splitext(ref)[1]:
+            names += [base + ext for ext in _IMG_EXTS]
+        src = None
+        for name in names:
+            if index.get(name):
+                src = _closest_source(ref, index[name], source_root)
+                break
         if src is None:
             missing.append(ref)
             continue
