@@ -497,7 +497,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
                  "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
                  "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD",
-                 "PARODY_PYTHON", "PARODY_ANIMATION_NOTE")
+                 "PARODY_PYTHON", "PARODY_ANIMATION_NOTE",
+                 "PARODY_SECTION_URL")
     _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
     os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
     os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
@@ -519,6 +520,13 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     _note = (active_meta.get("print") or {}).get("animation_note",
                                                  ANIMATION_NOTE_DEFAULT)
     os.environ["PARODY_ANIMATION_NOTE"] = "" if _note in (None, False) else str(_note)
+    # The note links to the figure on the web, where it plays. The site is
+    # print.online_url, else book.companion_url; with neither the note is
+    # plain text. parody-web serves a section at <site>/<chapter>/<section>/.
+    _online = ((active_meta.get("print") or {}).get("online_url")
+               or (active_meta.get("book") or {}).get("companion_url") or "")
+    _online = str(_online).rstrip("/")
+    os.environ["PARODY_SECTION_URL"] = ""
     chapters_tex = []
     pagemap_order = []  # section keys in book order, for build_ranges
     # chapter_start: the number of the first (non-appendix) chapter (default 1).
@@ -628,6 +636,10 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                 strip_frontmatter(src, stripped, transform=transform)
                 tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
                 print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
+                if _online:
+                    os.environ["PARODY_SECTION_URL"] = (
+                        f"{_online}/{chapter.slug}/{sec_slug}/"
+                        + (f"?ed={edition['id']}" if edition else ""))
                 section_to_latex(stripped, tex_path, resource_dir=chapter.directory)
                 # The title lives in front matter for books that keep their
                 # sections heading-free; print has to render it, or the section

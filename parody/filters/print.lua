@@ -1113,7 +1113,7 @@ function figurer(el, nofloat)
   -- print shows a still of an animated figure, so say so where the reader
   -- looks for what the figure is
   if image and image.src and is_animated_src(image.src) then
-    caption = caption .. animation_note_latex(attributes)
+    caption = caption .. animation_note_latex(attributes, el.identifier)
   end
   -- A tbl:-prefixed identifier marks an image that is a *table* in the book's
   -- numbering (e.g. a rendered execution grid or instruction breakdown). Emit a
@@ -1251,7 +1251,7 @@ local function figurediver(el)
   end
   local caption_tex = pandoc.write(pandoc.Pandoc(caption), 'latex')
   if any_animated then
-    caption_tex = caption_tex:gsub('%s+$', '') .. animation_note_latex(div_attrs)
+    caption_tex = caption_tex:gsub('%s+$', '') .. animation_note_latex(div_attrs, el.identifier)
   end
   -- carry rights/credit metadata (color, permission, permissioncomment, …) from
   -- the subfigures div onto its \figcaption, same as single figures (figurer)
@@ -1705,8 +1705,10 @@ end
 -- The note appended to an animated figure's print caption, as LaTeX, or ''.
 -- A figure's own print-note= wins (print-note="" turns it off). The book-wide
 -- text comes from parody.yaml print.animation_note, which the build passes as
--- PARODY_ANIMATION_NOTE (set to '' to turn it off).
-animation_note_latex = function(attrs)
+-- PARODY_ANIMATION_NOTE (set to '' to turn it off). With a figure id and the
+-- section's web address (PARODY_SECTION_URL, from print.online_url or
+-- book.companion_url) the note links to the figure where it plays.
+animation_note_latex = function(attrs, id)
   local note = attrs and attrs['print-note']
   if note == nil then note = os.getenv('PARODY_ANIMATION_NOTE') end
   if note == nil then note = '(Animated in the online edition.)' end
@@ -1714,7 +1716,14 @@ animation_note_latex = function(attrs)
   local doc = pandoc.read(note, 'markdown')
   local first = doc.blocks[1]
   if not first or not first.content then return '' end
-  return ' ' .. inlines_to_latex(first.content)
+  local text = inlines_to_latex(first.content)
+  local url = os.getenv('PARODY_SECTION_URL')
+  if url and url ~= '' and id and id ~= '' then
+    -- \# not #: the caption is an argument of \figcaption, and inside one
+    -- hyperref needs the fragment's # escaped
+    text = '\\href{' .. url .. '\\#' .. id .. '}{' .. text .. '}'
+  end
+  return ' ' .. text
 end
 
 -- Resolve an image src to an absolute file path. base_stem is the include's

@@ -98,6 +98,7 @@ def chapter(tmp_path, monkeypatch):
     monkeypatch.setenv("PARODY_SVG_CACHE", str(tmp_path / "cache"))
     monkeypatch.setenv("PARODY_PYTHON", sys.executable)
     monkeypatch.delenv("PARODY_ANIMATION_NOTE", raising=False)
+    monkeypatch.delenv("PARODY_SECTION_URL", raising=False)
     return chapter
 
 
@@ -169,6 +170,18 @@ def test_a_book_wide_note_and_a_per_figure_override(chapter, monkeypatch):
     monkeypatch.setenv("PARODY_ANIMATION_NOTE", "")
     tex, _ = render("![Spin.](spin.gif){#fig:spin}\n", chapter)
     assert "Animated" not in tex
+
+
+def test_the_note_links_to_the_figure_online(chapter, monkeypatch):
+    monkeypatch.setenv("PARODY_SECTION_URL", "https://bk.example/one/sec/")
+    tex, _ = render("![Spin.](spin.gif){#fig:spin}\n", chapter)
+    assert ("Spin. \\href{https://bk.example/one/sec/\\#fig:spin}"
+            "{(Animated in the online edition.)}") in tex, tex
+
+
+def test_no_site_means_a_plain_note(chapter):
+    tex, _ = render("![Spin.](spin.gif){#fig:spin}\n", chapter)
+    assert "\\href" not in tex
 
 
 def test_a_still_image_caption_is_untouched(chapter):
@@ -243,7 +256,7 @@ See [fig:spin]{.hashref}.
 @pytest.fixture
 def gif_book(tmp_path, monkeypatch):
     for key in ("PARODY_PROJECT_DIR", "PARODY_CHAPTER_DIR", "PARODY_SVG_CACHE",
-                "PARODY_PYTHON", "PARODY_ANIMATION_NOTE"):
+                "PARODY_PYTHON", "PARODY_ANIMATION_NOTE", "PARODY_SECTION_URL"):
         monkeypatch.delenv(key, raising=False)
     project = tmp_path / "gif-test"
     chapter = project / "chapters" / "one"
@@ -277,12 +290,36 @@ def test_print_animation_note_false_drops_the_note(gif_book, monkeypatch):
     assert "Animated" not in _section_tex(gif_book)
 
 
+def test_print_online_url_links_the_section(gif_book, monkeypatch):
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    (gif_book / "parody.yaml").write_text(
+        PARODY_YAML + "print:\n  online_url: https://bk.example/\n")
+    build_pdf(gif_book)
+    assert ("\\href{https://bk.example/one/a-section/\\#fig:spin}"
+            in _section_tex(gif_book))
+
+
+def test_companion_url_is_the_fallback_site(gif_book, monkeypatch):
+    monkeypatch.setattr("parody.writers.latex.shutil.which", lambda *a, **k: None)
+    (gif_book / "parody.yaml").write_text(
+        PARODY_YAML + "book:\n  companion_url: https://cmp.example\n")
+    build_pdf(gif_book)
+    assert "\\href{https://cmp.example/one/a-section/" in _section_tex(gif_book)
+
+
 @pytest.mark.pdf
 @pytest.mark.skipif(not (have_tool("latexmk") and have_tool("lualatex")),
                     reason="TeX (latexmk + lualatex) not available")
-def test_the_pdf_page_carries_the_image(gif_book):
+def test_the_pdf_page_carries_the_image_and_the_link(gif_book):
     from pypdf import PdfReader
+    (gif_book / "parody.yaml").write_text(
+        PARODY_YAML + "print:\n  online_url: https://bk.example\n")
     pdf = build_pdf(gif_book)
     assert pdf is not None and pdf.exists()
-    images = [img for page in PdfReader(pdf).pages for img in page.images]
+    pages = PdfReader(pdf).pages
+    images = [img for page in pages for img in page.images]
     assert images, "the figure printed as an empty space"
+    uris = [a.get_object()["/A"].get("/URI") for page in pages
+            for a in page.get("/Annots") or []
+            if a.get_object().get("/A")]
+    assert "https://bk.example/one/a-section/#fig:spin" in uris, uris
