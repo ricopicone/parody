@@ -1144,7 +1144,10 @@ function Image(el, notebook_slug, chapter_slug, base_name)
       subid = string.format(' id="%s"', el.identifier)
     end
     -- Create figure element with proper structure for numbering
-    local figure_html = string.format([[<img src="{%% media '%s' %%}" alt="%s"%s%s%s class="figure-img">]], media_path, alt, width_attr, perm_attr, subid)
+    -- an animation is 0.5–1.5 MB a frame-set; let the browser fetch it only
+    -- as it nears the viewport (still images keep their exact markup)
+    local lazy = path:lower():match("%.gif$") and ' loading="lazy"' or ""
+    local figure_html = string.format([[<img src="{%% media '%s' %%}" alt="%s"%s%s%s%s class="figure-img">]], media_path, alt, width_attr, perm_attr, subid, lazy)
     return pandoc.RawInline("html", figure_html)
   end
 end

@@ -56,6 +56,7 @@ end
 local coder_latex, citer, pandoccrossrefer
 local moving_code_to_latex -- safe rendering of inline code in moving arguments
 local resolve_asset -- defined in the notebook-includes section below
+local is_animated_src, animation_note_latex -- defined beside resolve_asset
 
 -- Walks content nested inside environments so spans/code/cites inside
 -- exercise bodies etc. get the same treatment as top-level content.
@@ -1032,14 +1033,17 @@ function imager(el)
   -- chapter-relative srcs to source-tree files, converting svg as needed.
   -- pgf/standalone sources are LaTeX inputs with their own commands and
   -- src conventions (extensionless); they never go through asset resolution.
-  local is_pgf_or_standalone = el.classes:includes('standalone')
-    or el.classes:includes('pgf') or el.src:match('%.pgf$')
+  -- An animated src is never a LaTeX input, whatever its class says: it needs
+  -- the still that resolve_asset finds.
+  local is_pgf_or_standalone = (el.classes:includes('standalone')
+    or el.classes:includes('pgf') or el.src:match('%.pgf$'))
+    and not is_animated_src(el.src)
   local notebook_ctx = os.getenv('PARODY_PROJECT_DIR') ~= nil
   if notebook_ctx and is_pgf_or_standalone then
     el.src = resolve_media_src(el.src)
   end
   if notebook_ctx and not is_pgf_or_standalone then
-    local resolved = resolve_asset(el.src, nil)
+    local resolved = resolve_asset(el.src, nil, el.attr.attributes)
     if resolved == nil then
       return pandoc.RawInline('latex', '')
     end
@@ -1054,7 +1058,7 @@ function imager(el)
   --   ![](fig){.figure .standalone figwidth=3in}  an explicit width
   local width = figure_size_option(el.attr.attributes, notebook_ctx)
   local graphics_command
-  if el.classes:includes('standalone') then
+  if el.classes:includes('standalone') and not is_animated_src(el.src) then
     graphics_command = '\\noindent\\includestandalone[' .. width .. ']{' .. el.src .. '}'
   elseif el.classes:includes('pgf') or el.src:match('%.pgf$') then
     -- \inputpgf appends .pgf; rtc srcs omit the extension, math srcs carry
@@ -1106,6 +1110,11 @@ function figurer(el, nofloat)
   else
     caption = inlines_to_latex(caption)
   end
+  -- print shows a still of an animated figure, so say so where the reader
+  -- looks for what the figure is
+  if image and image.src and is_animated_src(image.src) then
+    caption = caption .. animation_note_latex(attributes)
+  end
   -- A tbl:-prefixed identifier marks an image that is a *table* in the book's
   -- numbering (e.g. a rendered execution grid or instruction breakdown). Emit a
   -- genuine table float so it counts and captions as "Table N.M" (caption above,
@@ -1155,7 +1164,8 @@ local function figurediver(el)
   -- opts a figure into scaling (e.g. third-party art too wide to sit side by
   -- side at 1:1 — a uniform scale= preserves the panels' relative sizes).
   local div_attrs = el.attr.attributes or {}
-  local caps, srcs, labels, classes, sizes = {}, {}, {}, {}, {}
+  local caps, srcs, labels, classes, sizes, img_attrs = {}, {}, {}, {}, {}, {}
+  local any_animated = false
   for i = 1, #subfigures do
     local img = subfigures[i].t == 'Image' and subfigures[i] or subfigures[i].content[1]
     local cap = img.caption
@@ -1185,6 +1195,8 @@ local function figurediver(el)
     end
     classes[i] = img.classes or {}
     local a = (img.attr and img.attr.attributes) or {}
+    img_attrs[i] = a
+    if is_animated_src(srcs[i]) then any_animated = true end
     -- figwidth is the key single figures use; accept both here so the same
     -- inline syntax works wherever a figure appears
     sizes[i] = { width = a['figwidth'] or a['width']
@@ -1210,7 +1222,13 @@ local function figurediver(el)
     -- imager, so they need the same media-path resolution (#587).
     local src = os.getenv('PARODY_PROJECT_DIR') and resolve_media_src(srcs[i])
       or srcs[i]
-    if classes[i]:includes('pgf') or src:match('%.pgf$') then
+    -- an animated panel prints its still (and is omitted, loudly, without one)
+    if os.getenv('PARODY_PROJECT_DIR') and is_animated_src(srcs[i]) then
+      src = resolve_asset(srcs[i], nil, img_attrs[i])
+    end
+    if src == nil then
+      graphics_command = ''
+    elseif classes[i]:includes('pgf') or src:match('%.pgf$') then
       local pgf = '\\inputpgf{' .. src:gsub('%.pgf$', '') .. '}'
       if w and w ~= '' then pgf = '\\resizebox{' .. w .. '}{!}{' .. pgf .. '}'
       elseif s and s ~= '' then pgf = '\\scalebox{' .. s .. '}{' .. pgf .. '}' end
@@ -1232,6 +1250,9 @@ local function figurediver(el)
       .. '{' .. graphics_command .. '}\n' .. filler_after
   end
   local caption_tex = pandoc.write(pandoc.Pandoc(caption), 'latex')
+  if any_animated then
+    caption_tex = caption_tex:gsub('%s+$', '') .. animation_note_latex(div_attrs)
+  end
   -- carry rights/credit metadata (color, permission, permissioncomment, …) from
   -- the subfigures div onto its \figcaption, same as single figures (figurer)
   local sf_options, j = '[', 0
@@ -1620,9 +1641,86 @@ local function svg_to_pdf(svg_path)
   return out
 end
 
+-- Animated figures (#785). The web plays a GIF, but LuaLaTeX has no driver for
+-- it, so \includegraphics of one fails. latexmk runs in force mode, so the PDF
+-- builds anyway, with an empty space above the caption. No warning fires,
+-- because the path DID resolve. So any src LaTeX cannot include is swapped
+-- for a still. If there is no still, the figure is reported exactly like an
+-- unresolved one, which is what a book's CI asserts on.
+local UNINCLUDABLE = {
+  gif = true, webp = true, apng = true, avif = true,
+  mp4 = true, webm = true, mov = true, m4v = true, ogv = true,
+}
+
+is_animated_src = function(src)
+  local ext = src and src:match('%.(%w+)$')
+  return ext ~= nil and UNINCLUDABLE[ext:lower()] == true
+end
+
+local function shell_quote(s)
+  return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
+-- The still to print in place of an animated figure at `path` (resolved,
+-- absolute), in order of precedence:
+--   1. print-src=<file>       an explicit still, resolved like any src
+--   2. <stem>.pdf/.png/.jpg   a sibling the author drew or exported
+--   3. a frame extracted at build time (still=first|last|N|0.5), cached
+--      beside the svg→pdf conversions
+-- nil, after the unresolved-figure warning, when there is none.
+local function animated_still(path, attrs, src)
+  attrs = attrs or {}
+  local explicit = attrs['print-src']
+  if explicit and explicit ~= '' then
+    -- resolve_asset warns on its own if this does not resolve
+    return resolve_asset(explicit, nil)
+  end
+  local stem = path:gsub('%.%w+$', '')
+  for _, ext in ipairs({'.pdf', '.png', '.jpg', '.jpeg'}) do
+    if file_exists(stem .. ext) then return stem .. ext end
+  end
+  local cache = os.getenv('PARODY_SVG_CACHE')
+  if cache and cache ~= '' then
+    local still = attrs['still'] or ''
+    -- the frame is part of the key, so changing still= is never a stale hit
+    local key = path:gsub('[/\\]', '__'):gsub('%.%w+$', '')
+    if still ~= '' then key = key .. '@' .. still:gsub('[^%w.]', '_') end
+    local out = cache .. '/' .. key .. '.png'
+    local python = os.getenv('PARODY_PYTHON')
+    if not python or python == '' then python = 'python3' end
+    local cmd = shell_quote(python) .. ' -m parody.stills ' .. shell_quote(path)
+      .. ' ' .. shell_quote(out)
+    if still ~= '' then cmd = cmd .. ' ' .. shell_quote(still) end
+    -- the module re-extracts only when the animation is newer than its still
+    os.execute(cmd)
+    if file_exists(out) then return out end
+  end
+  io.stderr:write('⚠️  unresolved figure (omitting): ' .. src
+    .. ' (LaTeX cannot include .' .. path:match('%.(%w+)$')
+    .. ' and no still could be made: add a sibling ' .. stem:gsub('.*/', '')
+    .. '.png or .pdf, or print-src=)\n')
+  return nil
+end
+
+-- The note appended to an animated figure's print caption, as LaTeX, or ''.
+-- A figure's own print-note= wins (print-note="" turns it off). The book-wide
+-- text comes from parody.yaml print.animation_note, which the build passes as
+-- PARODY_ANIMATION_NOTE (set to '' to turn it off).
+animation_note_latex = function(attrs)
+  local note = attrs and attrs['print-note']
+  if note == nil then note = os.getenv('PARODY_ANIMATION_NOTE') end
+  if note == nil then note = '(Animated in the online edition.)' end
+  if note == '' then return '' end
+  local doc = pandoc.read(note, 'markdown')
+  local first = doc.blocks[1]
+  if not first or not first.content then return '' end
+  return ' ' .. inlines_to_latex(first.content)
+end
+
 -- Resolve an image src to an absolute file path. base_stem is the include's
--- file stem (jupytext outputs live in <stem>_files/).
-resolve_asset = function(src, base_stem)
+-- file stem (jupytext outputs live in <stem>_files/). attrs are the image's
+-- attributes, read only for an animated src (still=, print-src=).
+resolve_asset = function(src, base_stem, attrs)
   local project_dir = os.getenv('PARODY_PROJECT_DIR')
   local chapter_dir = os.getenv('PARODY_CHAPTER_DIR')
   local resolved = nil
@@ -1660,6 +1758,8 @@ resolve_asset = function(src, base_stem)
   end
   if resolved:match('%.svg$') then
     resolved = svg_to_pdf(resolved)
+  elseif is_animated_src(resolved) then
+    return animated_still(resolved, attrs, src)
   end
   return resolved
 end
@@ -1670,7 +1770,7 @@ local function resolve_images(blocks, base_stem)
   for _, b in ipairs(blocks) do
     local walked = pandoc.walk_block(b, {
       Image = function(img)
-        local resolved = resolve_asset(img.src, base_stem)
+        local resolved = resolve_asset(img.src, base_stem, img.attr.attributes)
         if resolved == nil then return {} end -- drop unresolvable image
         img.src = resolved
         return img

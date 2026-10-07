@@ -32,6 +32,9 @@ from .pagemap import (build_ranges, insert_section_mark, read_pagemap,
 PANDOC_FROM = ("markdown-markdown_in_html_blocks+raw_tex+tex_math_dollars"
                "+tex_math_single_backslash")
 TEXBIN_FALLBACKS = ["/Library/TeX/texbin", "/usr/local/texlive/bin"]
+# Appended to an animated figure's print caption (print.lua carries the same
+# default for builds that bypass this writer).
+ANIMATION_NOTE_DEFAULT = "(Animated in the online edition.)"
 
 
 def _tool_env():
@@ -493,7 +496,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # Save/restore so the context never leaks past this build.
     _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
                  "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
-                 "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD")
+                 "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD",
+                 "PARODY_PYTHON", "PARODY_ANIMATION_NOTE")
     _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
     os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
     os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
@@ -507,6 +511,14 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     from .figures import figures_build_dir
     _fig_build = figures_build_dir(project)
     os.environ["PARODY_FIGURES_BUILD"] = str(_fig_build) if _fig_build.is_dir() else ""
+    # An animated figure (.gif, …) prints as a still that print.lua extracts by
+    # running `python -m parody.stills`. THIS interpreter is the one with parody
+    # and Pillow on its path, whatever `python3` on PATH happens to be.
+    os.environ["PARODY_PYTHON"] = sys.executable
+    # ...and its caption says so. print.animation_note: false (or "") drops it.
+    _note = (active_meta.get("print") or {}).get("animation_note",
+                                                 ANIMATION_NOTE_DEFAULT)
+    os.environ["PARODY_ANIMATION_NOTE"] = "" if _note in (None, False) else str(_note)
     chapters_tex = []
     pagemap_order = []  # section keys in book order, for build_ranges
     # chapter_start: the number of the first (non-appendix) chapter (default 1).
