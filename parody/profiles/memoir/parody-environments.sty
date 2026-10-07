@@ -348,30 +348,38 @@
   title={#1\if\relax\detokenize{#2}\relax\else\ \textnormal{\itshape #2}\fi}}
 \newenvironment{definition}[2]
   {\refstepcounter{thmctr}%
-   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \if\relax\detokenize{#2}\relax\else\label[definition]{#2}\fi
    \begin{parodythmbox}{Definition~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{theorem}[2]
   {\refstepcounter{thmctr}%
-   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \if\relax\detokenize{#2}\relax\else\label[theorem]{#2}\fi
    \begin{parodythmbox}{Theorem~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{lemma}[2]
   {\refstepcounter{thmctr}%
-   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \if\relax\detokenize{#2}\relax\else\label[lemma]{#2}\fi
    \begin{parodythmbox}{Lemma~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{corollary}[2]
   {\refstepcounter{thmctr}%
-   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \if\relax\detokenize{#2}\relax\else\label[corollary]{#2}\fi
    \begin{parodythmbox}{Corollary~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{proposition}[2]
   {\refstepcounter{thmctr}%
-   \if\relax\detokenize{#2}\relax\else\label{#2}\fi
+   \if\relax\detokenize{#2}\relax\else\label[proposition]{#2}\fi
    \begin{parodythmbox}{Proposition~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \crefname{thmctr}{result}{results}
+% Each box labels itself with its own cleveref TYPE (\label[definition]{…}),
+% so \cref{def:x} reads "definition 1.2". They share one counter, whose
+% name would make every one of them a "result".
+\crefname{definition}{definition}{definitions}
+\crefname{theorem}{theorem}{theorems}
+\crefname{lemma}{lemma}{lemmas}
+\crefname{corollary}{corollary}{corollaries}
+\crefname{proposition}{proposition}{propositions}
 
 % ---- infobox: \begin{infobox}[label=...]{title} ----
 \newcounter{infoboxctr}

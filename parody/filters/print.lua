@@ -58,9 +58,58 @@ local moving_code_to_latex -- safe rendering of inline code in moving arguments
 local resolve_asset -- defined in the notebook-includes section below
 local is_animated_src, animation_note_latex -- defined beside resolve_asset
 
+-- Cross-reference prefixes. pandoc-crossref resolves the first family itself,
+-- but only at the top level: this filter runs BEFORE it, so inside an
+-- environment (which this filter turns into raw LaTeX) those become \cref here.
+-- The second family pandoc-crossref does not know at all. Without this list a
+-- [@def:screw-axis] went to \autocite, biblatex found no such key, and the PDF
+-- printed the raw id. Explicit on purpose: bibliography keys carry colons too
+-- (book:, wiki:), so "has a prefix" does not mean "is a cross-reference".
+local CROSSREF_PREFIXES = { sec = true, eq = true, tbl = true, fig = true, lst = true }
+local CREF_PREFIXES = {
+  def = true, thm = true, lem = true, cor = true, prp = true,
+  exa = true, exe = true, sub = true,
+}
+
+local function ref_prefix(id)
+  local prefix = id:match('^(%a+):')
+  return prefix and prefix:lower()
+end
+
+-- `$$…$$ {#eq:foo}` inside an environment. pandoc-crossref never sees it (see
+-- above), so the attribute is printed as literal text, "{#eq:foo}", the
+-- equation has no number, and every reference to it reads "??". Emit what
+-- pandoc-crossref emits at the top level. Run as its own pass, AFTER
+-- interior_filter: by then a cloze block is already raw LaTeX, and
+-- cloze_div_latex labels its equation itself.
+local eq_label_filter = {
+  Inlines = function(inlines)
+    local out, i, changed = pandoc.List(), 1, false
+    while i <= #inlines do
+      local el = inlines[i]
+      local j = i + 1
+      if inlines[j] and inlines[j].t == 'Space' then j = j + 1 end
+      local attr = inlines[j]
+      local id = el.t == 'Math' and el.mathtype == 'DisplayMath'
+        and attr and attr.t == 'Str' and attr.text:match('^{#(eq:[^}%s]+)}$')
+      if id then
+        out:insert(pandoc.RawInline('latex',
+          '\\begin{equation}\\protect\\phantomsection\\label{' .. id .. '}{'
+          .. el.text .. '}\\end{equation}'))
+        i, changed = j + 1, true
+      else
+        out:insert(el)
+        i = i + 1
+      end
+    end
+    if changed then return out end
+  end,
+}
+
 -- Walks content nested inside environments so spans/code/cites inside
 -- exercise bodies etc. get the same treatment as top-level content.
 local interior_filter
+local walk_interior
 interior_filter = {
   Math = function(el) return Math(el) end,
   RawInline = function(el) return RawInline(el) end,
@@ -74,18 +123,11 @@ interior_filter = {
     if is_latex() then return coder_latex(el) else return CodeBlock(el) end
   end,
   Cite = function(el)
-    local first_id = el.citations[1].id
-    if is_latex() then
-      if first_id:match('^[Ss]ec:') or first_id:match('^[Ee]q:')
-          or first_id:match('^[Tt]bl:') or first_id:match('^[Ff]ig:')
-          or first_id:match('^[Ll]st:') then
-        return pandoccrossrefer(el)
-      else
-        return Cite(el)
-      end
-    else
-      return Cite(el)
+    local prefix = ref_prefix(el.citations[1].id)
+    if is_latex() and prefix and CROSSREF_PREFIXES[prefix] then
+      return pandoccrossrefer(el)
     end
+    return Cite(el)
   end,
   OrderedList = function(el) return OrderedList(el) end,
   Table = function(el) return Table(el) end,
@@ -117,8 +159,13 @@ local inline_filter = {
   Link = function(el) return Link(el) end,
 }
 
+-- interior_filter, then the equation labels it cannot do itself.
+walk_interior = function(el)
+  return pandoc.walk_block(pandoc.walk_block(el, interior_filter), eq_label_filter)
+end
+
 local function walk_to_latex(el)
-  local el_walked = pandoc.walk_block(el, interior_filter)
+  local el_walked = walk_interior(el)
   el_walked = pandoc.walk_block(el_walked, image_filter)
   local content_doc = pandoc.Pandoc(el_walked.content)
   return pandoc.write(content_doc, 'latex')
@@ -749,7 +796,8 @@ local function typed_labels(envtype, identifier)
   if not prefix or identifier:match('^%a+:') then
     return ''  -- already prefixed, or no convention
   end
-  return '\\label{' .. prefix .. ':' .. identifier .. '}'
+  -- typed, like the environment's own label, so \\cref names the box
+  return '\\label[' .. envtype .. ']{' .. prefix .. ':' .. identifier .. '}'
 end
 
 local function theoremer(el)
@@ -825,7 +873,7 @@ local function exerciser(el)
     end,
     Header = demote_header,
   })
-  el_walked = pandoc.walk_block(el_walked, interior_filter)
+  el_walked = walk_interior(el_walked)
   el_walked = pandoc.walk_block(el_walked, image_filter)
   local content_doc = pandoc.Pandoc(el_walked.content)
   local content = delimiter_dollar(pandoc.write(content_doc, 'latex'))
@@ -873,7 +921,7 @@ local function exampler(el)
   local el_walked = pandoc.walk_block(el, {
     Div = function(inner) return example_solution(inner) end,
   })
-  el_walked = pandoc.walk_block(el_walked, interior_filter)
+  el_walked = walk_interior(el_walked)
   el_walked = pandoc.walk_block(el_walked, image_filter)
   local content_doc = pandoc.Pandoc(el_walked.content)
   local content = delimiter_dollar(pandoc.write(content_doc, 'latex'))
@@ -892,7 +940,7 @@ local function listinger(el)
     local caption_pre = pandoc.read(caption, 'markdown').blocks[1]
     -- listing captions float (moving argument): keep inline code out of verbatim
     caption_pre = pandoc.walk_block(caption_pre, { Code = moving_code_to_latex })
-    local caption_walked = pandoc.walk_block(caption_pre, interior_filter)
+    local caption_walked = walk_interior(caption_pre)
     local caption_doc = pandoc.Pandoc(caption_walked)
     caption = pandoc.write(caption_doc, 'latex')
   else
@@ -1809,7 +1857,7 @@ local function latexify_blocks(blocks)
     elseif b.t == 'Div' then
       r = Div(b)
     else
-      r = pandoc.walk_block(b, interior_filter)
+      r = walk_interior(b)
     end
     if r == nil then r = b end
     if type(r) ~= 'table' or r.t then r = { r } end
@@ -1914,7 +1962,7 @@ function RawBlock(el)
         el.text, 'html+tex_math_dollars+tex_math_single_backslash').blocks
       local html_reads = {}
       for i = 1, #html_read do
-        html_reads[i] = pandoc.walk_block(html_read[i], interior_filter)
+        html_reads[i] = walk_interior(html_read[i])
         html_reads[i] = pandoc.walk_block(html_reads[i], {
           Table = function(t)
             return pandoc.RawBlock('latex', pandoc.write(pandoc.Pandoc({ t }), 'latex'))
@@ -2058,8 +2106,14 @@ function Image(el)
   -- empty (![](src){#fig:x .figure}) renders as a plain \includegraphics
   -- with no \label, so \cref{fig:x} dangles. Wrap it in a figure float so
   -- it gets a number and label (bare + fig:-prefixed, like figurer).
+  -- A fig:/tbl: id on an image with NO alt text says the same thing as the
+  -- class: ![](src){#fig:x} printed unlabelled, and every ref to it read "??".
+  -- Alt text marks the other bare images (one inline in a footnote, or one of
+  -- a row of panels), which must not become numbered floats.
+  local typed_id = el.identifier:match('^[Ff]ig:') or el.identifier:match('^[Tt]bl:')
   if el.identifier and el.identifier ~= ''
-      and (el.classes:includes('figure') or el.classes:includes('standalone')) then
+      and (el.classes:includes('figure') or el.classes:includes('standalone')
+           or (typed_id and #el.caption == 0)) then
     local graphics = imager(el)
     -- tbl:-prefixed id -> genuine table float (see figurer), even bare
     if el.identifier:match('^[Tt]bl:') then
@@ -2153,11 +2207,12 @@ function Span(el)
 end
 
 function Cite(el)
-  local first_id = el.citations[1].id
-  if first_id:match('^[Ss]ec:') or first_id:match('^[Ee]q:')
-      or first_id:match('^[Tt]bl:') or first_id:match('^[Ff]ig:')
-      or first_id:match('^[Ll]st:') then
+  local prefix = ref_prefix(el.citations[1].id)
+  if prefix and CROSSREF_PREFIXES[prefix] then
     return el -- handled by pandoc-crossref downstream
+  end
+  if prefix and CREF_PREFIXES[prefix] then
+    return pandoccrossrefer(el)
   end
   return citer(el)
 end
@@ -2201,7 +2256,7 @@ end
 
 function OrderedList(el)
   if is_latex() then
-    return pandoc.walk_block(el, interior_filter)
+    return walk_interior(el)
   end
   return el
 end

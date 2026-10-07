@@ -1137,7 +1137,9 @@ function Image(el, notebook_slug, chapter_slug, base_name)
     if el.classes and el.classes:includes("subfigure") and el.identifier ~= "" then
       subid = string.format(' data-subid="%s"', el.identifier)
     elseif el.classes and el.identifier ~= ""
-        and (el.classes:includes("figure") or el.classes:includes("standalone")) then
+        and (el.classes:includes("figure") or el.classes:includes("standalone")
+             -- a fig: id with no alt text: ![](src){#fig:x} (as print.lua)
+             or (el.identifier:match("^[Ff]ig:") and #el.caption == 0)) then
       -- a caption-less standalone figure ![](img){#fig:x .figure} is also a
       -- Para>Image — keep its id on the img so cross-refs land and number_artifact
       -- can promote it to a numbered <figure>.
