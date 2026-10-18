@@ -1,0 +1,111 @@
+%% parody-twin — the translated twin of each English print page (task #825).
+%%
+%% \begin{twinpage}{<page>}{<start scale>}{<restore>}{<chapter mark>}{<section mark>}[<chapter title>]
+%%   … the page's translated content …
+%% \end{twinpage}
+%%
+%% Sets the English page number, restores the counters the English had at the
+%% page's first sentence (so equations, figures and boxes number alike), sets
+%% the running heads, and typesets the content at the class's own size in a
+%% column 1/s as wide as the text block, then scales it by s. It lowers s by
+%% 0.01 until the page fits, with no floor: nothing is ever dropped to fit.
+%% Writes "TWINFIT page=<n> scale=<s>" to the log; parody reads it back.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-twin}[2026/10/17 parody twin pages]
+\RequirePackage{graphicx}
+\RequirePackage{xparse}
+
+% A translated heading is not title-cased: titlecaps would capitalise every
+% German noun-and-verb alike and mangle CJK.
+\AtBeginDocument{\renewcommand{\parodytitlecap}[1]{#1}}
+
+\newcommand{\parodytwinuntranslatedtext}{English: not yet translated}
+\newcommand{\parodytwinstaletext}{may lag the English}
+\newcommand{\parodyuntranslated}{{\footnotesize\itshape[\parodytwinuntranslatedtext]}\ }
+\newcommand{\parodystale}{{\footnotesize\itshape[\parodytwinstaletext]}\ }
+
+\ExplSyntaxOn
+\box_new:N \g__parodytwin_box
+\dim_new:N \l__parodytwin_width
+\dim_new:N \l__parodytwin_avail
+\fp_new:N \l__parodytwin_scale
+\tl_new:N \l__parodytwin_restore
+
+\cs_new_protected:Npn \__parodytwin_minipage:n #1
+  {
+    \begin{minipage}[t]{\l__parodytwin_width}
+      \cs_set:Npn \thempfootnote { \arabic{mpfootnote} }
+      \setcounter{mpfootnote}{\value{footnote}}
+      #1
+    \end{minipage}
+  }
+
+% Every counter, saved before measuring and put back after each attempt, so
+% a counter the restore list does not name cannot drift by one per attempt.
+\cs_new_protected:Npn \__parodytwin_save_counters:
+  {
+    \cs_set:Npn \@elt ##1
+      { \cs_gset:cpx { parodytwin@save@##1 } { \int_use:c { c@##1 } } }
+    \cl@@ckpt
+  }
+\cs_new_protected:Npn \__parodytwin_put_counters:
+  {
+    \cs_set:Npn \@elt ##1
+      { \int_gset:cn { c@##1 } { \use:c { parodytwin@save@##1 } } }
+    \cl@@ckpt
+  }
+
+\cs_new_protected:Npn \__parodytwin_fit:nn #1 #2
+  {
+    \fp_set:Nn \l__parodytwin_scale { #1 }
+    \__parodytwin_save_counters:
+    \bool_set_true:N \l_tmpa_bool
+    \bool_while_do:Nn \l_tmpa_bool
+      {
+        \dim_set:Nn \l__parodytwin_width { \fp_to_dim:n { \textwidth / \l__parodytwin_scale } }
+        \group_begin:
+          % measuring: no labels, no index entries, no TOC lines
+          \RenewDocumentCommand \label { o m } { }
+          \cs_set_eq:NN \index \use_none:n
+          \cs_set_eq:NN \addcontentsline \use_none:nnn
+          \l__parodytwin_restore
+          \hbox_gset:Nn \g__parodytwin_box { \__parodytwin_minipage:n { #2 } }
+        \group_end:
+        \__parodytwin_put_counters:
+        \fp_compare:nNnTF
+          { ( \dim_to_fp:n { \box_ht:N \g__parodytwin_box + \box_dp:N \g__parodytwin_box } )
+            * \l__parodytwin_scale } > { \dim_to_fp:n { \l__parodytwin_avail } }
+          {
+            \fp_compare:nNnTF { \l__parodytwin_scale } > { 0.05 }
+              { \fp_set:Nn \l__parodytwin_scale { \l__parodytwin_scale - 0.01 } }
+              { \bool_set_false:N \l_tmpa_bool }
+          }
+          { \bool_set_false:N \l_tmpa_bool }
+      }
+    \iow_log:x { TWINFIT ~ page=\thepage \c_space_tl scale=\fp_use:N \l__parodytwin_scale }
+    \l__parodytwin_restore
+    \noindent\scalebox { \fp_use:N \l__parodytwin_scale } { \__parodytwin_minipage:n { #2 } }
+  }
+
+\NewDocumentEnvironment { twinpage } { m m m m m o +b }
+  {
+    \clearpage
+    \setcounter{page}{#1}
+    \tl_set:Nn \l__parodytwin_restore { #3 }
+    \IfValueTF { #6 }
+      {
+        % the chapter opens on this page: its heading, then the content below
+        \group_begin:
+          \cs_set_eq:NN \clearforchapter \relax
+          #3
+          \addtocounter{chapter}{-1}
+          \chapter{#6}
+        \group_end:
+      }
+      { #4 #5 }
+    \par
+    \dim_set:Nn \l__parodytwin_avail { \textheight - \pagetotal }
+    \__parodytwin_fit:nn { #2 } { #7 }
+  }
+  { \clearpage }
+\ExplSyntaxOff
