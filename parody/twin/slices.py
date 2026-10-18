@@ -63,6 +63,68 @@ def _item_start(text, offset):
     return line_start if m and m.end() == offset else offset
 
 
+# Where a line's own content starts: its indentation, then a list or
+# definition marker and the space after it.
+_CONTENT_START = re.compile(r"[ ]*(?:(?:[-+*]|\d+[.)]|[A-Za-z][.)]|[:~])[ \t]+)?")
+
+
+def _indent(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def _open_depths(text, a):
+    """The content indentation of each indented block open at offset ``a``,
+    outermost first: a nested list in a definition is two, the definition's
+    and the nested item's. Found from the cut's own line up, through each
+    line indented less than everything below it, to the top level."""
+    start = text.rfind("\n", 0, a) + 1
+    end = text.find("\n", start)
+    line = text[start:end if end != -1 else len(text)]
+    floor = _indent(line)
+    # at the line's content a list marker stays with its item; inside its
+    # text the block's content starts past the marker
+    depths = {floor if a - start <= floor else _CONTENT_START.match(line).end()}
+    pos = start
+    while floor > 0 and pos > 0:
+        above = text.rfind("\n", 0, pos - 1) + 1
+        prev, pos = text[above:pos - 1], above
+        if not prev.strip() or _indent(prev) >= floor:
+            continue
+        floor = _indent(prev)
+        depths.add(_CONTENT_START.match(prev).end())
+        depths.add(floor)
+    return sorted(d for d in depths if d > 0)
+
+
+def _outdented(text, a, piece):
+    """``piece`` with the indentation of the blocks it was cut from taken off.
+
+    A cut inside an indented block (a definition's nested list, a list item's
+    continuation) leaves the rest of that block indented in the slice, and at
+    the top of a page four spaces make it a code block: robotics 1.3's list of
+    vision techniques printed verbatim, colons and all, in both twins. So each
+    line loses the indentation of the innermost block still open at it, which
+    keeps what is nested under it nested; the first line indented less than
+    every open block ends them all, and it and what follows are left alone.
+    """
+    depths = _open_depths(text, a)
+    if not depths:
+        return piece
+    first, *rest = piece.split("\n")
+    out = [first]
+    for i, row in enumerate(rest):
+        if not row.strip():
+            out.append("")
+            continue
+        while depths and _indent(row) < depths[-1]:
+            depths.pop()
+        if not depths:
+            out.extend(rest[i:])
+            break
+        out.append(row[depths[-1]:])
+    return "\n".join(out)
+
+
 _ATTR_TOKEN = re.compile(r'[^\s=]+="[^"]*"|[^\s=]+=\S+|\S+')
 
 
@@ -142,6 +204,8 @@ def slice_chunk(text, language, start, end, english):
     if end is not None and b < a:
         b = a
     piece = text[a:b].strip()
+    if a > 0:
+        piece = _outdented(text, a, piece)
 
     reopened = False
     if a > 0:

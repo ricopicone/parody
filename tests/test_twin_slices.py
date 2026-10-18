@@ -112,3 +112,84 @@ def test_a_cut_inside_a_block_stays_inside_it():
     assert slice_chunk(german, "de", 4, None, english).text == "Fünf."
     # boundary 2 ("Three") stays in the first block, never moving to "Vier"
     assert slice_chunk(german, "de", 0, 2, english).text.count("Vier") == 0
+
+
+# A page that starts inside an indented block: the rest of the block keeps
+# its indentation in the slice, and at the top of a page four spaces are a
+# code block (robotics 1.3, both twins: a definition's nested list printed
+# verbatim, colons and all).
+
+NESTED = """Kameras
+
+:   nehmen ein *Bild* auf. Die Verarbeitung ist schwer.
+
+    Kantendetektion
+
+    :   findet Kanten.
+
+    Segmentierung
+
+    :   gliedert ein Bild in Bereiche, die
+        jeweils einem Objekt entsprechen.
+
+Danach geht es weiter.
+"""
+
+NESTED_EN = """Cameras
+
+:   capture an *image*. Processing is hard.
+
+    Edge detection
+
+    :   finds edges.
+
+    Segmentation
+
+    :   organizes an image into sections that
+        correspond to an object.
+
+Then it goes on.
+"""
+
+
+def test_a_cut_at_a_nested_term_outdents_the_rest_of_its_list():
+    s = slice_chunk(NESTED, "de", 2, None, NESTED_EN)
+    assert s.text == ("Kantendetektion\n\n:   findet Kanten.\n\nSegmentierung\n\n"
+                      ":   gliedert ein Bild in Bereiche, die\n"
+                      "    jeweils einem Objekt entsprechen.\n\nDanach geht es weiter.")
+
+
+def test_a_cut_inside_a_definition_outdents_by_its_marker():
+    # mid-line in the definition's own text: its content sits 4 in, past ":   "
+    s = slice_chunk(NESTED, "de", 1, None, NESTED_EN)
+    assert s.text.startswith("Die Verarbeitung ist schwer.\n\nKantendetektion\n\n:   findet")
+    assert "\n    :" not in s.text
+
+
+def test_a_nested_list_item_cut_keeps_its_marker_and_loses_the_indent():
+    text = "- Eins. Mehr dazu.\n\n    - Zwei ist hier.\n      und geht weiter.\n\n- Drei."
+    en = "- One. More on it.\n\n    - Two is here.\n      and goes on.\n\n- Three."
+    s = slice_chunk(text, "de", 2, None, en)
+    assert s.text == "- Zwei ist hier.\n  und geht weiter.\n\n- Drei."
+
+
+def test_a_top_level_cut_is_left_alone():
+    # a paragraph's own continuation line keeps whatever indent it had
+    text = "Eins ist hier. Zwei ist da.\n    Weiter im Absatz."
+    assert slice_chunk(text, "de", 1, None, 2).text == "Zwei ist da.\n    Weiter im Absatz."
+
+
+def test_a_cut_in_a_nested_definition_outdents_its_siblings_by_the_outer_block():
+    # robotics 1.4 (zh): cut inside the text of a definition nested in a
+    # definition; the next term belongs to the OUTER definition's content
+    text = ("Motoren\n\n:   Es gibt zwei Arten.\n\n    Induktion\n\n"
+            "    :   nutzt Induktion. Die Drehzahl wird geregelt.\n\n"
+            "    Synchron\n\n    :   dreht synchron, ohne\n        Schlupf.\n\nDanach.\n")
+    en = ("Motors\n\n:   There are two kinds.\n\n    Induction\n\n"
+          "    :   uses induction. The speed is controlled.\n\n"
+          "    Synchronous\n\n    :   turns in sync, without\n        slip.\n\nThen.\n")
+    from parody.twin.marks import sentence_starts
+    i = 1 + next(k for k, b in enumerate(sentence_starts(en, "en")) if en[b:].startswith("The speed"))
+    s = slice_chunk(text, "de", i, None, en)
+    assert s.text == ("Die Drehzahl wird geregelt.\n\nSynchron\n\n:   dreht synchron, ohne\n"
+                      "    Schlupf.\n\nDanach.")
