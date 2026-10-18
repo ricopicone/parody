@@ -263,7 +263,8 @@ def test_interrupted_run_resumes(tmp_path):
     assert not translation_path(book, "de", "ch", "two").exists()
     engine = FakeEngine()
     _run(book, engine)
-    assert len(engine.calls) == 1 and "Alpha section two" in engine.calls[0][1]
+    sections = [c for c in engine.calls if "<<<chunk 1>>>" in c[1] and "chapter title" not in c[0]]
+    assert len(sections) == 1 and "Alpha section two" in sections[0][1]
 
 
 def test_reordered_key_terms_gloss_and_glossary(tmp_path):
@@ -369,3 +370,43 @@ def test_cli_exit_code_when_the_engine_stops(tmp_path, monkeypatch, capsys):
         raise_on_call={1: EngineError("Usage limit reached")}))
     assert main(["translate", str(_book(tmp_path))]) == 1
     assert "re-run later" in capsys.readouterr().out
+
+
+# --- chapter titles ------------------------------------------------------------
+
+from parody.translate.run import BOOK_TITLES  # noqa: E402
+import yaml  # noqa: E402
+
+
+def _titles(book):
+    return yaml.safe_load((book / "translations" / "de" / BOOK_TITLES).read_text(encoding="utf-8"))
+
+
+def test_chapter_titles_translated_once(tmp_path):
+    book = _book(tmp_path)
+    (book / "parody.yaml").write_text((book / "parody.yaml").read_text().replace(
+        "title: Ch\n", "title: Ch alpha\n"))
+    _run(book, FakeEngine())
+    assert _titles(book)["chapters"]["ch"] == {"title": "Ch Alpha-DE", "hash": chunk_hash("Ch alpha")}
+    engine = FakeEngine()
+    _run(book, engine)
+    assert engine.calls == []
+
+
+def test_chapter_title_stale_after_rename(tmp_path):
+    book = _book(tmp_path)
+    _run(book, FakeEngine())
+    (book / "parody.yaml").write_text((book / "parody.yaml").read_text().replace(
+        "title: Ch\n", "title: Chapter alpha\n"))
+    states = {(s.chapter, s.section): s for s in project_status(load_project(book))}
+    assert states[("(book)", "chapter titles")].state == "stale"
+    engine = FakeEngine()
+    _run(book, engine)
+    assert len(engine.calls) == 1 and "chapter title" in engine.calls[0][0]
+    assert _titles(book)["chapters"]["ch"]["title"] == "Chapter Alpha-DE"
+
+
+def test_draft_chapter_title_is_not_translated(tmp_path):
+    book = _book(tmp_path, draft_chapter="---\ntitle: Three\n---\n\nAlpha.\n")
+    _run(book, FakeEngine())
+    assert "dr" not in _titles(book)["chapters"]

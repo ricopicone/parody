@@ -250,6 +250,101 @@ def _update_glossary(glossary, sec, accepted):
                 glossary.setdefault(en, tr)
 
 
+BOOK_TITLES = "book.yaml"
+_TITLE_NOTE = ("\nEvery chunk here is a chapter title of the book: translate each as a "
+               "title, in plain text, on one line.\n")
+
+
+def _book_titles_path(project, language):
+    return project.directory / "translations" / language / BOOK_TITLES
+
+
+def _titled_chapters(project):
+    """Chapters with at least one section that is not a draft (their titles show)."""
+    out = []
+    for chapter in project.chapters:
+        for slug in chapter.section_slugs:
+            source = chapter.directory / f"{slug}.md"
+            if source.is_file():
+                meta, _ = split_frontmatter(source.read_text(encoding="utf-8"))
+                if not resolve_section_draft(meta.get("draft"), chapter.draft):
+                    out.append(chapter)
+                    break
+    return out
+
+
+def _load_book_titles(path):
+    import yaml
+    if not path.is_file():
+        return {}
+    return (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("chapters", {}) or {}
+
+
+def _title_todo(project, language):
+    stored = _load_book_titles(_book_titles_path(project, language))
+    chapters = _titled_chapters(project)
+    todo = [i for i, ch in enumerate(chapters)
+            if (stored.get(ch.slug) or {}).get("hash") != chunk_hash(ch.title)]
+    return chapters, stored, todo
+
+
+def chapter_titles_status(project, language):
+    chapters, stored, todo = _title_todo(project, language)
+    state = "current" if not todo else ("missing" if not stored else "stale")
+    return SectionStatus("(book)", "chapter titles", language, state, len(todo), len(chapters))
+
+
+def translate_chapter_titles(project, language, engine, glossary, retries=2, today=None):
+    """Translate the chapter titles the readers see into translations/<lang>/book.yaml."""
+    import yaml
+
+    chapters, stored, todo = _title_todo(project, language)
+    if not todo:
+        return chapter_titles_status(project, language)
+    english = [ch.title for ch in chapters]
+    previous = {i: stored[ch.slug]["title"] for i, ch in enumerate(chapters)
+                if (stored.get(ch.slug) or {}).get("title")}
+    system = system_prompt(language, _relevant(glossary, [english[i] for i in todo])) + _TITLE_NOTE
+    accepted, problems, pending, stopped = {}, {}, list(todo), None
+    for _ in range(retries + 1):
+        if not pending:
+            break
+        try:
+            reply = engine.complete(system, request(english, pending, previous,
+                                                    problems=problems or None))
+        except EngineError as e:
+            stopped = str(e)
+            break
+        try:
+            got = parse_response(reply, pending)
+        except ResponseError as e:
+            problems = {i: [f"the answer could not be used: {e}"] for i in pending}
+            continue
+        problems = {}
+        for i, text in got.items():
+            title = text.strip()
+            if title and "\n" not in title:
+                accepted[i] = title
+            else:
+                problems[i] = ["a chapter title must be one non-empty line"]
+        pending = sorted(problems)
+    if accepted:
+        for i, title in accepted.items():
+            stored[chapters[i].slug] = {"title": title, "hash": chunk_hash(chapters[i].title)}
+        path = _book_titles_path(project, language)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(
+            {"chapters": stored, "engine": engine.name, "model": engine.model,
+             "updated": today or datetime.date.today().isoformat()},
+            allow_unicode=True, sort_keys=False), encoding="utf-8")
+    if stopped is not None:
+        return SectionStatus("(book)", "chapter titles", language, "stopped", len(accepted),
+                             len(chapters), [f"engine: {stopped}"])
+    state = "translated" if not pending else ("partial" if accepted else "failed")
+    return SectionStatus("(book)", "chapter titles", language, state, len(accepted), len(chapters),
+                         [f"chunk {i}: {p}" for i in pending for p in problems.get(i, [])])
+
+
 def _sections(project, sections):
     from ..config import ProjectLayoutError
 
@@ -278,9 +373,13 @@ def _require_translations(project):
 def project_status(project, languages=None, sections=None):
     """Where every section's translation stands, without translating anything."""
     _require_translations(project)
-    return [_status_of(project, chapter, slug, lang)[0]
-            for lang in (languages or project.translations.languages)
-            for chapter, slug in _sections(project, sections)]
+    out = []
+    for lang in (languages or project.translations.languages):
+        out += [_status_of(project, chapter, slug, lang)[0]
+                for chapter, slug in _sections(project, sections)]
+        if not sections:
+            out.append(chapter_titles_status(project, lang))
+    return out
 
 
 def translate_project(project, engine, languages=None, sections=None, jobs=1,
@@ -307,6 +406,13 @@ def translate_project(project, engine, languages=None, sections=None, jobs=1,
             log(_line(st))
             if st.state == "stopped":
                 stop.set()  # a usage limit is the account's, not one language's
+        if not stop.is_set() and not sections:
+            st = translate_chapter_titles(project, lang, engine, glossary,
+                                          retries=retries, today=today)
+            results.append(st)
+            log(_line(st))
+            if st.state == "stopped":
+                stop.set()
         return results
 
     if jobs <= 1 or len(languages) == 1:

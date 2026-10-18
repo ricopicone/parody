@@ -79,7 +79,9 @@ def test_memoir_pdf_compiles_with_two_authors(tiny_project):  # noqa: F811
 def test_exercise_setup_names_problems():
     env = (BUNDLED_PROFILES / "memoir" / "parody-environments.sty").read_text()
     assert "exercise/within=chapter" in env
-    assert "exercise/name=Problem" in env
+    # named through a macro (a translated twin renames it), English by default
+    assert "exercise/name=\\parodyproblemname" in env
+    assert "\\newcommand{\\parodyproblemname}{Problem}" in env
     assert "\\crefname{exercise}{problem}{problems}" in env
     assert "\\Crefname{exercise}{Problem}{Problems}" in env
 

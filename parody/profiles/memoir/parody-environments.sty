@@ -195,11 +195,25 @@
      {\par\egroup\medskip}
      {\par}}
 
+% ---- names ----
+% Every word a box or problem prints for itself, as a macro: a translated twin
+% (parody twin) says them in its own language. English by default.
+\newcommand{\parodydefinitionname}{Definition}
+\newcommand{\parodytheoremname}{Theorem}
+\newcommand{\parodylemmaname}{Lemma}
+\newcommand{\parodycorollaryname}{Corollary}
+\newcommand{\parodypropositionname}{Proposition}
+\newcommand{\parodyexamplename}{Example}
+\newcommand{\parodyboxname}{Box}
+\newcommand{\parodyproblemname}{Problem}
+\newcommand{\parodylabexercisename}{Lab Exercise}
+\newcommand{\parodylabsolutionname}{Lab Solution}
+
 % ---- exercises (xsim) ----
 \DeclareExerciseProperty{hash}
 % End-of-chapter problem sets: named "Problem" (the web says the same, task
 % #499) and numbered within the chapter, so print and web agree on "1.1".
-\xsimsetup{exercise/within=chapter, exercise/name=Problem}
+\xsimsetup{exercise/within=chapter, exercise/name=\parodyproblemname}
 \ifdefined\issolution
   \xsimsetup{solution/print=true}
 \else
@@ -208,8 +222,8 @@
 \DeclareExerciseType{labexercise}{
   exercise-env=labexercise,
   solution-env=labsolution,
-  exercise-name=Lab Exercise,
-  solution-name=Lab Solution,
+  exercise-name=\parodylabexercisename,
+  solution-name=\parodylabsolutionname,
   exercise-template=default,
   solution-template=default,
 }
@@ -231,7 +245,7 @@
 \xsimsetup{exercise/template=parodyrunin, solution/template=parodyrunin}
 % Lab problems: same run-in style, numbered L<chapter>.n as on the web.
 \xsimsetup{
-  labexercise/name = Problem,
+  labexercise/name = \parodyproblemname,
   labexercise/within = chapter,
   labexercise/the-counter = L\thechapter.\arabic{labexercise},
   labexercise/template = parodyrunin,
@@ -349,27 +363,27 @@
 \newenvironment{definition}[2]
   {\refstepcounter{thmctr}%
    \if\relax\detokenize{#2}\relax\else\label[definition]{#2}\fi
-   \begin{parodythmbox}{Definition~\thethmctr}{#1}}
+   \begin{parodythmbox}{\parodydefinitionname~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{theorem}[2]
   {\refstepcounter{thmctr}%
    \if\relax\detokenize{#2}\relax\else\label[theorem]{#2}\fi
-   \begin{parodythmbox}{Theorem~\thethmctr}{#1}}
+   \begin{parodythmbox}{\parodytheoremname~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{lemma}[2]
   {\refstepcounter{thmctr}%
    \if\relax\detokenize{#2}\relax\else\label[lemma]{#2}\fi
-   \begin{parodythmbox}{Lemma~\thethmctr}{#1}}
+   \begin{parodythmbox}{\parodylemmaname~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{corollary}[2]
   {\refstepcounter{thmctr}%
    \if\relax\detokenize{#2}\relax\else\label[corollary]{#2}\fi
-   \begin{parodythmbox}{Corollary~\thethmctr}{#1}}
+   \begin{parodythmbox}{\parodycorollaryname~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \newenvironment{proposition}[2]
   {\refstepcounter{thmctr}%
    \if\relax\detokenize{#2}\relax\else\label[proposition]{#2}\fi
-   \begin{parodythmbox}{Proposition~\thethmctr}{#1}}
+   \begin{parodythmbox}{\parodypropositionname~\thethmctr}{#1}}
   {\end{parodythmbox}}
 \crefname{thmctr}{result}{results}
 % Each box labels itself with its own cleveref TYPE (\label[definition]{…}),
@@ -386,7 +400,7 @@
 \newenvironment{infobox}[2][]
   {\refstepcounter{infoboxctr}%
    \begin{tcolorbox}[parodybox=parodyinfoframe,
-     title={Box~\theinfoboxctr%
+     title={\parodyboxname~\theinfoboxctr%
        \if\relax\detokenize{#2}\relax\else\ \textnormal{\itshape #2}\fi}, #1]}
   {\end{tcolorbox}}
 \crefname{infoboxctr}{box}{boxes}
@@ -396,7 +410,7 @@
 \newenvironment{myexample}[3][]
   {\refstepcounter{examplectr}%
    \begin{tcolorbox}[parodybox=parodyexframe,
-     title={Example~\theexamplectr}]%
+     title={\parodyexamplename~\theexamplectr}]%
    \if\relax\detokenize{#2}\relax\else\label{#2}\fi%
    \ifstrequal{#2}{#3}{}{\if\relax\detokenize{#3}\relax\else\label{#3}\fi}}
   {\end{tcolorbox}}
