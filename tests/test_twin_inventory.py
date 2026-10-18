@@ -178,3 +178,19 @@ def test_a_box_head_logs_the_number_before_the_box_takes_it(tmp_path):
     inv = build_inventory(book, tmp_path / "twin-build", published)
     head, inside = inv.counters[1_002_000], inv.counters[1_002_001]
     assert head["thmctr"] == 0 and inside["thmctr"] == 1
+
+
+@needs_tex
+def test_a_section_head_logs_the_number_before_the_heading_takes_it(tmp_path):
+    # A section titled only in front matter gets its \section from the build,
+    # ahead of every mark in its body. Logged after it, the counters at the
+    # section's head already had the section's number, and the twin, which
+    # sets the heading again, numbered every section one too high (robotics).
+    book = _book(tmp_path)
+    (book / "chapters" / "one" / "first.md").write_text("---\ntitle: First\n---\n\nOpening words.\n")
+    (book / "chapters" / "one" / "second.md").write_text("---\ntitle: Second\n---\n\nMore words.\n")
+    published = build_pdf(book, output_pdf=tmp_path / "en.pdf")
+    inv = build_inventory(book, tmp_path / "twin-build", published)
+    assert inv.mismatched_pages == []
+    assert inv.counters[1_001_000]["section"] == 0
+    assert inv.counters[2_001_000]["section"] == 1

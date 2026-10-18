@@ -352,3 +352,23 @@ def test_a_paragraph_after_a_closing_fence_is_not_a_nested_div():
             "Part (d) is the point. If you cannot flip\nthe verdict, say so.")
     starts = [text[s:s + 6] for s in sentence_starts(text)]
     assert "the ve" not in starts
+
+
+@pytest.mark.parametrize("first, rest", [
+    ("[Grübler's formula]{.keyword}", "gives the number."),
+    ("[a link](x y.md)", "goes there."),
+    ("*Very well*", "said, she said."),
+])
+def test_a_box_head_mark_is_never_inside_its_first_word(first, rest):
+    # "After the first word" cut inside a key term once, and the mark went
+    # into the term's index entry: typeset on the index page, it put the
+    # section's head on page 275 of 280 (robotics).
+    marked = mark_section(f"::: {{.definition #def:x}}\n{first} {rest}\n:::", 1)
+    assert f"{first} \\parodys{{1001000}}{rest}" in marked
+
+
+@pytest.mark.parametrize("line, word", [("$x + y$ is", "$x + y$ "), ("`a b` is", "`a b` "),
+                                        ("[a]{.k} [b]{.k} c", "[a]{.k} "), ("one", "one")])
+def test_first_word_takes_whole_maths_code_and_spans(line, word):
+    from parody.twin.marks import _after_first_word
+    assert line[:_after_first_word(line)] == word

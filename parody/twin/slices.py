@@ -13,10 +13,11 @@ closes the div on the first page and reopens it on the next, with its
 """
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 
 from ..translate.chunks import _DIV_CLOSE, _DIV_OPEN, _FENCE_CLOSE, _FENCE_OPEN
-from .marks import _LIST_ITEM, sentence_starts
+from .marks import _BLANK_LINE, _LIST_ITEM, sentence_starts
 
 
 @dataclass
@@ -78,6 +79,33 @@ def _without_id(opener):
     return f"{m.group(1)}{{{' '.join(kept)}}}"
 
 
+def _blocks(text):
+    """Where each blank-line-separated block of ``text`` starts."""
+    return [0] + [m.end() for m in _BLANK_LINE.finditer(text)]
+
+
+def _in_same_block(e, english, bounds, text):
+    """The translated boundary for English boundary offset ``e``, found in the
+    same block: the translation keeps the English blocks one for one, so a cut
+    at a block (a figure, a paragraph) is exact whatever the sentence counts,
+    and one inside a block stays inside it. None when the blocks differ."""
+    en_blocks, tr_blocks = _blocks(english), _blocks(text)
+    if len(en_blocks) != len(tr_blocks):
+        return None
+    k = bisect_right(en_blocks, e) - 1
+    lo = tr_blocks[k]
+    hi = tr_blocks[k + 1] if k + 1 < len(tr_blocks) else len(text)
+    if e == en_blocks[k]:
+        return lo if lo in bounds else None
+    inside = [b for b in bounds if lo < b < hi]
+    if not inside:
+        return None
+    en_lo = en_blocks[k]
+    en_hi = en_blocks[k + 1] if k + 1 < len(en_blocks) else len(english)
+    target = lo + (e - en_lo) / max(en_hi - en_lo, 1) * (hi - lo)
+    return min(inside, key=lambda b: abs(b - target))
+
+
 def slice_chunk(text, language, start, end, english):
     """Sentences ``[start, end)`` of a translated chunk (``end=None``: to its end).
 
@@ -100,7 +128,11 @@ def slice_chunk(text, language, start, end, english):
         if not approximate:
             return bounds[i - 1]
         if en_bounds:
-            target = en_bounds[min(i, len(en_bounds)) - 1] / en_len * len(text)
+            e = en_bounds[min(i, len(en_bounds)) - 1]
+            anchored = _in_same_block(e, english, bounds, text)
+            if anchored is not None:
+                return anchored
+            target = e / en_len * len(text)
             return min(bounds, key=lambda b: abs(b - target))
         j = round(i * len(bounds) / max(en_count, 1))
         return 0 if j <= 0 else bounds[min(j, len(bounds)) - 1]

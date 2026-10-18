@@ -550,12 +550,13 @@ def drop_duplicate_labels(tex_paths, reserved=()):
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
               profile_dir=None, keep_build=False, build_dir=None,
               cloze_mode=None, pagemap=True, edition=None,
-              section_hook=None, extra_support=(), extra_flags=()):
+              section_hook=None, extra_support=(), extra_flags=(), section_prefix=None):
     """Build the print PDF. Returns the path to the produced PDF.
 
-    ``section_hook``, ``extra_support`` (files copied into the build dir) and
-    ``extra_flags`` (preamble lines) exist for the twin build's marked English
-    pass; with none of them the build is exactly the ordinary one.
+    ``section_hook``, ``extra_support`` (files copied into the build dir),
+    ``extra_flags`` (preamble lines) and ``section_prefix`` (``f(md_path)`` ->
+    TeX set just before the section's ``\\input``) exist for the twin build's
+    marked English pass; with none of them the build is exactly the ordinary one.
 
     section: "chapter-slug/section-slug" builds just that section
     (meta-book's `make section h=...` equivalent).
@@ -754,6 +755,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                             encoding="utf-8")
                 first_in_chapter = False
                 emitted_tex.append(tex_path)
+                if section_prefix is not None:
+                    chapters_tex.append(section_prefix(src))
                 chapters_tex.append(f"\\input{{sections/{chapter.slug}/{sec_slug}.tex}}")
                 if pagemap:
                     # End mark, so a section that does NOT share its last sheet

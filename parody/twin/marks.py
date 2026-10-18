@@ -254,6 +254,36 @@ def _ends_in_paragraph(chunk):
     return bool(blocks) and blocks[-1]["t"] == "Para"
 
 
+def _after_first_word(line):
+    """Offset just past ``line``'s first word and the spaces after it, or its
+    end. A word is whole spans, links, maths and code: a cut inside a key term
+    puts the mark into the term's index entry."""
+    depth, math, code, emph, seen = 0, False, False, False, False
+    for i, ch in enumerate(line):
+        if ch == "`" and not math:
+            code = not code
+        elif code:
+            pass
+        elif ch == "$":
+            math = not math
+        elif math:
+            pass
+        elif ch in "*_":
+            # a run of * or _ opens or closes emphasis (a mark inside the group
+            # would not outlast it)
+            if line[i - 1:i] != ch:
+                emph = not emph
+        elif ch in "[({":
+            depth += 1
+        elif ch in "])}":
+            depth = max(depth - 1, 0)
+        elif ch in " \t" and depth == 0 and not emph and seen:
+            m = re.match(r"[ \t]+", line[i:])
+            return i + m.end()
+        seen = True
+    return len(line)
+
+
 def _value(section, chunk, sentence):
     return section * _SECTION + (chunk + 1) * _CHUNK + sentence
 
@@ -301,8 +331,7 @@ def mark_section(body, section_index):
             # After the first word: as the box's very first token the mark
             # changed the box's layout and moved lines between pages.
             opener, _, rest = marked.partition("\n")
-            m_word = re.match(r"\S+[ \t]+", rest)
-            cut = m_word.end() if m_word and "\n" not in m_word.group(0) else len(rest.split("\n", 1)[0])
+            cut = _after_first_word(rest.split("\n", 1)[0])
             # The counters, though, are logged BEFORE the box opens: inside,
             # the box has already stepped its number, and a twin page opening
             # on it would print the next one.

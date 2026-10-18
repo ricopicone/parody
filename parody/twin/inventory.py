@@ -100,7 +100,7 @@ def build_inventory(project_dir, build_dir, published_pdf):
     """Build the marked English and read back where every sentence fell."""
     from ..config import load_project
     from ..writers.latex import build_pdf
-    from .marks import mark_section
+    from .marks import _value, mark_section
 
     project = load_project(project_dir)
     index = section_indices(project)
@@ -113,12 +113,21 @@ def build_inventory(project_dir, build_dir, published_pdf):
         i = by_path.get(Path(md_path).resolve())
         return mark_section(body, i) if i else body
 
+    def prefix(md_path):
+        # The section's counters, logged before its \input: ahead of the
+        # \section the build writes for a section titled in front matter,
+        # which precedes every mark in the body. The first log of a value
+        # wins, so the head mark's own log comes too late to count. The % keeps
+        # the line end out of the previous section's paragraph, still open here.
+        i = by_path.get(Path(md_path).resolve())
+        return f"\\parodysctr{{{_value(i, 0, 0)}}}%" if i else ""
+
     # Every other option as the ordinary build has it (page map included), so
     # the only difference from the published PDF is the marks themselves.
     build_dir = Path(build_dir)
     marked = build_pdf(project_dir, output_pdf=build_dir / "marked.pdf", build_dir=build_dir,
                        section_hook=hook, extra_support=TWINMARKS_SUPPORT,
-                       extra_flags=[TWINMARKS_FLAG])
+                       extra_flags=[TWINMARKS_FLAG], section_prefix=prefix)
     if marked is None:
         raise RuntimeError("the marked English build produced no PDF (is TeX installed?)")
     return Inventory(

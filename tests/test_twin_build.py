@@ -348,3 +348,31 @@ def test_an_exercise_reopened_inside_its_solution_steps_every_opener_back():
     for name in ("exercise", "numberofexercises", "solution"):
         assert f"\\addtocounter{{{name}}}{{-1}}" in md, (name, md)
     assert md.index("\\addtocounter{exercise}{-1}") < md.index("::: {.exercise}")
+
+
+@needs_tex
+def test_sections_titled_in_front_matter_number_as_in_the_english(tmp_path):
+    # Robotics: headings the build writes from front matter, and a draft
+    # section between two released ones. The English steps the section counter
+    # for the draft; a twin page where the next section starts mid-page must
+    # carry that step, and must not count the heading twice.
+    book = tmp_path / "book"
+    (book / "chapters" / "one").mkdir(parents=True)
+    (book / "parody.yaml").write_text(YAML.replace("[first, second]", "[first, hidden, third]"))
+    texts = {"first": "---\ntitle: First\nid: sec:first\n---\n\nAlpha one. Alpha two.\n",
+             "hidden": "---\ntitle: Hidden\ndraft: true\n---\n\nNot printed.\n",
+             "third": "---\ntitle: Third\nid: sec:third\n---\n\nAlpha three. See [@sec:first].\n"}
+    for slug, text in texts.items():
+        (book / "chapters" / "one" / f"{slug}.md").write_text(text)
+    for slug in ("first", "third"):
+        meta, body = split_frontmatter(texts[slug])
+        TranslationFile(language="de", source=f"chapters/one/{slug}.md",
+                        title=meta["title"] + " (de)", title_hash=chunk_hash(meta["title"]),
+                        chunks=[(chunk_hash(c), c.replace("Alpha", "Alpha-DE"))
+                                for c in split_chunks(body)]
+                        ).write(translation_path(book, "de", "one", slug))
+    pdf, report = build_twin(book, "de", out=tmp_path / "twin.pdf")
+    assert report.mismatched_pages == [] and report.tex_errors == []
+    assert report.references == []
+    aux = (tmp_path / "book" / "build" / "twin" / "twin-de" / "main.aux").read_text()
+    assert "\\newlabel{sec:first}{{1.1}" in aux and "\\newlabel{sec:third}{{1.3}" in aux

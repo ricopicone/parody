@@ -428,8 +428,15 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
                 if any(p.section == section and p.chunk == 0 and p.start == 0 for p in page.pieces):
                     meta = dict(src.meta)
                     meta["title"] = translated[section].title or src.title or meta.get("title")
-                    tex_path.write_text(synthesize_section_heading(
-                        tex_path.read_text(encoding="utf-8"), meta, src.slug), encoding="utf-8")
+                    tex = synthesize_section_heading(
+                        tex_path.read_text(encoding="utf-8"), meta, src.slug)
+                    # The section number as the English had it just before the
+                    # heading: past any draft sections it skipped, which the
+                    # twin page's own restore (its first section's) predates.
+                    before = (inv.counters.get(_value(section, 0, 0)) or {}).get("section")
+                    if before is not None:
+                        tex = f"\\parodytwinset{{section}}{{{before}}}%\n" + tex
+                    tex_path.write_text(tex, encoding="utf-8")
                 inputs.append(f"\\input{{pages/{tex_path.name}}}")
             chapmark, secmark = _marks(page, english, translated, titles, inv.counters), ""
             chapter_title, chapter_labels = None, []

@@ -85,3 +85,30 @@ def test_raw_html_divs_inside_a_box_are_closed_and_reopened_too():
     second = slice_chunk(text, "de", 1, None, 1)
     assert first.text == "::: example\n<div>\n\nEins.\n\n</div>\n\n:::"
     assert second.text == "::: example\n<div>\n\nZwei.\n\n</div>\n:::"
+
+
+def test_a_cut_at_a_block_maps_to_the_same_block():
+    # The translation keeps the English blocks one for one, so a cut at a
+    # block (a figure, a paragraph) lands at that block even when the
+    # sentence counts differ; proportionally, a figure slid onto the page
+    # before and the next page's figure numbers fell one behind (robotics).
+    # English runs long before the figure, the Chinese short: by relative
+    # position the figure's cut fell in the Chinese after it.
+    english = ("::: {.exercise}\nThe first sentence goes on for quite a while here. "
+               "The second sentence also takes its time to finish.\n\n"
+               "![A chain.](c.pdf){#fig:c}\n\nThe third.\n:::")
+    chinese = ("::: {.exercise}\n第一句。第二句。第二句半。\n\n"
+               "![链。](c.pdf){#fig:c}\n\n第三句话非常非常非常非常非常非常非常非常非常非常长。\n:::")
+    before = slice_chunk(chinese, "zh", 0, 2, english)
+    after = slice_chunk(chinese, "zh", 2, None, english)
+    assert "![" not in before.text and before.text.endswith("第二句半。\n\n:::")
+    assert after.text.startswith("::: {.exercise}\n![链。]")
+
+
+def test_a_cut_inside_a_block_stays_inside_it():
+    english = "One. Two. Three.\n\nFour. Five."
+    german = "Eins. Zwei. Zwei b. Drei.\n\nVier. Fünf."
+    # English boundary 4 is "Five", inside the second block
+    assert slice_chunk(german, "de", 4, None, english).text == "Fünf."
+    # boundary 2 ("Three") stays in the first block, never moving to "Vier"
+    assert slice_chunk(german, "de", 0, 2, english).text.count("Vier") == 0
