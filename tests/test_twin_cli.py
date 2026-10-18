@@ -29,6 +29,7 @@ def test_cli_twin_reports_and_builds_side_by_side(tmp_path, monkeypatch, capsys)
     import parody.twin.sidebyside as S
     report = TwinReport(language="de", base_scale=0.88, squeezed=[(12, 0.81)], approximate=[14],
                         pages=3, abspages=[5, 6, 7], english_pdf=tmp_path / "en.pdf")
+    (tmp_path / "en.pdf").write_bytes(b"%PDF en")
     build, calls = _fake_build(report)
     monkeypatch.setattr(B, "build_twin", build)
     seen = {}
@@ -65,3 +66,27 @@ def test_cli_twin_fails_when_a_page_spilled(tmp_path, monkeypatch, capsys):
     assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "t.pdf"),
                  "--side-by-side", str(tmp_path / "s.pdf")]) == 1
     assert "30 pages for 28 English pages" in capsys.readouterr().out
+
+
+def test_cli_writes_sidecar_only_on_success(tmp_path, monkeypatch, capsys):
+    import json
+
+    import parody.twin.build as B
+    english = tmp_path / "en.pdf"
+    english.write_bytes(b"%PDF en")
+    good = TwinReport(language="de", pages=2, shipped_pages=2, abspages=[5, 6],
+                      english_pdf=english, sections={"one/a": [1, 2]})
+    build, _ = _fake_build(good)
+    monkeypatch.setattr(B, "build_twin", build)
+    assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "t.pdf")]) == 0
+    sidecar = tmp_path / "t.twin.json"
+    assert json.loads(sidecar.read_text())["sections"] == {"one/a": [1, 2]}
+    assert str(sidecar) in capsys.readouterr().out
+    sidecar.unlink()
+
+    bad = TwinReport(language="de", pages=2, shipped_pages=2, abspages=[5, 6],
+                     english_pdf=english, tex_errors=["! Undefined control sequence."])
+    build, _ = _fake_build(bad)
+    monkeypatch.setattr(B, "build_twin", build)
+    assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "t.pdf")]) == 1
+    assert not sidecar.exists()

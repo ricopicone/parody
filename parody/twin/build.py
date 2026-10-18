@@ -12,6 +12,7 @@
    further, without limit, and is reported.
 """
 
+import json
 import math
 import os
 import re
@@ -58,6 +59,60 @@ class TwinReport:
     tex_errors: list = field(default_factory=list)  # "! …" lines from the twin's log
     coverage: list = field(default_factory=list)  # text on no twin page, or on two
     notes: list = field(default_factory=list)
+    sections: dict = field(default_factory=dict)  # "chapter/section" → [first, last] twin page
+
+
+SIDECAR_SCHEMA = 1
+
+
+def section_ranges(pages, section_keys):
+    """``{"chapter/section": [first, last]}``, 1-based pages of the twin PDF.
+
+    A section runs from the first twin page holding any of its text to the
+    last, so the page where one section ends and the next begins belongs to
+    both, as it does in the English section PDFs. The twin starts at the first
+    selected section, not at English page 1, which is why the English page
+    ranges cannot slice it.
+    """
+    key_of = {i: key for key, i in section_keys.items()}
+    out = {}
+    for n, page in enumerate(pages, start=1):
+        for piece in page.pieces:
+            key = key_of.get(piece.section)
+            if key is None:
+                continue
+            first, _ = out.get(key, (n, n))
+            out[key] = [first, n]
+    return out
+
+
+def write_twin_sidecar(pdf, report, side_by_side=None):
+    """Write ``<twin>.twin.json`` beside the twin PDF; returns its path.
+
+    It names the English PDF the twin pairs with by sha256, so a book site
+    can refuse a twin of an older English build.
+    """
+    from ..writers.pagemap import sha256_file
+
+    pdf = Path(pdf)
+    path = pdf.with_suffix(".twin.json")
+    payload = {
+        "schema": SIDECAR_SCHEMA,
+        "language": report.language,
+        "pdf": pdf.name,
+        "sha256": sha256_file(pdf),
+        "english_sha256": sha256_file(report.english_pdf),
+        "side_by_side": Path(side_by_side).name if side_by_side else None,
+        "sections": report.sections,
+        "abspages": report.abspages,
+        "base_scale": report.base_scale,
+        "squeezed": [list(x) for x in report.squeezed],
+        "approximate": report.approximate,
+        "untranslated": report.untranslated,
+        "stale": report.stale,
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
 def parse_twinfit(log):
@@ -236,6 +291,7 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     report = TwinReport(language=language, mismatched_pages=list(inv.mismatched_pages),
                         pages=len(pages), abspages=[p.abspage for p in pages],
                         english_pdf=Path(published_pdf),
+                        sections=section_ranges(pages, index),
                         coverage=coverage_problems(pages),
                         unsupported=unsupported_notes({i: english[i] for i in selected if i in english},
                                                       inv.rows, page_numbers, tex_by_section))

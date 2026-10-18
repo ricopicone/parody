@@ -217,11 +217,15 @@ def cmd_twin(args):
     if spilled:
         print(f"  ✗ the twin has {report.shipped_pages} pages for {report.pages} English pages: "
               "a page spilled over; no side-by-side sheets")
+    sbs = None
     if args.side_by_side and not spilled:
         sbs = sidebyside.side_by_side(report.english_pdf, pdf, report.abspages,
                                       Path(args.side_by_side))
         print(f"  side by side → {sbs}")
-    return 1 if (report.tex_errors or report.mismatched_pages or spilled or report.coverage) else 0
+    if report.tex_errors or report.mismatched_pages or spilled or report.coverage:
+        return 1
+    print(f"  sidecar → {twin_build.write_twin_sidecar(pdf, report, sbs)}")
+    return 0
 
 
 def cmd_publish(args):

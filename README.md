@@ -102,6 +102,11 @@ How it works:
 Where a translation's sentences do not line up one to one with the English,
 the cut is made at the nearest position and reported as approximate.
 
+A build that passes every check also writes `<twin>.twin.json` beside the
+twin. It holds the twin's sha256, the sha256 of the English PDF it twins, and
+each section's twin page range. A book site uses it to serve per-section twins
+and to refuse a twin of an older English build.
+
 ## Fill-in-the-blank (cloze) content
 
 `[answer]{.cloze}` hides text behind a blank sized to it; `[]{.blank size=lg}`

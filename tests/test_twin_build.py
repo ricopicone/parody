@@ -6,7 +6,8 @@ import pytest
 
 from parody.translate.chunks import chunk_hash, split_chunks, split_frontmatter
 from parody.translate.store import TranslationFile, translation_path
-from parody.twin.build import base_scale, build_twin, parse_twinfit, restore_code
+from parody.twin.build import (TwinReport, base_scale, build_twin, parse_twinfit, restore_code,
+                               section_ranges, write_twin_sidecar)
 from parody.twin.compose import SectionSource, align_translation, page_markdown
 from parody.twin.paginate import Piece, TwinPage
 from parody.writers.latex import have_tool
@@ -155,6 +156,12 @@ def test_build_twin_tiny_book(tmp_path):
     assert "Kapitel 1 One" in texts[0] or "Kapitel1One" in texts[0].replace(" ", "")
     # a page where section 1.2 starts carries its translated title in the head
     assert any(t.startswith("1.2 Second (de)") for t in texts), [t[:30] for t in texts]
+    # each section's twin pages, for the book site to slice: the first starts
+    # on twin page 1, the second ends on the last, and they meet or touch
+    first, second = report.sections["one/first"], report.sections["one/second"]
+    assert first[0] == 1 and second[1] == report.pages
+    assert second[0] in (first[1], first[1] + 1)
+    assert any(t.startswith("1.2 Second (de)") for t in texts[second[0] - 1:second[0]])
 
 
 def test_coverage_check_flags_a_gap():
@@ -181,3 +188,36 @@ def test_reopened_box_step_back_with_real_counter_shape():
     md = page_markdown(TwinPage(6, 2, pieces=[Piece(1, 2, 1, None)]), {1: _section(EN)},
                        {1: tr}, "de", counters)[0][0][1]
     assert "\\addtocounter{thmctr}{-1}" in md
+
+
+def test_section_ranges_from_pages():
+    # twin pages are 1-based in the twin PDF; a section runs from the first
+    # page holding any of its text to the last, blank pages between included
+    pages = [TwinPage(5, 1, [Piece(1, 0, 0, None)]),
+             TwinPage(6, 2, [Piece(1, 1, 0, None), Piece(2, 0, 0, None)]),
+             TwinPage(7, 3, []),
+             TwinPage(8, 4, [Piece(2, 1, 0, None)])]
+    keys = {"one/a": 1, "one/b": 2, "two/c": 3}
+    assert section_ranges(pages, keys) == {"one/a": [1, 2], "one/b": [2, 4]}
+
+
+def test_sidecar_round_trip(tmp_path):
+    import hashlib
+    import json
+    twin = tmp_path / "book-de.pdf"
+    twin.write_bytes(b"%PDF twin")
+    english = tmp_path / "book.pdf"
+    english.write_bytes(b"%PDF en")
+    report = TwinReport(language="de", base_scale=0.87, squeezed=[(22, 0.85)], approximate=[4],
+                        abspages=[5, 6], english_pdf=english, sections={"one/a": [1, 2]})
+    path = write_twin_sidecar(twin, report, tmp_path / "book-de-sbs.pdf")
+    assert path == tmp_path / "book-de.twin.json"
+    assert json.loads(path.read_text()) == {
+        "schema": 1, "language": "de", "pdf": "book-de.pdf",
+        "sha256": hashlib.sha256(b"%PDF twin").hexdigest(),
+        "english_sha256": hashlib.sha256(b"%PDF en").hexdigest(),
+        "side_by_side": "book-de-sbs.pdf", "sections": {"one/a": [1, 2]},
+        "abspages": [5, 6], "base_scale": 0.87, "squeezed": [[22, 0.85]],
+        "approximate": [4], "untranslated": 0, "stale": 0}
+    no_sbs = write_twin_sidecar(twin, report)
+    assert json.loads(no_sbs.read_text())["side_by_side"] is None
