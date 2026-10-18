@@ -47,6 +47,9 @@ class Project:
     chapters: list = field(default_factory=list)
     bibliography: Path | None = None
     editions: list = field(default_factory=list)  # edition-aware build (P1)
+    # translations: key (TranslationConfig), or None for a book that isn't
+    # translated. See parody/translate/languages.py.
+    translations: object = None
 
 
 class ProjectLayoutError(Exception):
@@ -126,6 +129,9 @@ def load_project(project_dir):
             bibliography=_find_bibliography(project_dir),
         )
 
+    # Imported here, not at the top: parody.translate imports this module.
+    from .translate.languages import normalize_translations
+
     with open(project_dir / "parody.yaml", encoding="utf-8") as f:
         meta = yaml.safe_load(f) or {}
 
@@ -154,6 +160,7 @@ def load_project(project_dir):
         slug=slug, meta=meta, chapters=chapters,
         bibliography=_find_bibliography(project_dir),
         editions=normalize_editions(meta.get("editions")),
+        translations=normalize_translations(meta.get("translations")),
     )
 
 
