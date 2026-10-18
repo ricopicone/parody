@@ -325,9 +325,13 @@ def _marks(page, english, translated, titles, counters):
     return code + f"\\markboth{{\\thechapter.\\ {chapter_title}}}{{{right}}}"
 
 
-def _page_tex(page, inputs, scale, chapmark, secmark, chapter_title):
+def _page_tex(page, inputs, scale, chapmark, secmark, chapter_title, chapter_labels=()):
     opt = f"[{chapter_title}]" if page.chapter_start and chapter_title else ""
-    return (f"\\begin{{twinpage}}{{{page.page}}}{{{scale:.2f}}}{{{restore_code(page.counters)}}}"
+    # the labels the English sets after \chapter (writers/latex.py), or every
+    # reference to the chapter prints ?? in the twin
+    labels = "".join(f"\\label{{{label}}}" for label in chapter_labels) if opt else ""
+    head = f"\\def\\parodytwinchapterlabels{{{labels}}}" if labels else ""
+    return (head + f"\\begin{{twinpage}}{{{page.page}}}{{{scale:.2f}}}{{{restore_code(page.counters)}}}"
             f"{{{chapmark}}}{{{secmark}}}{opt}\n" + "\n".join(inputs) + "\n\\end{twinpage}\n")
 
 
@@ -410,19 +414,21 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
                         tex_path.read_text(encoding="utf-8"), meta, src.slug), encoding="utf-8")
                 inputs.append(f"\\input{{pages/{tex_path.name}}}")
             chapmark, secmark = _marks(page, english, translated, titles, inv.counters), ""
-            chapter_title = None
+            chapter_title, chapter_labels = None, []
             if page.chapter_start and page.first_unit is not None:
                 chapter = english[page.first_unit // 1_000_000].chapter
                 chapter_title = titles.get(chapter.slug) or chapter.title
-            composed.append((page, inputs, chapmark, secmark, chapter_title))
+                chapter_labels = [chapter.slug] + (
+                    [chapter.hash] if chapter.hash and chapter.hash != chapter.slug else [])
+            composed.append((page, inputs, chapmark, secmark, chapter_title, chapter_labels))
 
     marked_main = (build_dir / "marked" / "main.tex").read_text(encoding="utf-8")
     preamble = marked_main.split("\\begin{document}")[0]
     preamble = preamble.replace(TWINMARKS_FLAG + "\n", "").replace("\\usepackage{parody-pagemap}\n", "")
 
     def write_main(scale):
-        body = "".join(_page_tex(page, inputs, scale, cm, sm, ct)
-                       for page, inputs, cm, sm, ct in composed)
+        body = "".join(_page_tex(page, inputs, scale, cm, sm, ct, cl)
+                       for page, inputs, cm, sm, ct, cl in composed)
         (twin_dir / "main.tex").write_text(
             preamble + twin_preamble(language) + "\n\\begin{document}\n\\mainmatter\n"
             + body + "\\end{document}\n", encoding="utf-8")

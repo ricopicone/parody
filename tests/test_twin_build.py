@@ -6,8 +6,8 @@ import pytest
 
 from parody.translate.chunks import chunk_hash, split_chunks, split_frontmatter
 from parody.translate.store import TranslationFile, translation_path
-from parody.twin.build import (TwinReport, base_scale, build_twin, log_errors, mark_errors,
-                               pdf_pages,
+from parody.twin.build import (TwinReport, _page_tex, base_scale, build_twin, log_errors,
+                               mark_errors, pdf_pages,
                                parse_twinfit, restore_code, section_ranges, twin_errors,
                                write_twin_sidecar)
 from parody.twin.compose import SectionSource, align_translation, page_markdown
@@ -299,3 +299,14 @@ def test_any_pdf_reader_failure_means_unreadable(tmp_path, monkeypatch):
         raise ValueError("bad xref")
     monkeypatch.setattr(pypdf, "PdfReader", explode)
     assert pdf_pages(path) is None
+
+
+def test_a_page_opening_a_chapter_sets_its_labels():
+    # as the English does after \chapter: the slug, and the hash when it differs
+    page = TwinPage(15, 11, pieces=[Piece(2, 0, 0, None)], chapter_start=True)
+    tex = _page_tex(page, ["\\input{pages/p15-0.tex}"], 0.9, "", "", "Schaltungsanalyse",
+                    ["circuit-analysis", "uy"])
+    assert tex.startswith("\\def\\parodytwinchapterlabels{\\label{circuit-analysis}\\label{uy}}")
+    assert "[Schaltungsanalyse]" in tex
+    plain = _page_tex(TwinPage(16, 12, pieces=[Piece(2, 1, 0, None)]), [], 0.9, "", "", None, [])
+    assert "parodytwinchapterlabels" not in plain

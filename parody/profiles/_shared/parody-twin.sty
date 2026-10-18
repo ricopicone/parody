@@ -28,6 +28,10 @@
 \newcommand{\parodyuntranslated}{{\footnotesize\itshape[\parodytwinuntranslatedtext]}\ }
 \newcommand{\parodystale}{{\footnotesize\itshape[\parodytwinstaletext]}\ }
 
+% \def\parodytwinchapterlabels{\label{<slug>}\label{<hash>}} before a twinpage
+% that opens a chapter: set right after its \chapter, so references resolve.
+\providecommand{\parodytwinchapterlabels}{}
+
 \ExplSyntaxOn
 \box_new:N \g__parodytwin_box
 \dim_new:N \l__parodytwin_width
@@ -128,7 +132,10 @@
           #3
           \addtocounter{chapter}{-1}
           \chapter{#6}
+          % the chapter's own labels, as the English sets them after \chapter
+          \parodytwinchapterlabels
         \group_end:
+        \cs_gset_eq:NN \parodytwinchapterlabels \prg_do_nothing:
       }
       { #4 #5 }
     % run the page builder, so \pagetotal counts a chapter heading just set

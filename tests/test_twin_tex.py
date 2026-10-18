@@ -175,3 +175,16 @@ def test_fit_attempts_do_not_multiply_exercises(tmp_path):
     assert "TWINFIT page=9 scale=0.7" in log  # it took many attempts
     xsim = (tmp_path / "t.xsim").read_text(encoding="utf-8", errors="replace")
     assert "exercise-1==" in xsim and "exercise-2==" not in xsim
+
+
+@needs_tex
+def test_a_chapter_opened_on_a_twin_page_keeps_its_labels(tmp_path):
+    # The English sets \label{<slug>}\label{<hash>} after \chapter; the twin
+    # did not, so every reference to a chapter printed ?? in the twin.
+    body = ("\\def\\parodytwinchapterlabels{\\label{circuit-analysis}\\label{uy}}"
+            "\\begin{twinpage}{11}{1.0}{\\setcounter{chapter}{2}}{}{}[Schaltungsanalyse]\n"
+            "In Kapitel~\\ref{uy} und \\ref{circuit-analysis}.\n\\end{twinpage}\n")
+    pdf, log = _compile(tmp_path, body, runs=2)
+    assert "Reference `uy' on page" not in log
+    text = _text(pdf)[0]
+    assert "Kapitel 2 und 2" in text.replace("\u00a0", " "), text[:200]
