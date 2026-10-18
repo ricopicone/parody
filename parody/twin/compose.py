@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..translate.chunks import align_chunks, chunk_hash, split_chunks, split_frontmatter
-from .marks import sentence_starts
 from .slices import slice_chunk
 
 # Counters a box steps when it opens (parody-environments.sty).
@@ -112,8 +111,7 @@ def page_markdown(page, english, translated, language, counters):
         if piece.start == 0 and piece.end is None:
             body = text
         else:
-            cut = slice_chunk(text, lang, piece.start, piece.end,
-                              len(sentence_starts(en_text, "en")))
+            cut = slice_chunk(text, lang, piece.start, piece.end, en_text)
             body = cut.text
             if cut.approximate:
                 notes.append(f"approximate: {en.key} chunk {piece.chunk} "

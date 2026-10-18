@@ -34,10 +34,15 @@
 \dim_new:N \l__parodytwin_avail
 \fp_new:N \l__parodytwin_scale
 \tl_new:N \l__parodytwin_restore
+\dim_new:N \l__parodytwin_parindent
+\skip_new:N \l__parodytwin_parskip
 
 \cs_new_protected:Npn \__parodytwin_minipage:n #1
   {
     \begin{minipage}[t]{\l__parodytwin_width}
+      % minipage zeroes these; the twin's paragraphs look like the book's
+      \dim_set_eq:NN \parindent \l__parodytwin_parindent
+      \skip_set_eq:NN \parskip \l__parodytwin_parskip
       \cs_set:Npn \thempfootnote { \arabic{mpfootnote} }
       \setcounter{mpfootnote}{\value{footnote}}
       #1
@@ -88,15 +93,23 @@
       }
     \iow_log:x { TWINFIT ~ page=\thepage \c_space_tl scale=\fp_use:N \l__parodytwin_scale }
     \l__parodytwin_restore
-    % straight onto the page, no paragraph and no interline glue: the
-    % measured height is all the space it takes
+    % Straight onto the page, no paragraph and no interline glue, and as a
+    % box whose whole extent is HEIGHT (depth 0): a [t] minipage's height is
+    % only its first line, and \topskip would pad that, unmeasured, by up to
+    % 10pt and push a tightly fitted page onto a second sheet.
     \nointerlineskip
-    \hbox:n { \scalebox { \fp_use:N \l__parodytwin_scale } { \__parodytwin_minipage:n { #2 } } }
+    \vbox:n
+      {
+        \hbox:n { \scalebox { \fp_use:N \l__parodytwin_scale } { \__parodytwin_minipage:n { #2 } } }
+        \kern 0pt
+      }
   }
 
 \NewDocumentEnvironment { twinpage } { m m m m m o +b }
   {
     \clearpage
+    \dim_set_eq:NN \l__parodytwin_parindent \parindent
+    \skip_set_eq:NN \l__parodytwin_parskip \parskip
     \setcounter{page}{#1}
     \tl_set:Nn \l__parodytwin_restore { #3 }
     \IfValueTF { #6 }

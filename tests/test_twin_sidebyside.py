@@ -49,3 +49,11 @@ def test_both_halves_carry_their_page(tmp_path):
     assert left < 80 and 80 < right < 200
     # and the right half is not tinted by the left page's leftover transform
     assert img.crop((w // 2, 0, w, h)).getextrema()[0] > 80
+
+
+def test_side_by_side_refuses_mismatched_counts(tmp_path):
+    # Pairing page i with the wrong English page is worse than no sheet at all.
+    en = _pdf(tmp_path / "en.pdf", 5, 0.2)
+    tw = _pdf(tmp_path / "tw.pdf", 3, 0.6)
+    with pytest.raises(ValueError, match="3 twin pages for 2 English pages"):
+        side_by_side(en, tw, [3, 4], tmp_path / "sbs.pdf")

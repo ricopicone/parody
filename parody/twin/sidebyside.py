@@ -16,6 +16,10 @@ def side_by_side(english_pdf, twin_pdf, abspages, out):
     from pypdf import PageObject, PdfReader, PdfWriter, Transformation
 
     english, twin = PdfReader(str(english_pdf)), PdfReader(str(twin_pdf))
+    if len(twin.pages) != len(abspages):
+        raise ValueError(f"{len(twin.pages)} twin pages for {len(abspages)} English pages: "
+                         "a twin page spilled over, and every sheet after it would pair "
+                         "the wrong pages")
     writer = PdfWriter()
     for i, abspage in enumerate(abspages):
         sheet = PageObject.create_blank_page(width=SHEET_W, height=SHEET_H)

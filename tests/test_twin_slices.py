@@ -53,3 +53,19 @@ def test_nested_divs_reopen_in_order():
 def test_bare_div_name_reopens_as_is():
     second = slice_chunk("::: example\nEins. Zwei.\n:::", "de", 1, None, 1)
     assert second.text == "::: example\nZwei.\n:::"
+
+
+def test_mismatched_counts_cut_at_the_nearest_relative_position():
+    english = "One is here. Two is there. Three is far. Four ends it."
+    # an extra boundary early in the translation (an abbreviation, say)
+    german = "Eins ist hier. Ab. Zwei ist da. Drei ist weit. Vier beendet es."
+    s = slice_chunk(german, "de", 3, None, english)
+    assert s.approximate and s.text == "Vier beendet es."
+
+
+def test_a_cut_at_a_list_item_keeps_its_marker():
+    text = "做这些：\n\n1.  它是什么？\n2.  为什么？"
+    first = slice_chunk(text, "zh", 0, 2, 2)
+    second = slice_chunk(text, "zh", 2, None, 2)
+    assert first.text == "做这些：\n\n1.  它是什么？"
+    assert second.text == "2.  为什么？"

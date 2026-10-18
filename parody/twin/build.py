@@ -51,6 +51,9 @@ class TwinReport:
     mismatched_pages: list = field(default_factory=list)
     unsupported: list = field(default_factory=list)
     pages: int = 0
+    abspages: list = field(default_factory=list)  # the English pages the twin pages twin
+    english_pdf: Path | None = None
+    shipped_pages: int = 0  # pages the twin PDF actually has; must equal pages
     tex_errors: list = field(default_factory=list)  # "! …" lines from the twin's log
     notes: list = field(default_factory=list)
 
@@ -189,7 +192,8 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     (twin_dir / "pages").mkdir(parents=True, exist_ok=True)
     _copy_support(build_dir / "marked", twin_dir)
     report = TwinReport(language=language, mismatched_pages=list(inv.mismatched_pages),
-                        pages=len(pages),
+                        pages=len(pages), abspages=[p.abspage for p in pages],
+                        english_pdf=Path(published_pdf),
                         unsupported=_unsupported_floats(build_dir / "marked", english, selected))
 
     cloze_mode = resolve_cloze_mode(project.meta)
@@ -255,9 +259,7 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     shutil.copy2(twin_dir / "main.pdf", out)
     try:
         import pypdf
-        shipped = len(pypdf.PdfReader(str(out)).pages)
-        if shipped != len(pages):
-            report.notes.append(f"the twin has {shipped} pages for {len(pages)} English pages")
+        report.shipped_pages = len(pypdf.PdfReader(str(out)).pages)
     except ImportError:
         pass
     return out, report

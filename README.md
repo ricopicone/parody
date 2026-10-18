@@ -38,6 +38,7 @@ parody pdf <project_dir> [--solutions] [--clozes MODE] [--section ch/sec]  # pri
 parody check <artifact.json>               # validate artifact against schema
 parody check --toolchain                   # verify pinned toolchain versions
 parody translate [project_dir] [--status] [--lang zh,de] [--section ch/sec]  # translations
+parody twin [project_dir] --lang de [--chapter ch] [--side-by-side sbs.pdf]  # twin pages
 ```
 
 Content repos use `parody.yaml` + `chapters/<ch>/<sec>.md`; the legacy
@@ -73,6 +74,33 @@ Claude login, so it uses your subscription's limits, not API billing. In `-p`
 mode Claude Code bills the API whenever `ANTHROPIC_API_KEY` is set, so the
 engine removes it and `ANTHROPIC_AUTH_TOKEN` from Claude Code's environment.
 Log in with `claude` once before the first run.
+
+## Twin pages
+
+`parody twin --lang de` builds a translated *twin* of the print PDF. Twin page
+N holds exactly what English page N holds, on the same page size with the
+same page number, in a slightly smaller type. `--side-by-side` also writes
+each English page and its twin on one landscape letter sheet. It needs TeX
+and `pip install 'parody[twin]'`. Chinese and Korean need a CJK font
+installed; Noto Serif CJK is preferred (it is not part of TeX Live).
+
+How it works:
+
+1. The English is built a second time with invisible marks before every
+   sentence. They are LuaTeX attributes, which add nothing to the page. The
+   build checks that this marked copy pages identically to the published PDF,
+   and names any page where it does not.
+2. Each sentence goes to the page holding most of its English lines.
+3. Each twin page is set at the book's own size in a column wider by 1/s,
+   then scaled by s until it fits. The language's base scale is the one 90% of
+   pages fit at (about 9.6 pt for German and 11 pt for Chinese in the
+   electronics book). A denser page squeezes further, without limit, and is
+   reported.
+4. Untranslated text is set in English with a marker. Translations that may
+   lag the English are marked as such.
+
+Where a translation's sentences do not line up one to one with the English,
+the cut is made at the nearest position and reported as approximate.
 
 ## Fill-in-the-blank (cloze) content
 

@@ -142,3 +142,84 @@ def test_only_box_divs_take_their_head_inside():
         "\\parodys{1001000}\n\n::: freadinglist")
     assert "Some \\parodys{1001000}text" in mark_section("::: {#t .theorem}\nSome text.\n:::", 1)
     assert "Some \\parodys{1001000}text" in mark_section("::: example\nSome text.\n:::", 1)
+
+
+def test_a_display_ending_in_a_full_stop_ends_its_sentence():
+    # "… equation is $$\begin{aligned} λ = F(i). \end{aligned}$$ An ideal …":
+    # without this the display and the next sentence were one unit, and a page
+    # break between them put the next sentence on the wrong twin page.
+    text = "The equation is $$\\begin{aligned}\n  x = 1.\n\\end{aligned}$$ An ideal one follows."
+    assert _words_at(text, sentence_starts(text)) == ["An"]
+    # a display that does not end the sentence is not a boundary
+    text = "We have $$x = 1,$$ Which is odd."
+    assert sentence_starts(text) == []
+
+
+def test_german_abbreviations_are_not_sentence_ends():
+    # German nouns are capitalised, so "z. B. Spannung" looked like two sentence ends.
+    text = "Größen (z. B. Spannung und Strom), d. h. Werte, vgl. Abb. 3. Der Rest folgt."
+    assert _words_at(text, sentence_starts(text, "de")) == ["Der"]
+
+
+def test_english_abbreviations_are_not_sentence_ends():
+    text = "Use e.g. Ohm's law, cf. Fig. 2. Then stop."
+    assert _words_at(text, sentence_starts(text)) == ["Then"]
+
+
+def test_french_and_spanish_abbreviations():
+    assert _words_at("Voir p. ex. Ohm. La suite.", sentence_starts("Voir p. ex. Ohm. La suite.", "fr")) == ["La"]
+    assert _words_at("Ver p. ej. Ohm. Lo demás.", sentence_starts("Ver p. ej. Ohm. Lo demás.", "es")) == ["Lo"]
+
+
+@pytest.mark.parametrize("text,lang", [
+    ("Die Summe ist null.[^2]", "de"),
+    ("各电压降之和为零。[^2]", "zh"),
+    ("Erster Satz.\n:::", "de"),
+    ("第一句。\n:::", "zh"),
+])
+def test_a_boundary_needs_a_sentence_after_it(text, lang):
+    assert sentence_starts(text, lang) == []
+
+
+def test_a_sentence_may_open_with_markup():
+    text = "Choose the direction. [The physical situation]{.cloze} prescribes it. *Then* go."
+    assert _words_at(text, sentence_starts(text)) == ["[The", "*Then*"]
+
+
+def test_every_block_inside_a_chunk_starts_a_unit():
+    # A figure or display between paragraphs of a box is a clean place to cut;
+    # without this one unit ran from "Setting …" through a figure into the next
+    # paragraph and went wholesale to the wrong page.
+    text = ("::: example\nSetting it, we get\n\n$$x = 1.$$\n\n![a figure](a.pdf)\n\n"
+            "now more text.\n\n:::")
+    # the figure is not a unit of its own: an inline mark would break its syntax
+    assert _words_at(text, sentence_starts(text)) == ["$$x", "now"]
+    assert _words_at(text, sentence_starts(text, "zh")) == ["$$x", "now"]
+
+
+# (a list item is a unit, but after its marker: test_each_list_item_starts_a_unit_after_its_marker)
+@pytest.mark.parametrize("block", ["```python\nx = 1\n```", "# Heading", "| a | b |",
+                                   "![fig](a.pdf)", "\\begin{align}x\\end{align}",
+                                   "<div>x</div>", "> quoted"])
+def test_blocks_that_cannot_take_an_inline_mark_are_not_units(block):
+    text = f"::: example\nSome prose.\n\n{block}\n\n:::"
+    assert sentence_starts(text) == []
+
+
+def test_each_list_item_starts_a_unit_after_its_marker():
+    text = "Answer these:\n\n1.  What is a?\n2.  What is b?\n\n- one\n- two"
+    assert _words_at(text, sentence_starts(text)) == ["What", "What", "one", "two"]
+    marked = mark_section(text, 1)  # chunks: the intro, the numbered list, the bullets
+    assert "2.  \\parodys{1002001}What is b?" in marked
+    assert "- \\parodys{1003001}two" in marked
+
+
+def test_first_prose_line_in_a_nested_div_starts_a_unit():
+    text = "::: example\nQuestion here\n\n::: {.example-solution}\nThe answer here\n:::\n:::"
+    assert _words_at(text, sentence_starts(text)) == ["The"]
+
+
+def test_list_units_line_up_between_languages():
+    en = "Do these:\n\n1.  What is it?\n2.  Why is it?"
+    zh = "做这些：\n\n1.  它是什么？\n2.  为什么？"
+    assert len(sentence_starts(en)) == len(sentence_starts(zh, "zh")) == 2

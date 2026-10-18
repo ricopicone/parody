@@ -117,3 +117,26 @@ def test_chinese_twinpage_compiles(tmp_path):
             "\\begin{definition}{}{}分压器是一种电路。\\end{definition}\n\\end{twinpage}\n")
     pdf, log = _compile(tmp_path, body, language="zh")
     assert "定义 1.1" in _text(pdf)[0].replace("\u00a0", " ") or "定义1.1" in _text(pdf)[0]
+
+
+@needs_tex
+def test_a_tight_fit_is_still_one_page(tmp_path):
+    # A box whose first line is tiny gets \topskip glue above it; measured
+    # without it, a tight page spilled onto a second sheet (electronics p. 20).
+    body = ("\\begin{twinpage}{9}{1.0}{}{}{}\n"
+            "\\noindent\\rule{1pt}{1pt}\\par\\nointerlineskip"
+            "\\noindent\\rule{1pt}{\\dimexpr\\textheight-3pt\\relax}\n\\end{twinpage}\n")
+    pdf, log = _compile(tmp_path, body)
+    assert len(_text(pdf)) == 1
+
+
+@needs_tex
+def test_paragraphs_keep_the_books_indent(tmp_path):
+    # minipage zeroes \parindent and \parskip; the twin's paragraphs must look
+    # like the English ones.
+    body = ("\\typeout{DOC-PI=\\the\\parindent}\n\\begin{twinpage}{9}{1.0}{}{}{}\n"
+            "One.\\par Two.\\typeout{TWIN-PI=\\the\\parindent}\n\\end{twinpage}\n")
+    pdf, log = _compile(tmp_path, body)
+    doc = log.split("DOC-PI=")[1].split()[0]
+    assert doc != "0.0pt"
+    assert f"TWIN-PI={doc}" in log

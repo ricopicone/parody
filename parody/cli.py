@@ -182,6 +182,46 @@ def _translate_summary(statuses):
     print("translations: " + ", ".join(f"{n} {state}" for state, n in sorted(counts.items())))
 
 
+def cmd_twin(args):
+    from .twin import build as twin_build
+    from .twin import sidebyside
+
+    out = args.output or None
+    try:
+        pdf, report = twin_build.build_twin(
+            Path(args.project_dir), args.lang, chapters=args.chapter or None,
+            published_pdf=Path(args.english) if args.english else None,
+            out=Path(out) if out else None)
+    except (ValueError, RuntimeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    points = lambda scale: f"{11 * scale:.1f} pt"  # noqa: E731 - the class is 11pt
+    print(f"twin {report.language}: {report.pages} pages → {pdf}")
+    print(f"  base scale {report.base_scale:.2f} ({points(report.base_scale)})")
+    for page, scale in report.squeezed:
+        print(f"  squeezed: page {page} at {scale:.2f} ({points(scale)})")
+    if report.approximate:
+        print("  approximate sentence cuts on pages " + ", ".join(map(str, report.approximate)))
+    if report.untranslated or report.stale:
+        print(f"  {report.untranslated} untranslated and {report.stale} stale chunk(s) set with a marker")
+    for line in report.unsupported:
+        print(f"  {line}")
+    if report.mismatched_pages:
+        print("  ✗ the marked English differs from the published PDF on pages "
+              + ", ".join(map(str, report.mismatched_pages)))
+    for line in report.tex_errors[:10]:
+        print(f"  ✗ TeX: {line}")
+    spilled = report.shipped_pages and report.shipped_pages != report.pages
+    if spilled:
+        print(f"  ✗ the twin has {report.shipped_pages} pages for {report.pages} English pages: "
+              "a page spilled over; no side-by-side sheets")
+    if args.side_by_side and not spilled:
+        sbs = sidebyside.side_by_side(report.english_pdf, pdf, report.abspages,
+                                      Path(args.side_by_side))
+        print(f"  side by side → {sbs}")
+    return 1 if (report.tex_errors or report.mismatched_pages or spilled) else 0
+
+
 def cmd_publish(args):
     from .publish import publish
 
@@ -453,6 +493,21 @@ def main(argv=None):
     p_tr.add_argument("--jobs", type=int, default=1,
                       help="languages translated at once (default 1)")
     p_tr.set_defaults(func=cmd_translate)
+
+    p_tw = sub.add_parser(
+        "twin",
+        help="build a translated twin of the print PDF, page for page "
+             "(needs TeX and pip install 'parody[twin]')")
+    p_tw.add_argument("project_dir", nargs="?", default=".", help="project directory")
+    p_tw.add_argument("--lang", required=True, help="language code, e.g. de or zh")
+    p_tw.add_argument("--chapter", action="append", metavar="SLUG",
+                      help="only this chapter (repeatable; default: every chapter)")
+    p_tw.add_argument("-o", "--output", help="twin PDF path (default <slug>-<lang>.pdf)")
+    p_tw.add_argument("--side-by-side", metavar="PDF",
+                      help="also write English + twin on landscape sheets")
+    p_tw.add_argument("--english", metavar="PDF",
+                      help="the published English PDF (default: build it)")
+    p_tw.set_defaults(func=cmd_twin)
 
     p_check = sub.add_parser("check", help="validate an artifact against the schema")
     p_check.add_argument("artifact", nargs="?", help="artifact JSON path")
