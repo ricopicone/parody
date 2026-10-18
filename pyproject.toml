@@ -30,6 +30,8 @@ watch = ["watchdog>=4.0"]
 # `translations: {engine: anthropic-api}` — the default engine (claude-code)
 # shells out to Claude Code and needs nothing installed here.
 translate-api = ["anthropic>=1.15"]
+# `parody twin`: reads the English and twin PDFs back (page gate, side-by-side).
+twin = ["pypdf>=4.0"]
 
 [project.scripts]
 parody = "parody.cli:main"

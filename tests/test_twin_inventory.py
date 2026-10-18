@@ -120,3 +120,35 @@ def test_marked_build_inventory(tmp_path):
     counters = read_counters(build / "main.twinctr")
     assert set(inserted) <= set(counters)
     assert {"chapter", "equation", "footnote"} <= set(counters[1001000])
+
+
+# --- the inventory and its gate ------------------------------------------------
+
+from parody.twin.inventory import build_inventory, compare_pages, normalize_page_text  # noqa: E402
+
+
+def test_normalize_ignores_whitespace_and_hyphen_breaks():
+    assert normalize_page_text("resis-\ntance is  futile\n") == \
+        normalize_page_text("re-\nsistance is futile")
+
+
+def test_compare_pages_flags_moved_text():
+    texts = {"pub": ["Page one.", "Page two ends here.", "Three."],
+             "mark": ["Page one.", "Page two ends", "here. Three."]}
+    assert compare_pages("pub", "mark", extract=texts.__getitem__) == [2, 3]
+
+
+def test_compare_pages_different_page_count():
+    texts = {"pub": ["a", "b", "c"], "mark": ["a", "b"]}
+    assert compare_pages("pub", "mark", extract=texts.__getitem__) == [3]
+
+
+@needs_tex
+def test_build_inventory_on_tiny_book(tmp_path):
+    book = _book(tmp_path)
+    published = build_pdf(book, output_pdf=tmp_path / "en.pdf")
+    inv = build_inventory(book, tmp_path / "twin-build", published)
+    assert inv.mismatched_pages == []
+    assert inv.section_index == {"one/first": 1, "one/second": 2}
+    assert {v // 1_000_000 for _, _, v, _ in inv.rows} == {1, 2}
+    assert inv.marked_pdf.exists()

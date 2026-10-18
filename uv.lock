@@ -1240,6 +1240,9 @@ dependencies = [
 translate-api = [
     { name = "anthropic" },
 ]
+twin = [
+    { name = "pypdf" },
+]
 watch = [
     { name = "watchdog" },
 ]
@@ -1264,12 +1267,13 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.0" },
     { name = "pygments", specifier = ">=2.17" },
     { name = "pypandoc-binary", specifier = "==1.15" },
+    { name = "pypdf", marker = "extra == 'twin'", specifier = ">=4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "segno", specifier = ">=1.6" },
     { name = "traitlets", specifier = ">=5.14" },
     { name = "watchdog", marker = "extra == 'watch'", specifier = ">=4.0" },
 ]
-provides-extras = ["watch", "translate-api"]
+provides-extras = ["watch", "translate-api", "twin"]
 
 [package.metadata.requires-dev]
 dev = [
