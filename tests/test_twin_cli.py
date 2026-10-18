@@ -103,3 +103,16 @@ def test_cli_inherited_errors_warn_but_do_not_fail(tmp_path, monkeypatch, capsys
     assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "t.pdf")]) == 0
     out = capsys.readouterr().out
     assert "the English has it too" in out and "freadinglist" in out
+
+
+def test_cli_fails_on_reference_problems(tmp_path, monkeypatch, capsys):
+    import parody.twin.build as B
+    english = tmp_path / "en.pdf"
+    english.write_bytes(b"%PDF en")
+    report = TwinReport(language="de", pages=2, shipped_pages=2, abspages=[5, 6], english_pdf=english,
+                        references=["label crumble is (empty) in the twin, 1.1 in the English"])
+    build, _ = _fake_build(report)
+    monkeypatch.setattr(B, "build_twin", build)
+    assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "t.pdf")]) == 1
+    assert "label crumble" in capsys.readouterr().out
+    assert not (tmp_path / "t.twin.json").exists()

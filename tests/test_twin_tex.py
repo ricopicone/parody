@@ -174,7 +174,22 @@ def test_fit_attempts_do_not_multiply_exercises(tmp_path):
     pdf, log = _compile(tmp_path, body)
     assert "TWINFIT page=9 scale=0.7" in log  # it took many attempts
     xsim = (tmp_path / "t.xsim").read_text(encoding="utf-8", errors="replace")
-    assert "exercise-1==" in xsim and "exercise-2==" not in xsim
+    # the attempts share one id; the page as set gets its own (at most two)
+    assert "exercise-1==" in xsim and "exercise-3==" not in xsim
+
+
+@needs_tex
+def test_an_exercise_label_on_a_twin_page_names_the_exercise(tmp_path):
+    # With one id shared by every attempt AND the page as set, xsim treated
+    # the final exercise as already used and never stepped its counter: every
+    # exercise label in the electronics twins came out empty or as a section.
+    for squeeze in ("", "\\noindent\\rule{1pt}{1.2\\textheight}\n"):
+        body = ("\\begin{twinpage}{9}{1.0}{\\setcounter{chapter}{1}}{}{}\n"
+                "\\begin{exercise}\n\\label{crumble}\nAufgabe.\n\\end{exercise}\n"
+                "Siehe \\ref{crumble}.\n" + squeeze + "\\end{twinpage}\n")
+        pdf, log = _compile(tmp_path, body, runs=2)
+        aux = (tmp_path / "t.aux").read_text(encoding="utf-8", errors="replace")
+        assert "\\newlabel{crumble}{{1.1}" in aux, [line for line in aux.splitlines() if "crumble" in line]
 
 
 @needs_tex

@@ -7,7 +7,7 @@ import pytest
 from parody.translate.chunks import chunk_hash, split_chunks, split_frontmatter
 from parody.translate.store import TranslationFile, translation_path
 from parody.twin.build import (TwinReport, _page_tex, base_scale, build_twin, log_errors,
-                               mark_errors, pdf_pages,
+                               mark_errors, pdf_pages, reference_problems,
                                parse_twinfit, restore_code, section_ranges, twin_errors,
                                write_twin_sidecar)
 from parody.twin.compose import SectionSource, align_translation, page_markdown
@@ -310,3 +310,41 @@ def test_a_page_opening_a_chapter_sets_its_labels():
     assert "[Schaltungsanalyse]" in tex
     plain = _page_tex(TwinPage(16, 12, pieces=[Piece(2, 1, 0, None)]), [], 0.9, "", "", None, [])
     assert "parodytwinchapterlabels" not in plain
+
+
+def test_reference_problems_compare_the_twin_with_the_english():
+    # Both shipped silently once: every exercise label numbered wrongly, and
+    # every chapter reference printed ??. The build must say so.
+    english_aux = ("\\newlabel{crumble}{{1.1}{24}{}{exercise.1.1}{}}\n"
+                   "\\newlabel{crumble@cref}{{[exercise][1][1]1.1}{[1][24][]24}{}{}{}}\n"
+                   "\\newlabel{uy}{{2}{29}{Circuit analysis}{chapter.2}{}}\n"
+                   "\\newlabel{fig:a}{{1.4}{12}{}{figure.1.4}{}}\n")
+    twin_aux = ("\\newlabel{crumble}{{}{24}{}{solution.1}{}}\n"
+                "\\newlabel{fig:a}{{1.4}{12}{}{figure.1.4}{}}\n")
+    english_log = "LaTeX Warning: Reference `nowhere' on page 3 undefined on input line 9.\n"
+    twin_log = ("LaTeX Warning: Reference `uy' on page 11 undefined on input line 56.\n"
+                "LaTeX Warning: Reference `nowhere' on page 3 undefined on input line 9.\n")
+    assert reference_problems(english_aux, twin_aux, english_log, twin_log) == [
+        "label crumble is (empty) in the twin, 1.1 in the English",
+        "reference uy prints ?? in the twin (the English resolves it)"]
+    assert reference_problems(english_aux, english_aux, english_log, english_log) == []
+
+
+def test_an_exercise_reopened_inside_its_solution_steps_every_opener_back():
+    # A reopened exercise re-runs its openers: xsim steps the exercise (and its
+    # running total) again, and the solution too when the cut fell inside it.
+    # Unstepped, every later exercise on the electronics twins was one too high.
+    from parody.twin.marks import sentence_starts
+    ex = ("::: {#gastro .exercise}\nDo it. Then more.\n\n::: solution\n"
+          "Answer one. Answer two.\n:::\n:::")
+    chunks = ["# S {#sec:s}", ex]
+    cut = sentence_starts(ex).index(ex.index("Answer two")) + 1
+    tr = align_translation(_section(chunks), _tf(chunks, lambda c: c))
+    counters = {V(1, 1, 0): {"exercise": 3, "numberofexercises": 3, "solution": 2},
+                V(1, 1, 1): {"exercise": 4, "numberofexercises": 4, "solution": 2},
+                V(1, 1, cut): {"exercise": 4, "numberofexercises": 4, "solution": 3}}
+    md = page_markdown(TwinPage(6, 2, pieces=[Piece(1, 1, cut, None)]), {1: _section(chunks)},
+                       {1: tr}, "de", counters)[0][0][1]
+    for name in ("exercise", "numberofexercises", "solution"):
+        assert f"\\addtocounter{{{name}}}{{-1}}" in md, (name, md)
+    assert md.index("\\addtocounter{exercise}{-1}") < md.index("::: {.exercise}")

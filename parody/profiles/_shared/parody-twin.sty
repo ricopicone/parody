@@ -57,8 +57,12 @@
 % a counter the restore list does not name cannot drift by one per attempt.
 % xsim numbers its exercises with an expl3 int, not a LaTeX counter: put it
 % back too, or every attempt registers every exercise on the page anew and
-% main.xsim grows a line TeX cannot read back.
+% main.xsim grows a line TeX cannot read back. But the page AS SET must not
+% reuse the attempts' ids: xsim then takes each exercise for one already used
+% and never steps its counter, so every exercise label comes out empty. The
+% attempts share one set of ids; the page as set gets the next.
 \int_new:N \g__parodytwin_xsim_id_int
+\int_new:N \g__parodytwin_xsim_after_int
 \cs_new_protected:Npn \__parodytwin_save_counters:
   {
     \cs_set:Npn \@elt ##1
@@ -92,6 +96,8 @@
           \l__parodytwin_restore
           \hbox_gset:Nn \g__parodytwin_box { \__parodytwin_minipage:n { #2 } }
         \group_end:
+        \cs_if_exist:NT \g_xsim_id_int
+          { \int_gset_eq:NN \g__parodytwin_xsim_after_int \g_xsim_id_int }
         \__parodytwin_put_counters:
         \fp_compare:nNnTF
           { ( \dim_to_fp:n { \box_ht:N \g__parodytwin_box + \box_dp:N \g__parodytwin_box } )
@@ -104,6 +110,8 @@
           { \bool_set_false:N \l_tmpa_bool }
       }
     \iow_log:x { TWINFIT ~ page=\thepage \c_space_tl scale=\fp_use:N \l__parodytwin_scale }
+    \cs_if_exist:NT \g_xsim_id_int
+      { \int_gset_eq:NN \g_xsim_id_int \g__parodytwin_xsim_after_int }
     \l__parodytwin_restore
     % Straight onto the page, no paragraph and no interline glue, and as a
     % box whose whole extent is HEIGHT (depth 0): a [t] minipage's height is

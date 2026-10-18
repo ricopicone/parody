@@ -215,6 +215,10 @@ def cmd_twin(args):
         print(f"  ! TeX (the English has it too): {line}")
     for line in report.coverage[:10]:
         print(f"  ✗ {line}")
+    for line in report.references[:10]:
+        print(f"  ✗ {line}")
+    if len(report.references) > 10:
+        print(f"  ✗ … and {len(report.references) - 10} more reference problems")
     spilled = report.shipped_pages and report.shipped_pages != report.pages
     if spilled:
         print(f"  ✗ the twin has {report.shipped_pages} pages for {report.pages} English pages: "
@@ -224,7 +228,7 @@ def cmd_twin(args):
         sbs = sidebyside.side_by_side(report.english_pdf, pdf, report.abspages,
                                       Path(args.side_by_side))
         print(f"  side by side → {sbs}")
-    if report.tex_errors or report.mismatched_pages or spilled or report.coverage:
+    if report.tex_errors or report.mismatched_pages or spilled or report.coverage or report.references:
         return 1
     print(f"  sidecar → {twin_build.write_twin_sidecar(pdf, report, sbs)}")
     return 0

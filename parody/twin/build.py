@@ -60,6 +60,7 @@ class TwinReport:
     tex_errors: list = field(default_factory=list)  # errors the twin (or a mark) introduced
     inherited_errors: list = field(default_factory=list)  # errors the English build has too
     coverage: list = field(default_factory=list)  # text on no twin page, or on two
+    references: list = field(default_factory=list)  # labels/refs the twin gets wrong
     notes: list = field(default_factory=list)
     sections: dict = field(default_factory=dict)  # "chapter/section" → [first, last] twin page
 
@@ -132,6 +133,23 @@ def twin_errors(twin_log, english_log):
     for e in log_errors(twin_log):
         (inherited if (e.message, e.context) in english else new).append(str(e))
     return new, inherited
+
+
+_NEWLABEL = re.compile(r"\\newlabel\{([^}@]+)\}\{\{([^}]*)\}")
+_UNDEFINED_REF = re.compile(r"Reference `([^']+)' on page \S+ undefined")
+
+
+def reference_problems(english_aux, twin_aux, english_log, twin_log):
+    """What a reader would find wrong in the twin's references: a label the
+    twin numbers differently from the English (counters are restored, so they
+    must agree), and a reference the English resolves that prints ?? here."""
+    english, twin = dict(_NEWLABEL.findall(english_aux)), dict(_NEWLABEL.findall(twin_aux))
+    out = [f"label {k} is {twin[k] or '(empty)'} in the twin, {v} in the English"
+           for k, v in english.items() if k in twin and twin[k] != v]
+    resolved = set(_UNDEFINED_REF.findall("\n".join(_unwrap(english_log))))
+    for k in sorted(set(_UNDEFINED_REF.findall("\n".join(_unwrap(twin_log)))) - resolved):
+        out.append(f"reference {k} prints ?? in the twin (the English resolves it)")
+    return out
 
 
 def mark_errors(marked_log, marked_dir):
@@ -449,6 +467,11 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     marked_log = marked_log.read_text(encoding="utf-8", errors="replace") if marked_log.is_file() else ""
     report.tex_errors, report.inherited_errors = twin_errors(log, marked_log)
     report.tex_errors += [f"marked English: {e}" for e in mark_errors(marked_log, build_dir / "marked")]
+
+    def text(path):
+        return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    report.references = reference_problems(text(build_dir / "marked" / "main.aux"),
+                                           text(twin_dir / "main.aux"), marked_log, log)
 
     out = Path(out or project_dir / f"{project.slug}-{language}.pdf")
     out.parent.mkdir(parents=True, exist_ok=True)
