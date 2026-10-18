@@ -13,7 +13,10 @@ Chunks are the translate step's chunks, so the English page inventory and a
 translation file speak of the same units.
 """
 
+import json
 import re
+
+import pypandoc
 
 from ..translate.chunks import split_chunks
 
@@ -62,7 +65,8 @@ _LIST_ITEM = re.compile(
     r"^[ \t]*(?:[-*+]|\(?(?:[0-9]{1,9}|[a-z]|[ivxlc]{1,6})[.)]"
     r"|\(?(?:[A-Z]|[IVXLC]{1,6})[.)](?=[ \t]{2}))[ \t]+", re.M)
 _MARKER_NUMBER = re.compile(r"[ \t]*\(?(?:\d{1,9}|[A-Za-z]|[ivxlcIVXLC]{1,6})")
-_NESTED_OPEN = re.compile(r"^:{3,}\s*[^\s:][^\n]*\n", re.M)
+# [ \t]*, not \s*: a closing ":::" then a paragraph is not an opener.
+_NESTED_OPEN = re.compile(r"^:{3,}[ \t]*[^\s:][^\n]*\n", re.M)
 _BLANK_LINE = re.compile(r"\n[ \t]*\n\s*")
 
 # A chunk opening with one of these must keep its head mark inline after it:
@@ -74,8 +78,13 @@ _INLINE_HEAD = re.compile(
     r"|\(?(?:[A-Z]|[IVXLC]{1,6})[.)](?=[ \t]{2}))[ \t]+"
     r"|>[ \t]*|\[\^[^\]\s]+\]:[ \t]*|[:~][ \t]+)")
 
+# A chunk that is one item of a definition list: its term, then the marker
+# that opens the definition. A head on its own line before the term would end
+# the list there, so it goes inline after the marker.
+_DEFINITION_HEAD = re.compile(r"^[^\s:~][^\n]*\n(?:[ \t]*\n)?[:~][ \t]+")
 
-_DIV_HEAD = re.compile(r"^:{3,}\s*[^\s:]")
+
+_DIV_HEAD = re.compile(r"^:{3,}[ \t]*[^\s:]")
 # A line that opens a block of its own, where an inline mark cannot go.
 _BLOCK_START = re.compile(r"^(?:\$\$|!\[|```|~~~|:::|#|\||\\begin\{|[-*+] |\d+[.)] |>)")
 
@@ -93,7 +102,7 @@ _FIGURE_UNIT_CLASSES = _BOX_CLASSES | {"exercise", "labexercise"}
 
 
 def _div_classes(chunk):
-    m = re.match(r"^:{3,}\s*(?:\{([^}]*)\}|([\w-]+))", chunk)
+    m = re.match(r"^:{3,}[ \t]*(?:\{([^}]*)\}|([\w-]+))", chunk)
     if not m:
         return []
     return [m.group(2)] if m.group(2) else re.findall(r"\.([\w-]+)", m.group(1) or "")
@@ -146,7 +155,7 @@ def _is_prose(text):
     """Whether ``text`` opens ordinary prose: a letter or digit, or emphasis,
     a link or a quote; not raw HTML or a block marker."""
     return bool(text) and (text[0].isalnum() or text[0] in "*_[(\"'“‘") \
-        and not _BLOCK_START.match(text)
+        and not _BLOCK_START.match(text) and not _LIST_ITEM.match(text)
 
 
 def _opens_with_text(div_chunk):
@@ -228,6 +237,23 @@ def sentence_starts(text, language="en"):
     return sorted({s for s in starts if not any(a <= s <= b for a, b in zones)})
 
 
+def _ends_in_paragraph(chunk):
+    """Whether the ordinary build leaves the end of ``chunk`` inside a paragraph.
+
+    Its last block is a paragraph whose own text ends the chunk: not a
+    footnote's, which pandoc folds into the paragraph that cites it, and not a
+    table caption's.
+    """
+    from ..writers.latex import PANDOC_FROM
+
+    tail = re.split(r"\n[ \t]*\n", chunk.rstrip())[-1]
+    if not tail or tail[0].isspace() or tail.startswith(("[^", ": ")) \
+            or _TABLE_CAPTION.match(tail):
+        return False
+    blocks = json.loads(pypandoc.convert_text(chunk, "json", format=PANDOC_FROM))["blocks"]
+    return bool(blocks) and blocks[-1]["t"] == "Para"
+
+
 def _value(section, chunk, sentence):
     return section * _SECTION + (chunk + 1) * _CHUNK + sentence
 
@@ -264,7 +290,7 @@ def mark_section(body, section_index):
             last = offset
         marked = "".join(pieces) + chunk[last:]
         head = _mark(_value(section_index, k, 0))
-        m = _INLINE_HEAD.match(marked)
+        m = _INLINE_HEAD.match(marked) or _DEFINITION_HEAD.match(marked)
         if m:
             parts.append(marked[:m.end()] + head + marked[m.end():])
         elif _is_box(marked) and _opens_with_text(marked):
@@ -285,6 +311,13 @@ def mark_section(body, section_index):
         else:
             parts.append(f"{head}\n\n{marked}")
     # Cleared at the end, or the last mark rides on into whatever follows the
-    # section: the next chapter's heading, the back matter.
-    parts.append(f"\\{MARK_MACRO}off")
+    # section: the next chapter's heading, the back matter. Inside a closing
+    # paragraph, which the ordinary build leaves open at the end of the file:
+    # closed here, it moved the page-map label that follows onto the page's
+    # vertical list, and a page break after it came out a line different.
+    off = f"\\{MARK_MACRO}off"
+    if chunks and _ends_in_paragraph(chunks[-1]):
+        parts[-1] = parts[-1].rstrip() + "\n" + off
+    else:
+        parts.append(off)
     return "\n\n".join(parts)

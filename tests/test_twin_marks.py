@@ -106,7 +106,37 @@ def test_a_sentence_is_not_a_list_marker():
 def test_mark_section_ends_with_the_mark_cleared():
     # Otherwise the section's last mark rides on into the next chapter's
     # heading and the back matter.
-    assert mark_section("Only. Two.", 1).endswith("\n\n\\parodysoff")
+    assert mark_section("Only. Two.", 1).endswith("\\parodysoff")
+
+
+def _blocks(text):
+    import json
+
+    import pypandoc
+    return json.loads(pypandoc.convert_text(text, "json", format="markdown"))["blocks"]
+
+
+def test_a_section_ending_in_a_paragraph_leaves_it_open():
+    # The ordinary build leaves a section's last paragraph open at the end of
+    # its file, so the page-map label after the \input lands inside it. Closed
+    # by the clearing mark, the paragraph moved that label onto the page's
+    # vertical list, and a page break after it came out a line different
+    # (robotics §3.3/§3.4).
+    marked = mark_section("First. Second.\n\nThe last one ends here.", 1)
+    assert marked.endswith("The last one ends here.\n\\parodysoff")
+    last = _blocks(marked)[-1]
+    assert last["t"] == "Para" and last["c"][-1]["t"] == "RawInline"
+
+
+@pytest.mark.parametrize("text", [
+    "- a item.\n- b item.",                           # a list
+    "Text.[^1]\n\n[^1]: The note.",                    # inside a footnote it would be local
+    "Text.[^1]\n\n[^1]: The note.\n\n    More note.",
+    "| a |\n|---|\n| 1 |\n\nTable: The caption.",      # it would join the caption
+    "::: {.example}\nInside.\n:::",                    # a div: closed by its end anyway
+])
+def test_the_clearing_mark_stays_a_block_after_anything_but_a_paragraph(text):
+    assert mark_section(text, 1).endswith("\n\n\\parodysoff")
 
 
 def test_div_head_mark_goes_inside_the_div():
@@ -279,3 +309,46 @@ def test_figure_div_inside_a_box_is_one_unit():
 def test_no_marks_in_a_table_caption():
     chunk = "| a | b |\n|---|---|\n| 1 | 2 |\n\nTable: Measured values. Taken at noon. {#tbl:m}"
     assert sentence_starts(chunk) == []
+
+
+def test_a_definition_list_stays_one_list():
+    # Each term and its definition is a chunk of its own. A head mark on its
+    # own line before a term ended the list there: one description
+    # environment per item, with list spacing between them, so the marked
+    # English paginated differently from the published PDF (robotics §1.2).
+    import json
+
+    import pypandoc
+
+    text = ("robots are cool\n\n:   One reason. Another.\n\n"
+            "biology is cool\n\n:   A related reason.\n\n"
+            "robots help\n:   Make things.")
+    marked = mark_section(text, 1)
+    blocks = json.loads(pypandoc.convert_text(marked, "json", format="markdown"))["blocks"]
+    assert [b["t"] for b in blocks] == ["DefinitionList", "RawBlock"]  # then \parodysoff
+    assert ":   \\parodys{1002000}A related reason." in marked
+    assert "\\parodys{1001001}Another." in marked
+
+
+def test_a_lettered_list_after_a_paragraph_stays_a_list():
+    # A mark before "a." made it text: the list ran on as one paragraph.
+    import json
+
+    import pypandoc
+
+    text = ("::: {.exercise}\nFor each device below:\n\n"
+            "a.  give a verdict;\nb.  name what it lacks.\n:::")  # one chunk
+    marked = mark_section(text, 1)
+    blocks = json.loads(pypandoc.convert_text(marked, "json", format="markdown"))["blocks"]
+    (div,) = [b for b in blocks if b["t"] == "Div"]
+    assert [b["t"] for b in div["c"][1]] == ["Para", "OrderedList"]
+    assert "\n\na.  \\parodys{1001001}give" in marked
+
+
+def test_a_paragraph_after_a_closing_fence_is_not_a_nested_div():
+    # ":::" then a blank line then prose read as a div opener whose first
+    # line was the paragraph's, so its second line took a mark mid-sentence.
+    text = ("::: inlinelist\n-   a datacenter.\n:::\n\n"
+            "Part (d) is the point. If you cannot flip\nthe verdict, say so.")
+    starts = [text[s:s + 6] for s in sentence_starts(text)]
+    assert "the ve" not in starts
