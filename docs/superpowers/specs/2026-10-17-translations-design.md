@@ -108,7 +108,7 @@ and Rico can overturn it.
 | D8 | Translations are **files committed in the book repo**, one per section per language, each recording a hash of the English it was made from | Mine | Reviewable diffs, no server state, and staleness is mechanical. |
 | D9 | Retranslation is **per block**. Blocks whose English is unchanged keep their translation verbatim, and only changed blocks are sent, with the whole section and the previous translation as context | Mine | A small edit must not churn the rest of the section, and it's cheaper. "Unchanged stays unchanged" is guaranteed mechanically, not by asking the model. |
 | D10 | Every translation must pass a **preservation check** before it is written: every math string byte-identical, the same count of blanks, key terms, cross-refs, hashrefs and footnotes, and the same number of blocks. A failure retries, and is never written | Mine | Measured in the trial. The checker was proven able to fail; see below. |
-| D11 | A **second-opinion review pass**: a separate Claude call reads each new or changed translation against the English and reports meaning drift. It reports, it doesn't block | Mine (Rico didn't object) | The preservation check can't see wrong meaning, and Rico can't read most of these languages. |
+| D11 | **No second-opinion review pass.** Each translation is made once and checked mechanically (D10), with no second Claude call to check meaning | Rico | A review pass would double token use against the subscription limits. Meaning errors are left to readers until in-app flags exist (see Non-goals). |
 | D12 | **Key terms glossed**: where the English marks a term (`[…]{.keyword}`), the translation shows the English after it, e.g. 分压器 (voltage divider). Other occurrences are not glossed | Rico (gloss); mine (only marked occurrences) | Students are learning the subject *in English*. |
 | D13 | A **per-language glossary** file in the book repo, built up as sections are translated, used by every translation, and editable by hand | Mine | Consistent terms across chapters, and one place to fix a term. |
 | D14 | Blanks stay blank in translations wherever the English is blank. The staff answer toggle fills them in both languages | Mine (Rico didn't object) | A translation must never give an answer away. |
@@ -138,8 +138,8 @@ are in the session scratchpad and weren't kept.
 - **DeepL**: rejected on cost by Rico.
 - The checker counts preservation, **not placement**. It passed Amazon
   Translate. So it guards against loss, not misplacement. For Claude,
-  placement was right in every spot read. D11's review pass is the guard for
-  meaning.
+  placement was right in every spot read. Nothing automated guards meaning
+  (D11).
 
 The trial's prompt was the starting point for the production prompt. It
 covered the audience and purpose (glance-across, faithful sentence by
@@ -182,8 +182,8 @@ What the recon found, and what the builder must work with.
   not.
 - For each eligible section and language it compares the English blocks with
   the translation's recorded source hashes. It translates new or changed
-  blocks (D9), runs the preservation check (D10), retries on failure, writes
-  the file, and runs the review pass (D11).
+  blocks (D9), runs the preservation check (D10), retries on failure, and
+  writes the file.
 - Output is written to the working tree and reported. Rico reviews and
   commits, like the other content commands. Nothing is committed
   automatically.
@@ -191,7 +191,7 @@ What the recon found, and what the builder must work with.
   nothing. Interrupt it, and a rerun picks up where it left off. A first full
   pass can span days of subscription limits.
 - It prints a clear summary: what was translated, what failed the check after
-  retries, what the review pass flagged, and what is stale.
+  retries, and what is stale.
 - Engine backends:
   - `claude-code`: headless `claude -p`. **`ANTHROPIC_API_KEY` must be unset,
     or Claude Code bills the API instead of the subscription**; do not use
