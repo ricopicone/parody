@@ -26,8 +26,10 @@ The chunks are Pandoc Markdown with extensions. Translate the prose; preserve ev
 - Images `![caption](path){…}`: translate the caption, keep the path and attributes.
 - Code (inline `code` and fenced code blocks): keep exactly.
 - Raw LaTeX commands outside math: keep exactly.
-- Fenced divs (`::: name` … `:::`), block quotes (`>`), lists, tables, footnote markers (`[^3]`) and footnote definitions: keep the structure; translate the text.
-- `[text]{.keyword}`: translate the term, keep the span wrapper and its attributes.
+- Raw HTML (such as `<table>` blocks): keep every tag, attribute and any math exactly; translate the text between the tags.
+- Fenced divs (`::: name` … `:::`), block quotes (`>`), lists and their markers (`a.`, `1.`, `-`), tables, definition lists (`:   definition`), footnote markers (`[^3]`) and footnote definitions: keep the structure; translate the text.
+- A table caption line starting `Table:` or `: ` keeps that marker exactly; translate the caption after it.
+- `[text]{.keyword en="…"}`: translate the term, keep the span wrapper and its attributes. `en` holds the English term: copy it unchanged, and keep it on the same term even if your sentence moves the term.
 - `[text]{.cloze}`: these are fill-in-the-blank answers. Translate the text inside, keep the span wrapper, and keep exactly one cloze span for each one in the original. If the cloze holds only math, leave it unchanged. Rearrange the surrounding sentence as {LANGUAGE} grammar requires, but the blank must still stand for the same idea.
 - References to equations such as `($*$)` and `($*$b)`: keep them.
 - Keep the same paragraphs, list items and blocks, in the same order: one translated block for each English block.

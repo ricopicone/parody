@@ -21,9 +21,16 @@ from dataclasses import dataclass, field
 import pypandoc
 
 # The web path's reader (writers/artifact.py), so a chunk is parsed here the
-# way the build will parse it.
-CHECK_FROM = "markdown-smart-markdown_in_html_blocks+raw_tex+tex_math_dollars+grid_tables"
+# way the build will parse it, less auto_identifiers: pandoc would otherwise
+# invent a heading's id from its text, and every translated heading without an
+# explicit {#id} would "lose" its id (## Problems → problems, ## Aufgaben →
+# aufgaben). Explicit ids are still read and compared.
+CHECK_FROM = ("markdown-smart-markdown_in_html_blocks+raw_tex+tex_math_dollars"
+              "+grid_tables-auto_identifiers")
 _SPLIT = "<!-- parody:split -->"
+
+_HTML_TAG = re.compile(r"<[^>]+>")
+_HTML_MATH = re.compile(r"\$\$.+?\$\$|\$[^$]+\$", re.S)
 
 # Where each node type keeps its [id, classes, key-values] triple.
 _ATTR_AT = {"Span": 0, "Div": 0, "Image": 0, "Link": 0, "Code": 0,
@@ -36,6 +43,7 @@ class Facts:
     math: Counter = field(default_factory=Counter)
     cloze: int = 0
     keywords: list = field(default_factory=list)
+    keyword_en: list = field(default_factory=list)  # each key term's en="…", in order
     hashrefs: Counter = field(default_factory=Counter)
     cites: Counter = field(default_factory=Counter)
     notes: int = 0
@@ -87,11 +95,14 @@ def _walk(node, facts):
         if ident:
             facts.ids[ident] += 1
         facts.classes.update(classes)
-        facts.attrs.update((k, v) for k, v in kvs if k != "en")
+        # caption_plain is a leftover of the LaTeX migration that nothing reads;
+        # its prose may be translated or not.
+        facts.attrs.update((k, v) for k, v in kvs if k != "caption_plain")
         if "cloze" in classes:
             facts.cloze += 1
         if t == "Span" and "keyword" in classes:
             facts.keywords.append(_stringify(c[1]).strip())
+            facts.keyword_en.append(dict(kvs).get("en"))
         if t == "Span" and "hashref" in classes:
             facts.hashrefs[_stringify(c[1])] += 1
     if t == "Math":
@@ -109,7 +120,14 @@ def _walk(node, facts):
     elif t == "Table":
         facts.tables += 1
     elif t in ("RawInline", "RawBlock"):
-        if c[1].strip() != _SPLIT:
+        if c[1].strip() == _SPLIT:
+            pass
+        elif c[0] == "html":
+            # Raw HTML (the summary tables) carries prose in its cells: its
+            # tags and maths must survive, the text between them is translated.
+            facts.raw.update(_HTML_TAG.findall(c[1]))
+            facts.raw.update(_HTML_MATH.findall(c[1]))
+        else:
             facts.raw[c[1]] += 1
     if isinstance(c, list):
         _walk(c, facts)
@@ -203,6 +221,20 @@ def _div_fences(chunk):
     return opens, closes
 
 
+_FOOTNOTE_REF = re.compile(r"\[\^([^\]\s]+)\](?!:)")
+_FOOTNOTE_DEF = re.compile(r"^\[\^([^\]\s]+)\]:", re.M)
+
+
+def _footnote_labels(chunk):
+    """The chunk's footnote references and definitions, by label.
+
+    Checked per chunk at the source because pandoc resolves a footnote
+    across chunks: a definition that was relabelled shows up as a missing
+    note on the chunk that *refers* to it, not on the chunk that broke it.
+    """
+    return (sorted(_FOOTNOTE_REF.findall(chunk)), sorted(_FOOTNOTE_DEF.findall(chunk)))
+
+
 def compare_chunks(en_chunks, tr_chunks):
     """``{chunk index: [problems]}`` for every chunk that fails; ``{}`` if all pass."""
     try:
@@ -218,6 +250,8 @@ def compare_chunks(en_chunks, tr_chunks):
         # lost its closing ::: parses the same as one that kept it.
         if _div_fences(tr_chunks[i]) != _div_fences(en_chunks[i]):
             problems.append("fenced divs: opening/closing ::: lines changed")
+        if _footnote_labels(tr_chunks[i]) != _footnote_labels(en_chunks[i]):
+            problems.append("footnote labels changed: keep [^label] exactly")
         if problems:
             result[i] = problems
     return result
@@ -228,10 +262,14 @@ _KEYWORD_CLASS = re.compile(r"(?:^|\s)\.keyword(?:\s|$)")
 
 
 def add_keyword_glosses(tr_chunk, en_keywords):
-    """Give the i-th translated key term the i-th English term as ``en="…"``.
+    """Give the i-th key term in a chunk the i-th term of ``en_keywords`` as ``en="…"``.
 
-    The renderer shows it after the translated term (spec D12). Unchanged when
-    a term already has one, or when the counts differ.
+    Applied to the *English*, before it is sent: positional matching is only
+    right in the chunk the terms were read from. The translator then carries
+    each ``en`` along with its term, wherever grammar moves it, and the check
+    verifies that it did. The renderer shows it after the translated term
+    (spec D12). Unchanged when a term already has one, or when the counts
+    differ.
     """
     blocks = [m for m in _ATTR_BLOCK.finditer(tr_chunk)
               if _KEYWORD_CLASS.search(m.group(1))]

@@ -30,7 +30,8 @@ def _todo_of(user):
 
 
 def german(text):
-    return text.replace("alpha", "Alpha-DE").replace("voltage divider", "Spannungsteiler")
+    # Translates prose and a key term's text, never its en="…" attribute.
+    return text.replace("alpha", "Alpha-DE").replace("[voltage divider]", "[Spannungsteiler]")
 
 
 class FakeEngine:
@@ -206,11 +207,52 @@ def test_malformed_response_is_retried(tmp_path):
     assert states["two"].state == "translated"
 
 
-def test_engine_error_is_retried(tmp_path):
+def test_engine_error_stops_the_run(tmp_path):
+    # A usage limit is not a bad translation: don't retry it, don't tell the
+    # model about it, and don't march on through every other section.
     book = _book(tmp_path)
-    engine = FakeEngine(raise_on_call={1: EngineError("usage limit")})
-    states = {s.section: s for s in _run(book, engine, sections=["ch/two"])}
-    assert states["two"].state == "translated" and len(engine.calls) == 2
+    engine = FakeEngine(raise_on_call={1: EngineError("Usage limit reached")})
+    states = _run(book, engine)
+    assert len(engine.calls) == 1
+    assert [(s.section, s.state) for s in states] == [("one", "stopped")]
+    assert "Usage limit reached" in states[0].problems[0]
+
+
+def test_engine_error_in_one_language_stops_the_others(tmp_path):
+    import threading
+    book = _book(tmp_path, extra_yaml="")
+    (book / "parody.yaml").write_text((book / "parody.yaml").read_text().replace(
+        "languages: [de]", "languages: [de, zh]"))
+    failed = threading.Event()
+
+    class Engine(FakeEngine):
+        def complete(self, system, user):
+            if "Simplified Chinese" in system:
+                failed.set()
+                raise EngineError("Usage limit reached")
+            failed.wait(5)
+            return super().complete(system, user)
+
+    engine = Engine()
+    states = _run(book, engine, jobs=2)
+    german = [s for s in states if s.language == "de" and s.state == "translated"]
+    assert len(german) <= 1  # the section in flight may finish; no new ones start
+
+
+def test_unknown_section_is_an_error(tmp_path):
+    with pytest.raises(ProjectLayoutError, match="ch/onee"):
+        _run(_book(tmp_path), FakeEngine(), sections=["ch/onee"])
+
+
+def test_relabelled_footnote_is_not_written(tmp_path):
+    one = ONE.replace("Paragraph alpha four.", "Paragraph alpha four.[^n]\n\n[^n]: A note, alpha.")
+    book = _book(tmp_path, one=one)
+    english = _body_chunks(one)
+    k = next(i for i, c in enumerate(english) if c.startswith("[^n]:"))
+    engine = FakeEngine(transform=lambda i, t: german(t).replace("[^n]:", "[^m]:"))
+    states = {s.section: s for s in _run(book, engine, sections=["ch/one"])}
+    assert states["one"].state == "partial"
+    assert chunk_hash(english[k]) not in [h for h, _ in _file(book).chunks]
 
 
 def test_interrupted_run_resumes(tmp_path):
@@ -222,6 +264,24 @@ def test_interrupted_run_resumes(tmp_path):
     engine = FakeEngine()
     _run(book, engine)
     assert len(engine.calls) == 1 and "Alpha section two" in engine.calls[0][1]
+
+
+def test_reordered_key_terms_gloss_and_glossary(tmp_path):
+    two = "---\ntitle: Two\n---\n\nThe [voltage]{.keyword} and the [current]{.keyword}.\n"
+    book = _book(tmp_path, two=two)
+
+    def swap(i, text):  # a translator that puts the two terms the other way round
+        m = re.findall(r"\[(\w+)\]\{([^}]*)\}", text)
+        if len(m) == 2:
+            (a, aa), (b, ba) = m
+            return f"Der [{b.upper()}]{{{ba}}} und die [{a.upper()}]{{{aa}}}."
+        return text
+
+    _run(book, FakeEngine(transform=swap), sections=["ch/two"])
+    body = _file(book, "two").chunks[0][1]
+    assert '[CURRENT]{.keyword en="current"}' in body
+    assert '[VOLTAGE]{.keyword en="voltage"}' in body
+    assert load_glossary(glossary_path(book, "de")) == {"current": "CURRENT", "voltage": "VOLTAGE"}
 
 
 def test_keyword_gloss_and_glossary(tmp_path):
@@ -301,3 +361,11 @@ def test_cli_exit_code_on_failure(tmp_path, monkeypatch):
 def test_cli_rejects_unknown_language(tmp_path, capsys):
     assert main(["translate", str(_book(tmp_path)), "--lang", "xx", "--status"]) == 1
     assert "xx" in capsys.readouterr().err
+
+
+def test_cli_exit_code_when_the_engine_stops(tmp_path, monkeypatch, capsys):
+    import parody.translate.engines as engines
+    monkeypatch.setattr(engines, "make_engine", lambda config: FakeEngine(
+        raise_on_call={1: EngineError("Usage limit reached")}))
+    assert main(["translate", str(_book(tmp_path))]) == 1
+    assert "re-run later" in capsys.readouterr().out

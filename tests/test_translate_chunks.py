@@ -91,3 +91,22 @@ def test_align_replace_with_more_english_than_stored():
     got = align_chunks(["a", "x", "y", "b"], ["a", "old", "b"])
     assert got == [(0, 0, "current"), (1, 1, "stale"), (2, None, "missing"),
                    (3, 2, "current")]
+
+
+def test_definition_list_stays_with_its_term():
+    # Split here, pandoc reads the indented definition text as a code block.
+    body = "Jordan form\n\n:   When $q_i = 1$, the problem\n\n    has solutions.\n\nAfter."
+    assert split_chunks(body) == [
+        "Jordan form\n\n:   When $q_i = 1$, the problem\n\n    has solutions.", "After."]
+
+
+def test_table_caption_stays_with_its_table():
+    body = "| a | b |\n|---|---|\n| 1 | 2 |\n\nTable: Measurements.\n\nAfter."
+    assert split_chunks(body) == ["| a | b |\n|---|---|\n| 1 | 2 |\n\nTable: Measurements.",
+                                  "After."]
+    body = "| a |\n|---|\n| 1 |\n\n: Measurements.\n\nAfter."
+    assert split_chunks(body)[-1] == "After." and len(split_chunks(body)) == 2
+
+
+def test_fenced_div_line_is_not_a_definition():
+    assert split_chunks("Text.\n\n::: note\n\nx\n\n:::") == ["Text.", "::: note\n\nx\n\n:::"]

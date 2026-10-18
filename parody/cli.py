@@ -172,7 +172,7 @@ def cmd_translate(args):
         print(f"error: {e}", file=sys.stderr)
         return 1
     _translate_summary(statuses)
-    return 1 if any(st.state in ("partial", "failed") for st in statuses) else 0
+    return 1 if any(st.state in ("partial", "failed", "stopped") for st in statuses) else 0
 
 
 def _translate_summary(statuses):

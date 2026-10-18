@@ -98,11 +98,30 @@ def test_unclosed_div_is_attributed_to_its_chunk():
     assert i in problems
 
 
-def test_en_attr_is_ignored():
-    c = _chunks()
-    _, t = _edit(c, "[voltage divider]{.keyword}",
-                 '[voltage divider]{.keyword en="voltage divider"}')
-    assert compare_chunks(c, t) == {}
+def test_dropped_en_attr_fails():
+    # The English goes out with en="…" on each key term; the translation must
+    # carry it through, so the gloss pairs with the right term.
+    en = ['The [voltage]{.keyword en="voltage"} and the [current]{.keyword en="current"}.']
+    assert any("attributes" in p for p in compare_chunks(
+        en, ["Die [Spannung]{.keyword} und der [Strom]{.keyword en=\"current\"}."])[0])
+
+
+def test_reordered_key_terms_keep_their_glosses():
+    en = ['The [voltage]{.keyword en="voltage"} and the [current]{.keyword en="current"}.']
+    tr = ['Der [Strom]{.keyword en="current"} und die [Spannung]{.keyword en="voltage"}.']
+    assert compare_chunks(en, tr) == {}
+    assert chunk_facts(tr)[0].keyword_en == ["current", "voltage"]
+
+
+def test_heading_without_explicit_id_passes():
+    # pandoc would invent ids from the heading text (problems / aufgaben).
+    assert compare_chunks(["## Problems", "### Decibels {-}"],
+                          ["## Aufgaben", "### Dezibel {-}"]) == {}
+
+
+def test_relabelled_footnote_definition_fails_on_its_own_chunk():
+    problems = compare_chunks(["Text.[^3]", "[^3]: Note."], ["Text.[^3]", "[^4]: Notiz."])
+    assert 1 in problems and any("footnote" in p for p in problems[1])
 
 
 def test_footnote_definition_chunk():
@@ -130,3 +149,22 @@ def test_add_keyword_glosses_keeps_existing_en_and_other_spans():
 def test_add_keyword_glosses_replaces_double_quotes():
     assert add_keyword_glosses("[a]{.keyword}", ['the "b" law']) == (
         '[a]{.keyword en="the ”b” law"}')
+
+
+def test_raw_html_text_may_be_translated():
+    # The summary tables are raw HTML with prose in their cells.
+    en = ['<table class="t">\n<tr><th>Function of time $t$</th></tr>\n</table>']
+    tr = ['<table class="t">\n<tr><th>Funktion der Zeit $t$</th></tr>\n</table>']
+    assert compare_chunks(en, tr) == {}
+
+
+def test_raw_html_tags_and_maths_must_survive():
+    en = ['<table class="t">\n<tr><th>Function of time $t$</th></tr>\n</table>']
+    assert compare_chunks(en, ['<table>\n<tr><th>Funktion der Zeit $t$</th></tr>\n</table>'])
+    assert compare_chunks(en, ['<table class="t">\n<tr><th>Funktion der Zeit $s$</th></tr>\n</table>'])
+
+
+def test_caption_plain_is_free_text():
+    # A leftover of the LaTeX migration that nothing reads.
+    assert compare_chunks(['![Cap](x.pdf){#fig:x caption_plain="The forces"}'],
+                          ['![Kräfte](x.pdf){#fig:x caption_plain="Die Kräfte"}']) == {}

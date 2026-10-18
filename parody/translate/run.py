@@ -17,11 +17,12 @@ interrupted run resumes where it stopped.
 """
 
 import datetime
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from ..writers.artifact import resolve_section_draft
-from .check import chunk_facts, compare_chunks
+from .check import add_keyword_glosses, chunk_facts, compare_chunks
 from .chunks import align_chunks, chunk_hash, split_chunks, split_frontmatter
 from .engines import EngineError
 from .prompt import ResponseError, parse_response, request, system_prompt
@@ -39,7 +40,9 @@ class SectionStatus:
     chapter: str
     section: str
     language: str
-    state: str  # current|stale|missing|draft|translated|partial|failed|no-source
+    # current|stale|missing|draft|no-source (status), translated|partial|failed,
+    # or stopped: the engine itself failed (a usage limit, say) and the run ended.
+    state: str
     todo: int = 0
     total: int = 0
     problems: list = field(default_factory=list)
@@ -138,38 +141,55 @@ def translate_section(project, chapter, slug, language, engine, glossary,
     if sec is None or status.state == "current":
         return status
 
-    english, offset = sec.english, sec.offset
+    offset = sec.offset
     en_facts = chunk_facts(sec.body)
+    # The English goes out with en="…" on each key term, so the translator
+    # carries the right English term with each translated one (spec D12)
+    # however the sentence reorders them, and the check verifies it.
+    annotated = [add_keyword_glosses(c, en_facts[k].keywords) for k, c in enumerate(sec.body)]
+    english = ([sec.title] if sec.title is not None else []) + annotated
     previous = sec.previous()
     pending = sec.todo()
     system = system_prompt(language, _relevant(glossary, [english[i] for i in pending]))
     accepted = {}  # English index → checked translation
     problems = {}
+    stopped = None
 
     for _ in range(retries + 1):
         if not pending:
             break
         try:
-            got = parse_response(
-                engine.complete(system, request(english, pending, previous,
-                                                problems=problems or None)),
-                pending)
-        except (EngineError, ResponseError) as e:
+            reply = engine.complete(system, request(english, pending, previous,
+                                                    problems=problems or None))
+        except EngineError as e:
+            # A usage limit, a timeout, a login problem: not the model's fault,
+            # and retrying at once won't help. Stop, keep what passed.
+            stopped = str(e)
+            break
+        try:
+            got = parse_response(reply, pending)
+        except ResponseError as e:
             problems = {i: [f"the answer could not be used: {e}"] for i in pending}
             continue
         # Check the new chunks in place, with the English standing in for any
         # chunk that has no translation yet: it trivially passes, and keeps
         # every other chunk's facts where the build would find them.
-        candidate = list(sec.body)
+        candidate = list(annotated)
         for k in range(len(sec.body)):
             i = k + offset
             if i in got:
-                got[i] = _gloss(got[i], en_facts[k].keywords)
                 candidate[k] = got[i]
             elif i in accepted:
                 candidate[k] = accepted[i]
-        failures = {k + offset: p for k, p in compare_chunks(sec.body, candidate).items()
-                    if k + offset in got}
+        failures = {}
+        for k, p in compare_chunks(annotated, candidate).items():
+            if k + offset in got:
+                failures[k + offset] = p
+            else:
+                # A chunk not sent this time can only have changed through one
+                # that was: blame every chunk in this answer, not nobody.
+                for i in got:
+                    failures.setdefault(i, []).append(f"chunk {k + offset} broke: " + "; ".join(p))
         if 0 in got and offset:
             title = got[0].strip()
             if not title or "\n" in title:
@@ -184,16 +204,14 @@ def translate_section(project, chapter, slug, language, engine, glossary,
 
     if accepted:
         _write(project, sec, accepted, engine, today)
-        _update_glossary(glossary, sec, accepted, en_facts)
+        _update_glossary(glossary, sec, accepted)
+    if stopped is not None:
+        return SectionStatus(chapter.slug, slug, language, "stopped", len(accepted),
+                             len(english), [f"engine: {stopped}"])
     state = "translated" if not pending else ("partial" if accepted else "failed")
     return SectionStatus(chapter.slug, slug, language, state, len(accepted),
                          len(english), [f"chunk {i}: {p}" for i in pending
                                         for p in problems.get(i, [])])
-
-
-def _gloss(text, en_keywords):
-    from .check import add_keyword_glosses
-    return add_keyword_glosses(text, en_keywords)
 
 
 def _write(project, sec, accepted, engine, today):
@@ -220,20 +238,27 @@ def _write(project, sec, accepted, engine, today):
     ).write(translation_path(project.directory, sec.language, sec.chapter.slug, sec.slug))
 
 
-def _update_glossary(glossary, sec, accepted, en_facts):
-    ks = [k for k in range(len(sec.body)) if k + sec.offset in accepted
-          and en_facts[k].keywords]
-    if not ks:
+def _update_glossary(glossary, sec, accepted):
+    texts = [accepted[k + sec.offset] for k in range(len(sec.body))
+             if k + sec.offset in accepted and ".keyword" in accepted[k + sec.offset]]
+    if not texts:
         return
-    tr_facts = chunk_facts([accepted[k + sec.offset] for k in ks], isolated=True)
-    for k, facts in zip(ks, tr_facts):
-        for en, tr in zip(en_facts[k].keywords, facts.keywords):
+    for facts in chunk_facts(texts, isolated=True):
+        # Paired by each term's own en="…", never by position.
+        for en, tr in zip(facts.keyword_en, facts.keywords):
             if en and tr:
                 glossary.setdefault(en, tr)
 
 
 def _sections(project, sections):
+    from ..config import ProjectLayoutError
+
     wanted = set(sections or [])
+    known = {f"{c.slug}/{s}" for c in project.chapters for s in c.section_slugs}
+    unknown = sorted(wanted - known)
+    if unknown:
+        raise ProjectLayoutError(f"unknown section {', '.join(map(repr, unknown))} "
+                                 "(expected chapter/section as in parody.yaml)")
     for chapter in project.chapters:
         for slug in chapter.section_slugs:
             if not wanted or f"{chapter.slug}/{slug}" in wanted:
@@ -264,12 +289,15 @@ def translate_project(project, engine, languages=None, sections=None, jobs=1,
     _require_translations(project)
     languages = list(languages or project.translations.languages)
     work = list(_sections(project, sections))
+    stop = threading.Event()
 
     def one_language(lang):
         gpath = glossary_path(project.directory, lang)
         glossary = load_glossary(gpath)
         results = []
         for chapter, slug in work:
+            if stop.is_set():
+                break
             before = dict(glossary)
             st = translate_section(project, chapter, slug, lang, engine, glossary,
                                    retries=retries, today=today)
@@ -277,12 +305,29 @@ def translate_project(project, engine, languages=None, sections=None, jobs=1,
                 save_glossary(gpath, glossary)
             results.append(st)
             log(_line(st))
+            if st.state == "stopped":
+                stop.set()  # a usage limit is the account's, not one language's
         return results
 
     if jobs <= 1 or len(languages) == 1:
-        return [st for lang in languages for st in one_language(lang)]
-    with ThreadPoolExecutor(max_workers=jobs) as pool:
-        return [st for chunk in pool.map(one_language, languages) for st in chunk]
+        results = []
+        for lang in languages:
+            if stop.is_set():
+                break
+            results.extend(one_language(lang))
+        return results
+    pool = ThreadPoolExecutor(max_workers=jobs)
+    futures = [pool.submit(one_language, lang) for lang in languages]
+    try:
+        results = [st for f in futures for st in f.result()]
+    except BaseException:
+        # Ctrl-C (or a crash) in one place stops every language at its next
+        # section, rather than leaving workers translating the rest of the book.
+        stop.set()
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()
+    return results
 
 
 def _line(st):
@@ -291,4 +336,6 @@ def _line(st):
         return f"✓ {where} ({st.todo} chunks)"
     if st.state in ("partial", "failed"):
         return f"✗ {where} {st.state}: " + "; ".join(st.problems[:3])
+    if st.state == "stopped":
+        return f"✗ {where} stopped: {st.problems[0]} (re-run later to resume)"
     return f"· {where} {st.state}"

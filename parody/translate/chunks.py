@@ -25,6 +25,10 @@ _FENCE_CLOSE = re.compile(r"^\s*(`{3,}|~{3,})\s*$")
 # closer as a div name, so every exercise swallowed the one after it.
 _DIV_OPEN = re.compile(r"^:{3,}\s*[^\s:]")
 _DIV_CLOSE = re.compile(r"^:{3,}\s*$")
+# A line that continues the block above it across a blank line: a definition
+# (":   text" / "~   text") or a table caption ("Table: …" / ": …"). Split
+# there, and pandoc reads the definition's indented paragraphs as code.
+_CONTINUES = re.compile(r"^(?:Table:|[:~][ \t])")
 
 
 def split_frontmatter(raw):
@@ -62,8 +66,10 @@ def split_chunks(body):
         if fence is None and not line.strip():
             if depth == 0 and not in_math:
                 following = next((l for l in lines[i + 1:] if l.strip()), None)
-                # An indented next line continues the block above it.
-                if following is None or not following[:1].isspace():
+                # An indented next line continues the block above it, as does
+                # a definition or a table caption.
+                if following is None or not (following[:1].isspace()
+                                             or _CONTINUES.match(following)):
                     flush()
                     continue
             current.append(line)
