@@ -148,7 +148,6 @@ def test_build_twin_tiny_book(tmp_path):
     assert 0.5 < report.base_scale <= 1.0
     twin = pypdf.PdfReader(str(pdf))
     assert len(twin.pages) == report.pages >= 3
-    english = pypdf.PdfReader(str(tmp_path / "book" / "build" / "twin" / "english.pdf"))
     for i, page in enumerate(twin.pages):
         text = " ".join(page.extract_text().split())
         assert "Alpha-DE" in text or i == 0

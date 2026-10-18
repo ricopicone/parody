@@ -65,7 +65,7 @@ def split_chunks(body):
     for i, line in enumerate(lines):
         if fence is None and not line.strip():
             if depth == 0 and not in_math:
-                following = next((l for l in lines[i + 1:] if l.strip()), None)
+                following = next((nxt for nxt in lines[i + 1:] if nxt.strip()), None)
                 # An indented next line continues the block above it, as does
                 # a definition or a table caption.
                 if following is None or not (following[:1].isspace()
