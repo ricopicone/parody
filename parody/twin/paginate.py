@@ -92,4 +92,21 @@ def paginate(rows, counters, sections, first_section_of_chapter):
             page.first_unit = on_page[0]
             page.counters = dict(counters.get(on_page[0], {}))
         pages.append(page)
+    _make_contiguous(pages)
     return pages
+
+
+def _make_contiguous(pages):
+    """Each chunk's pieces, in page order, run from its start to its end with
+    no gap: a unit no mark reported (lost inside something print.lua
+    stringifies, say) goes with the piece before it rather than nowhere."""
+    by_chunk = defaultdict(list)
+    for page in pages:
+        for i, piece in enumerate(page.pieces):
+            by_chunk[(piece.section, piece.chunk)].append((page, i))
+    for slots in by_chunk.values():
+        for n, (page, i) in enumerate(slots):
+            piece = page.pieces[i]
+            start = 0 if n == 0 else piece.start
+            end = None if n == len(slots) - 1 else slots[n + 1][0].pieces[slots[n + 1][1]].start
+            page.pieces[i] = Piece(piece.section, piece.chunk, start, end)

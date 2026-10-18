@@ -166,3 +166,15 @@ def test_lines_inside_a_box_are_counted_one_by_one(tmp_path):
     # every sentence in it would get 1. Its second sentence wraps onto two.
     second_sentence = 1_002_001  # section 1, chunk 1 (the definition), sentence 1
     assert sum(n for _, _, v, n in inv.rows if v == second_sentence) == 2
+
+
+@needs_tex
+def test_a_box_head_logs_the_number_before_the_box_takes_it(tmp_path):
+    book = _book(tmp_path)
+    (book / "chapters" / "one" / "first.md").write_text(
+        "---\ntitle: First\n---\n\nIntro words.\n\n::: {#def:x .definition}\nVoltage is a thing. "
+        "It has two sentences.\n:::\n")
+    published = build_pdf(book, output_pdf=tmp_path / "en.pdf")
+    inv = build_inventory(book, tmp_path / "twin-build", published)
+    head, inside = inv.counters[1_002_000], inv.counters[1_002_001]
+    assert head["thmctr"] == 0 and inside["thmctr"] == 1

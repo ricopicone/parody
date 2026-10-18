@@ -211,6 +211,8 @@ def cmd_twin(args):
               + ", ".join(map(str, report.mismatched_pages)))
     for line in report.tex_errors[:10]:
         print(f"  ✗ TeX: {line}")
+    for line in report.coverage[:10]:
+        print(f"  ✗ {line}")
     spilled = report.shipped_pages and report.shipped_pages != report.pages
     if spilled:
         print(f"  ✗ the twin has {report.shipped_pages} pages for {report.pages} English pages: "
@@ -219,7 +221,7 @@ def cmd_twin(args):
         sbs = sidebyside.side_by_side(report.english_pdf, pdf, report.abspages,
                                       Path(args.side_by_side))
         print(f"  side by side → {sbs}")
-    return 1 if (report.tex_errors or report.mismatched_pages or spilled) else 0
+    return 1 if (report.tex_errors or report.mismatched_pages or spilled or report.coverage) else 0
 
 
 def cmd_publish(args):

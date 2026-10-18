@@ -37,7 +37,8 @@ from .paginate import paginate
 
 _TWINFIT = re.compile(r"TWINFIT page=(-?\d+) scale=([0-9.]+)")
 _SKIP_COUNTERS = {"page", "mpfootnote"}
-_FLOAT = re.compile(r"\\begin\{(figure|table)\}(\[[^\]]*\])?")
+_FLOAT = re.compile(r"\\begin\{(figure\*?|table\*?|longtable)\}(\[[^\]]*\])?")
+_TABLE_LINE = re.compile(r"^\s*(\|.*\||\+[-=+:]+\+)\s*$", re.M)
 
 
 @dataclass
@@ -55,6 +56,7 @@ class TwinReport:
     english_pdf: Path | None = None
     shipped_pages: int = 0  # pages the twin PDF actually has; must equal pages
     tex_errors: list = field(default_factory=list)  # "! …" lines from the twin's log
+    coverage: list = field(default_factory=list)  # text on no twin page, or on two
     notes: list = field(default_factory=list)
 
 
@@ -101,24 +103,56 @@ def _copy_support(src, dst):
         if f.is_file() and f.name.startswith("parody-twinmarks"):
             continue
         if f.is_file() and (f.suffix in (".cls", ".sty", ".bib", ".png", ".ttc", ".ttf", ".otf")
-                            or f.name == "latexmkrc"):
+                            or f.name == "latexmkrc"
+                            # a book preamble given as .tex is \input from the
+                            # preamble the twin reuses
+                            or (f.suffix == ".tex" and f.name != "main.tex")):
             shutil.copy2(f, dst / f.name)
     shutil.copy2(SHARED_PROFILE_DIR / "parody-twin.sty", dst / "parody-twin.sty")
 
 
-def _unsupported_floats(marked_dir, english, selected):
-    """Sections with a float the twin cannot follow (anything but [H])."""
+def coverage_problems(pages):
+    """Every chunk on the twin pages exactly once, start to end, no gap or overlap."""
+    problems = []
+    by_chunk = {}
+    for page in pages:
+        for piece in page.pieces:
+            by_chunk.setdefault((piece.section, piece.chunk), []).append(piece)
+    for (section, chunk), pieces in sorted(by_chunk.items()):
+        where = f"section {section} chunk {chunk}"
+        if pieces[0].start != 0:
+            problems.append(f"{where}: its opening (sentences 0–{pieces[0].start}) is on no twin page")
+        for a, b in zip(pieces, pieces[1:]):
+            if a.end is None or a.end > b.start:
+                problems.append(f"{where}: sentences from {b.start} are on two twin pages")
+            elif a.end < b.start:
+                problems.append(f"{where}: sentences {a.end}–{b.start} are on no twin page")
+        if pieces[-1].end is not None:
+            problems.append(f"{where}: its end (from sentence {pieces[-1].end}) is on no twin page")
+    return problems
+
+
+def unsupported_notes(english, rows, page_numbers, tex_by_section):
+    """What the twin cannot follow page for page, named with the pages it touches.
+
+    A table whose English broke across pages is set whole on one twin page.
+    A float that is not [H] (or is starred, or a longtable) may sit elsewhere.
+    """
     notes = []
-    for i in sorted(selected):
-        sec = english.get(i)
-        if sec is None:
-            continue
-        tex = Path(marked_dir) / "sections" / sec.chapter.slug / f"{sec.slug}.tex"
-        if not tex.is_file():
-            continue
-        for kind, placement in _FLOAT.findall(tex.read_text(encoding="utf-8")):
-            if placement not in ("[H]",):
-                notes.append(f"unsupported: {kind}{placement or ''} in {sec.key} may sit on another page")
+    for index, section in sorted(english.items()):
+        for k, chunk in enumerate(section.chunks):
+            if not _TABLE_LINE.search(chunk):
+                continue
+            base = index * 1_000_000 + (k + 1) * 1000
+            abspages = sorted({a for a, _, v, n in rows if base <= v < base + 1000})
+            if len(abspages) > 1:
+                first, last = page_numbers.get(abspages[0]), page_numbers.get(abspages[-1])
+                notes.append(f"unsupported: a table in {section.key} breaks across pages "
+                             f"{first}–{last} in English; the twin sets it on one page")
+        for kind, placement in _FLOAT.findall(tex_by_section.get(index, "")):
+            if placement != "[H]" or kind.endswith("*") or kind == "longtable":
+                notes.append(f"unsupported: {kind}{placement or ''} in {section.key} "
+                             "may sit on another page")
     return notes
 
 
@@ -191,10 +225,20 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     twin_dir = build_dir / f"twin-{language}"
     (twin_dir / "pages").mkdir(parents=True, exist_ok=True)
     _copy_support(build_dir / "marked", twin_dir)
+    page_numbers = {}
+    for abspage, page_no, _, _ in inv.rows:
+        page_numbers.setdefault(abspage, page_no)
+    tex_by_section = {}
+    for i in selected:
+        tex = build_dir / "marked" / "sections" / english[i].chapter.slug / f"{english[i].slug}.tex"
+        if i in english and tex.is_file():
+            tex_by_section[i] = tex.read_text(encoding="utf-8")
     report = TwinReport(language=language, mismatched_pages=list(inv.mismatched_pages),
                         pages=len(pages), abspages=[p.abspage for p in pages],
                         english_pdf=Path(published_pdf),
-                        unsupported=_unsupported_floats(build_dir / "marked", english, selected))
+                        coverage=coverage_problems(pages),
+                        unsupported=unsupported_notes({i: english[i] for i in selected if i in english},
+                                                      inv.rows, page_numbers, tex_by_section))
 
     cloze_mode = resolve_cloze_mode(project.meta)
     composed = []

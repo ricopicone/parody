@@ -115,7 +115,7 @@ def test_div_head_mark_goes_inside_the_div():
     # After the first word, not before it: as the box's first token the mark
     # changed the box's layout (lines moved between pages in electronics).
     assert mark_section("::: {#c .definition}\nElectric charge is. Then more.\n:::", 1) == (
-        "::: {#c .definition}\nElectric \\parodys{1001000}charge is. "
+        "\\parodysctr{1001000}\n\n::: {#c .definition}\nElectric \\parodys{1001000}charge is. "
         "\\parodys{1001001}Then more.\n:::\n\n\\parodysoff")
 
 
@@ -192,9 +192,9 @@ def test_every_block_inside_a_chunk_starts_a_unit():
     # paragraph and went wholesale to the wrong page.
     text = ("::: example\nSetting it, we get\n\n$$x = 1.$$\n\n![a figure](a.pdf)\n\n"
             "now more text.\n\n:::")
-    # the figure is not a unit of its own: an inline mark would break its syntax
-    assert _words_at(text, sentence_starts(text)) == ["$$x", "now"]
-    assert _words_at(text, sentence_starts(text, "zh")) == ["$$x", "now"]
+    # in a box the figure is a unit too (marked as a paragraph of its own)
+    assert _words_at(text, sentence_starts(text)) == ["$$x", "![a", "now"]
+    assert _words_at(text, sentence_starts(text, "zh")) == ["$$x", "![a", "now"]
 
 
 # (a list item is a unit, but after its marker: test_each_list_item_starts_a_unit_after_its_marker)
@@ -202,7 +202,8 @@ def test_every_block_inside_a_chunk_starts_a_unit():
                                    "![fig](a.pdf)", "\\begin{align}x\\end{align}",
                                    "<div>x</div>", "> quoted"])
 def test_blocks_that_cannot_take_an_inline_mark_are_not_units(block):
-    text = f"::: example\nSome prose.\n\n{block}\n\n:::"
+    # (a div that is not a box: in a box a figure is a unit of its own)
+    text = f"::: aside\nSome prose.\n\n{block}\n\n:::"
     assert sentence_starts(text) == []
 
 
@@ -223,3 +224,29 @@ def test_list_units_line_up_between_languages():
     en = "Do these:\n\n1.  What is it?\n2.  Why is it?"
     zh = "做这些：\n\n1.  它是什么？\n2.  为什么？"
     assert len(sentence_starts(en)) == len(sentence_starts(zh, "zh")) == 2
+
+
+def test_a_box_logs_its_counters_before_it_opens():
+    # The inside head mark runs after \begin{definition} has stepped thmctr;
+    # restored from it, a page opening on the box printed the next number.
+    marked = mark_section("::: {#d .definition}\nVoltage is a thing. More.\n:::", 1)
+    assert marked.startswith("\\parodysctr{1001000}\n\n::: {#d .definition}\nVoltage \\parodys{1001000}is")
+
+
+def test_a_figure_inside_a_box_is_a_unit_of_its_own():
+    text = "::: {.example}\nSee this.\n\n![a figure](a.pdf){#fig:a}\n\nThen more.\n:::"
+    assert [text[o:o + 3] for o in sentence_starts(text)] == ["![a", "The"]
+    assert "\\parodys{1001001}\n\n![a figure](a.pdf){#fig:a}" in mark_section(text, 1)
+
+
+def test_a_figure_inside_a_subfigure_div_is_not_a_unit():
+    text = "::: {.subfigures}\n![a](a.pdf)\n\n![b](b.pdf)\n:::"
+    assert sentence_starts(text) == []
+
+
+def test_a_figure_in_a_subfigure_div_nested_in_a_box_is_not_a_unit():
+    # print.lua reads a subfigures div as nothing but images; a mark between
+    # them crashed it (seen in the electronics problem sets).
+    text = ("::: {.exercise}\nSolve it.\n\n::: {.subfigures}\n![a](a.pdf)\n\n![b](b.pdf)\n:::\n\n"
+            "Then explain.\n:::")
+    assert [text[o:o + 4] for o in sentence_starts(text)] == ["Then"]

@@ -13,11 +13,13 @@
 \newwrite\parodytwinctr
 \immediate\openout\parodytwinctr=\jobname.twinctr\relax
 \makeatletter
-\newcommand\parodys[1]{%
-  \setattribute\parodytwinattr{#1}%
+\newcommand\parodysctr[1]{%
   {\def\@elt##1{##1=\the\csname c@##1\endcsname,}%
    \immediate\write\parodytwinctr{#1|\cl@@ckpt}}%
 }
+\newcommand\parodys[1]{\setattribute\parodytwinattr{#1}\parodysctr{#1}}
+% (\parodysctr alone, before a box opens, logs the counters as they are
+% before the box steps its number; the first write of a value wins.)
 % Material built in the output routine (headers, footers, a breakable box
 % rebuilt at a page break) must not inherit the mark that happened to be
 % current when the page filled: clear it for the output routine's group.

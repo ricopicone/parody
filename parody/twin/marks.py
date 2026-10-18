@@ -86,12 +86,37 @@ _BOX_CLASSES = {"definition", "theorem", "lemma", "corollary", "proposition",
                 "example", "infobox"}
 
 
-def _is_box(chunk):
+# Divs whose figures are units of their own (a paragraph-level mark before
+# them is safe). Not structural divs like subfigures, which print.lua reads
+# as nothing but images.
+_FIGURE_UNIT_CLASSES = _BOX_CLASSES | {"exercise", "labexercise"}
+
+
+def _div_classes(chunk):
     m = re.match(r"^:{3,}\s*(?:\{([^}]*)\}|([\w-]+))", chunk)
     if not m:
-        return False
-    names = m.group(2) and [m.group(2)] or re.findall(r"\.([\w-]+)", m.group(1) or "")
-    return any(n in _BOX_CLASSES for n in names)
+        return []
+    return [m.group(2)] if m.group(2) else re.findall(r"\.([\w-]+)", m.group(1) or "")
+
+
+def _figures_are_units(chunk):
+    return any(c in _FIGURE_UNIT_CLASSES for c in _div_classes(chunk))
+
+
+def _innermost_div_takes_figures(text, offset):
+    """Whether the div immediately around ``offset`` is one whose figures are
+    units: not a subfigures div nested inside a box."""
+    stack = []
+    for line in text[:offset].split("\n"):
+        if re.match(r"^:{3,}\s*[^\s:]", line):
+            stack.append(line)
+        elif re.match(r"^:{3,}\s*$", line) and stack:
+            stack.pop()
+    return bool(stack) and _figures_are_units(stack[-1])
+
+
+def _is_box(chunk):
+    return any(c in _BOX_CLASSES for c in _div_classes(chunk))
 
 
 def _is_prose(text):
@@ -155,11 +180,14 @@ def sentence_starts(text, language="en"):
     # before a figure or display inside a box, is the cleanest place to cut.
     # Only blocks a mark can open inline: prose, or a display. A mark before a
     # fence, heading, table, list marker or figure would break its syntax.
+    figures = _figures_are_units(text)
     for m in _BLANK_LINE.finditer(text):
         rest = text[m.end():]
         if (not any(a <= m.start() < b for a, b in spans[:-1])
                 and _starts_a_sentence(text, m.end())
-                and (rest.startswith("$$") or _is_prose(rest))):
+                and (rest.startswith("$$") or _is_prose(rest)
+                     or (figures and rest.startswith("![")
+                         and _innermost_div_takes_figures(text, m.end())))):
             starts.append(m.end())
     # Each list item, just after its marker (the chunk's own first line has
     # its head mark there already), and the first prose line inside a nested
@@ -205,7 +233,10 @@ def mark_section(body, section_index):
             raise ValueError(f"chunk {k} of section {section_index} has too many sentences")
         pieces, last = [], 0
         for s, offset in enumerate(starts, 1):
-            pieces += [chunk[last:offset], _mark(_value(section_index, k, s))]
+            mark = _mark(_value(section_index, k, s))
+            if chunk.startswith("![", offset):
+                mark += "\n\n"  # its own paragraph: inline, it would undo the figure
+            pieces += [chunk[last:offset], mark]
             last = offset
         marked = "".join(pieces) + chunk[last:]
         head = _mark(_value(section_index, k, 0))
@@ -222,7 +253,11 @@ def mark_section(body, section_index):
             opener, _, rest = marked.partition("\n")
             m_word = re.match(r"\S+[ \t]+", rest)
             cut = m_word.end() if m_word and "\n" not in m_word.group(0) else len(rest.split("\n", 1)[0])
-            parts.append(f"{opener}\n{rest[:cut]}{head}{rest[cut:]}")
+            # The counters, though, are logged BEFORE the box opens: inside,
+            # the box has already stepped its number, and a twin page opening
+            # on it would print the next one.
+            parts.append(f"\\{MARK_MACRO}ctr{{{_value(section_index, k, 0)}}}\n\n"
+                         f"{opener}\n{rest[:cut]}{head}{rest[cut:]}")
         else:
             parts.append(f"{head}\n\n{marked}")
     # Cleared at the end, or the last mark rides on into whatever follows the

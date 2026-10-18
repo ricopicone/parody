@@ -69,3 +69,19 @@ def test_a_cut_at_a_list_item_keeps_its_marker():
     second = slice_chunk(text, "zh", 2, None, 2)
     assert first.text == "做这些：\n\n1.  它是什么？"
     assert second.text == "2.  为什么？"
+
+
+def test_reopened_box_drops_h_and_only_real_ids():
+    text = '::: {#box:x .infobox h="ex:1" title="Note #3 on Ohm"}\nEins. Zwei.\n:::'
+    second = slice_chunk(text, "de", 1, None, 1)
+    assert second.text.startswith('::: {.infobox title="Note #3 on Ohm"}\nZwei.')
+
+
+def test_raw_html_divs_inside_a_box_are_closed_and_reopened_too():
+    # Electronics examples wrap their text in <div>…</div> inside the fenced
+    # div; closing only the fence printed a stray ":::" on the twin page.
+    text = "::: example\n<div>\n\nEins. Zwei.\n\n</div>\n:::"
+    first = slice_chunk(text, "de", 0, 1, 1)
+    second = slice_chunk(text, "de", 1, None, 1)
+    assert first.text == "::: example\n<div>\n\nEins.\n\n</div>\n\n:::"
+    assert second.text == "::: example\n<div>\n\nZwei.\n\n</div>\n:::"

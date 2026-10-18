@@ -155,3 +155,29 @@ def test_build_twin_tiny_book(tmp_path):
     assert "Kapitel 1 One" in texts[0] or "Kapitel1One" in texts[0].replace(" ", "")
     # a page where section 1.2 starts carries its translated title in the head
     assert any(t.startswith("1.2 Second (de)") for t in texts), [t[:30] for t in texts]
+
+
+def test_coverage_check_flags_a_gap():
+    from parody.twin.build import coverage_problems
+    pages = [TwinPage(5, 1, pieces=[Piece(1, 0, 0, 2)]), TwinPage(6, 2, pieces=[Piece(1, 0, 3, None)])]
+    assert coverage_problems(pages) == ["section 1 chunk 0: sentences 2–3 are on no twin page"]
+    ok = [TwinPage(5, 1, pieces=[Piece(1, 0, 0, 2)]), TwinPage(6, 2, pieces=[Piece(1, 0, 2, None)])]
+    assert coverage_problems(ok) == []
+
+
+def test_split_tables_and_wide_floats_are_reported():
+    from parody.twin.build import unsupported_notes
+    chunks = {1: _section(["| a | b |\n|---|---|\n| 1 | 2 |", "Prose here."])}
+    rows = [(5, 1, V(1, 0, 0), 3), (6, 2, V(1, 0, 0), 2), (6, 2, V(1, 1, 0), 1)]
+    notes = unsupported_notes(chunks, rows, {5: 1, 6: 2}, tex_by_section={1: "\\begin{figure*}x\\end{figure*}"})
+    assert any("table" in n and "pages 1–2" in n for n in notes)
+    assert any("figure*" in n for n in notes)
+
+
+def test_reopened_box_step_back_with_real_counter_shape():
+    # head written BEFORE the box opens (pre-step), first sentence inside after
+    tr = align_translation(_section(EN), _tf(EN, lambda c: c))
+    counters = {V(1, 2, 0): {"thmctr": 3}, V(1, 2, 1): {"thmctr": 4}}
+    md = page_markdown(TwinPage(6, 2, pieces=[Piece(1, 2, 1, None)]), {1: _section(EN)},
+                       {1: tr}, "de", counters)[0][0][1]
+    assert "\\addtocounter{thmctr}{-1}" in md

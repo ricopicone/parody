@@ -26,11 +26,15 @@ class Slice:
     reopened: bool = False
 
 
+_HTML_DIV_OPEN = re.compile(r"^\s*<div(\s[^>]*)?>\s*$")
+_HTML_DIV_CLOSE = re.compile(r"^\s*</div>\s*$")
+
+
 def _open_divs(text, upto):
-    """Opener lines of the fenced divs still open at offset ``upto``."""
-    stack, fence, pos = [], None, 0
+    """Opener lines of the divs still open at ``upto``, fenced (:::) or raw
+    HTML (<div> on a line of its own, as the migrated examples have)."""
+    stack, fence = [], None
     for line in text[:upto].split("\n"):
-        pos += len(line) + 1
         if fence is not None:
             m = _FENCE_CLOSE.match(line)
             if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1]:
@@ -39,11 +43,15 @@ def _open_divs(text, upto):
         m = _FENCE_OPEN.match(line)
         if m:
             fence = (m.group(1)[0], len(m.group(1)))
-        elif _DIV_OPEN.match(line):
+        elif _DIV_OPEN.match(line) or _HTML_DIV_OPEN.match(line):
             stack.append(line)
-        elif _DIV_CLOSE.match(line) and stack:
+        elif (_DIV_CLOSE.match(line) or _HTML_DIV_CLOSE.match(line)) and stack:
             stack.pop()
     return stack
+
+
+def _closer(opener):
+    return "</div>" if _HTML_DIV_OPEN.match(opener) else ":::"
 
 
 def _item_start(text, offset):
@@ -54,8 +62,20 @@ def _item_start(text, offset):
     return line_start if m and m.end() == offset else offset
 
 
+_ATTR_TOKEN = re.compile(r'[^\s=]+="[^"]*"|[^\s=]+=\S+|\S+')
+
+
 def _without_id(opener):
-    return re.sub(r"\s*#[^\s}]+", "", opener).replace("{ ", "{")
+    """The opener without its #id and h= (both define labels; twice is a clash).
+
+    Token by token, so a # or h= inside a quoted attribute value stays.
+    """
+    m = re.match(r"^(:{3,}\s*)\{(.*)\}\s*$", opener)
+    if not m:
+        return opener
+    kept = [t for t in _ATTR_TOKEN.findall(m.group(2))
+            if not t.startswith("#") and not t.startswith("h=")]
+    return f"{m.group(1)}{{{' '.join(kept)}}}"
 
 
 def slice_chunk(text, language, start, end, english):
@@ -95,10 +115,13 @@ def slice_chunk(text, language, start, end, english):
     if a > 0:
         openers = _open_divs(text, a)
         if openers:
-            piece = "\n".join(_without_id(o) for o in openers) + "\n" + piece
+            # a raw HTML opener needs a blank line before the Markdown it holds
+            lines = [_without_id(o) + ("\n" if _HTML_DIV_OPEN.match(o) else "") for o in openers]
+            piece = "\n".join(lines) + "\n" + piece
             reopened = True
     if end is not None:
-        still_open = len(_open_divs(text, b))
+        still_open = _open_divs(text, b)
         if still_open:
-            piece += "\n\n" + "\n".join([":::"] * still_open)
+            closers = [_closer(o) for o in reversed(still_open)]
+            piece += "\n\n" + "\n".join(c + ("\n" if c == "</div>" else "") for c in closers).rstrip("\n")
     return Slice(piece, approximate and (start > 0 or end is not None), reopened)

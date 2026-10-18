@@ -69,3 +69,15 @@ def test_other_sections_are_left_out():
     pages = paginate(rows, _ctr(V(1, 0), V(2, 0), V(2, 1)), {2}, {2})
     assert [p.pieces for p in pages] == [[Piece(2, 0, 0, None)], [Piece(2, 1, 0, None)]]
     assert pages[0].chapter_start
+
+
+def test_pieces_cover_every_chunk_exactly_once():
+    # Unit (1,0,2) never reached the counters or a page (a mark lost inside
+    # something print.lua stringifies): its text must still be set, once.
+    rows = [(5, 1, V(1, 0, 0), 3), (5, 1, V(1, 0, 1), 2), (6, 2, V(1, 0, 3), 4)]
+    counters = _ctr(V(1, 0, 0), V(1, 0, 1), V(1, 0, 3))
+    pages = paginate(rows, counters, {1}, set())
+    # it goes with the piece before it, as an absent unit inherits its
+    # predecessor's page
+    assert pages[0].pieces == [Piece(1, 0, 0, 3)]
+    assert pages[1].pieces == [Piece(1, 0, 3, None)]
