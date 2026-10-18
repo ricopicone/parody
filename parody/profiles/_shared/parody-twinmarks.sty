@@ -1,0 +1,22 @@
+%% parody-twinmarks — where each English sentence fell on the page.
+%%
+%% Loaded only by the twin build's second, marked English pass (parody.twin).
+%% \parodys{V} sets a LuaTeX attribute: an assignment, not a node, so the
+%% English lines and pages come out exactly as in the ordinary build (the twin
+%% build checks that, page by page). parody-twinmarks.lua reads the attribute
+%% off every line at shipout and writes \jobname.twin. Each mark also writes
+%% the value of every LaTeX counter to \jobname.twinctr, so a twin page can
+%% restore the numbering exactly as the English had it at that point.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parody-twinmarks}[2026/10/17 parody twin-page marks]
+\newattribute\parodytwinattr
+\newwrite\parodytwinctr
+\immediate\openout\parodytwinctr=\jobname.twinctr\relax
+\makeatletter
+\newcommand\parodys[1]{%
+  \setattribute\parodytwinattr{#1}%
+  {\def\@elt##1{##1=\the\csname c@##1\endcsname,}%
+   \immediate\write\parodytwinctr{#1|\cl@@ckpt}}%
+}
+\makeatother
+\directlua{dofile(kpse.find_file("parody-twinmarks.lua", "lua") or "parody-twinmarks.lua")}

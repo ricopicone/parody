@@ -280,15 +280,21 @@ def section_prints_a_heading(slug, meta, body):
     return bool(str((meta or {}).get("title") or "").strip())
 
 
-def strip_frontmatter(md_path, dest_path, transform=None):
+def strip_frontmatter(md_path, dest_path, transform=None, hook=None):
     """Write a copy of the section with YAML frontmatter removed (pandoc
     would otherwise interpret stray frontmatter keys), applying any
-    plugin content transforms."""
+    plugin content transforms.
+
+    ``hook(md_path, body)`` runs on the body BEFORE the transforms. The twin
+    build's sentence marks use it, so they land on the same text the
+    translate step cut into chunks."""
     raw = Path(md_path).read_text(encoding="utf-8")
     if raw.startswith("---"):
         parts = raw.split("---", 2)
         if len(parts) == 3:
             raw = parts[2]
+    if hook is not None:
+        raw = hook(Path(md_path), raw)
     if transform is not None:
         raw = transform(raw)
     Path(dest_path).write_text(raw.strip() + "\n", encoding="utf-8")
@@ -433,8 +439,13 @@ def drop_duplicate_labels(tex_paths, reserved=()):
 
 def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
               profile_dir=None, keep_build=False, build_dir=None,
-              cloze_mode=None, pagemap=True, edition=None):
+              cloze_mode=None, pagemap=True, edition=None,
+              section_hook=None, extra_support=(), extra_flags=()):
     """Build the print PDF. Returns the path to the produced PDF.
+
+    ``section_hook``, ``extra_support`` (files copied into the build dir) and
+    ``extra_flags`` (preamble lines) exist for the twin build's marked English
+    pass; with none of them the build is exactly the ordinary one.
 
     section: "chapter-slug/section-slug" builds just that section
     (meta-book's `make section h=...` equivalent).
@@ -489,6 +500,8 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     if pagemap:
         shutil.copy2(SHARED_PROFILE_DIR / "parody-pagemap.sty",
                      build_dir / "parody-pagemap.sty")
+    for support in extra_support:
+        shutil.copy2(support, build_dir / Path(support).name)
 
     # Convert sections. The filter resolves notebook includes and figure
     # paths against the SOURCE tree (pandoc itself runs in the build dir),
@@ -633,7 +646,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                     src = chapter.directory / f"{sec_slug}.md"
                 stripped = build_dir / "sections" / chapter.slug / f"{sec_slug}.md"
                 stripped.parent.mkdir(parents=True, exist_ok=True)
-                strip_frontmatter(src, stripped, transform=transform)
+                strip_frontmatter(src, stripped, transform=transform, hook=section_hook)
                 tex_path = build_dir / "sections" / chapter.slug / f"{sec_slug}.tex"
                 print(f"  pandoc: {chapter.slug}/{sec_slug}.md → .tex")
                 if _online:
@@ -706,6 +719,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     # Cloze mode is a separate axis from --solutions: a published student book
     # wants clozes filled and exercise solutions hidden.
     flags.append("\\def\\clozemode{%s}" % cloze_mode)
+    flags.extend(extra_flags)
 
     # The book's own preamble — its MATH vocabulary, in practice. parody owns
     # the house style, but \diff, \abs and \Transpose belong to the book, and
