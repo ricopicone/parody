@@ -161,3 +161,18 @@ def test_a_mark_in_a_moving_argument_is_not_expanded(tmp_path):
     log = (tmp_path / "m.log").read_text(encoding="utf-8", errors="replace")
     assert "\n! " not in log, log[log.index("\n! "):][:300]
     assert "1001001|" in (tmp_path / "m.twinctr").read_text()
+
+
+@needs_tex
+def test_fit_attempts_do_not_multiply_exercises(tmp_path):
+    # Each fit attempt typesets the page again. xsim's exercise id is not a
+    # LaTeX counter, so it was not put back: every attempt registered every
+    # exercise anew, and the whole electronics book's main.xsim grew one
+    # 2 MB line, which TeX cannot read back ("Unable to read an entire line").
+    body = ("\\begin{twinpage}{9}{1.0}{\\setcounter{chapter}{1}}{}{}\n"
+            "\\begin{exercise}Aufgabe.\\end{exercise}\n"
+            "\\noindent\\rule{1pt}{1.3\\textheight}\n\\end{twinpage}\n")
+    pdf, log = _compile(tmp_path, body)
+    assert "TWINFIT page=9 scale=0.7" in log  # it took many attempts
+    xsim = (tmp_path / "t.xsim").read_text(encoding="utf-8", errors="replace")
+    assert "exercise-1==" in xsim and "exercise-2==" not in xsim

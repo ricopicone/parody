@@ -7,6 +7,7 @@ import pytest
 from parody.translate.chunks import chunk_hash, split_chunks, split_frontmatter
 from parody.translate.store import TranslationFile, translation_path
 from parody.twin.build import (TwinReport, base_scale, build_twin, log_errors, mark_errors,
+                               pdf_pages,
                                parse_twinfit, restore_code, section_ranges, twin_errors,
                                write_twin_sidecar)
 from parody.twin.compose import SectionSource, align_translation, page_markdown
@@ -260,3 +261,12 @@ def test_mark_errors_are_errors_on_a_marked_line(tmp_path):
            "./sections/ch/s.tex:3: Undefined control sequence.\nl.3 plain \\freadinglist\n")
     assert mark_errors(log, tmp_path) == [
         "./sections/ch/s.tex:2: Illegal parameter number in definition of \\x. (...)"]
+
+
+def test_an_unreadable_twin_pdf_has_no_page_count(tmp_path):
+    # TeX that stops part-way (a fatal error that reaches only the terminal)
+    # leaves a truncated main.pdf behind; the build must report it, not crash.
+    bad = tmp_path / "t.pdf"
+    bad.write_bytes(b"%PDF-1.5\n%truncated")
+    assert pdf_pages(bad) is None
+    assert pdf_pages(tmp_path / "absent.pdf") is None

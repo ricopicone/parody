@@ -51,17 +51,25 @@
 
 % Every counter, saved before measuring and put back after each attempt, so
 % a counter the restore list does not name cannot drift by one per attempt.
+% xsim numbers its exercises with an expl3 int, not a LaTeX counter: put it
+% back too, or every attempt registers every exercise on the page anew and
+% main.xsim grows a line TeX cannot read back.
+\int_new:N \g__parodytwin_xsim_id_int
 \cs_new_protected:Npn \__parodytwin_save_counters:
   {
     \cs_set:Npn \@elt ##1
       { \cs_gset:cpx { parodytwin@save@##1 } { \int_use:c { c@##1 } } }
     \cl@@ckpt
+    \cs_if_exist:NT \g_xsim_id_int
+      { \int_gset_eq:NN \g__parodytwin_xsim_id_int \g_xsim_id_int }
   }
 \cs_new_protected:Npn \__parodytwin_put_counters:
   {
     \cs_set:Npn \@elt ##1
       { \int_gset:cn { c@##1 } { \use:c { parodytwin@save@##1 } } }
     \cl@@ckpt
+    \cs_if_exist:NT \g_xsim_id_int
+      { \int_gset_eq:NN \g_xsim_id_int \g__parodytwin_xsim_id_int }
   }
 
 \cs_new_protected:Npn \__parodytwin_fit:nn #1 #2

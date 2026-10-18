@@ -446,8 +446,22 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(twin_dir / "main.pdf", out)
     try:
-        import pypdf
-        report.shipped_pages = len(pypdf.PdfReader(str(out)).pages)
+        import pypdf  # noqa: F401
     except ImportError:
-        pass
+        return out, report
+    shipped = pdf_pages(out)
+    if shipped is None:
+        report.tex_errors.append(
+            "the twin PDF is unreadable: TeX stopped part-way (see the latexmk output)")
+    else:
+        report.shipped_pages = shipped
     return out, report
+
+
+def pdf_pages(path):
+    """Pages in the PDF at ``path``, or None when it is missing or unreadable."""
+    import pypdf
+    try:
+        return len(pypdf.PdfReader(str(path)).pages)
+    except (OSError, pypdf.errors.PyPdfError):
+        return None
