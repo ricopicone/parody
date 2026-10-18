@@ -19,6 +19,10 @@
 % German noun-and-verb alike and mangle CJK.
 \AtBeginDocument{\renewcommand{\parodytitlecap}[1]{#1}}
 
+% \parodytwinset{counter}{value}: the restore list names every counter the
+% English had; one this document lacks is skipped, not an error.
+\newcommand{\parodytwinset}[2]{\ifcsname c@#1\endcsname\setcounter{#1}{#2}\fi}
+
 \newcommand{\parodytwinuntranslatedtext}{English: not yet translated}
 \newcommand{\parodytwinstaletext}{may lag the English}
 \newcommand{\parodyuntranslated}{{\footnotesize\itshape[\parodytwinuntranslatedtext]}\ }
@@ -84,7 +88,10 @@
       }
     \iow_log:x { TWINFIT ~ page=\thepage \c_space_tl scale=\fp_use:N \l__parodytwin_scale }
     \l__parodytwin_restore
-    \noindent\scalebox { \fp_use:N \l__parodytwin_scale } { \__parodytwin_minipage:n { #2 } }
+    % straight onto the page, no paragraph and no interline glue: the
+    % measured height is all the space it takes
+    \nointerlineskip
+    \hbox:n { \scalebox { \fp_use:N \l__parodytwin_scale } { \__parodytwin_minipage:n { #2 } } }
   }
 
 \NewDocumentEnvironment { twinpage } { m m m m m o +b }
@@ -103,8 +110,9 @@
         \group_end:
       }
       { #4 #5 }
-    \par
-    \dim_set:Nn \l__parodytwin_avail { \textheight - \pagetotal }
+    % run the page builder, so \pagetotal counts a chapter heading just set
+    \par \tex_penalty:D 10000 \scan_stop:
+    \dim_set:Nn \l__parodytwin_avail { \textheight - \pagetotal - 1pt }
     \__parodytwin_fit:nn { #2 } { #7 }
   }
   { \clearpage }

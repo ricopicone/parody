@@ -56,6 +56,7 @@ def _compile(tmp_path, body, language="de", runs=1):
         subprocess.run(["lualatex", "-interaction=nonstopmode", "t.tex"], cwd=tmp_path,
                        env=_tool_env(), capture_output=True)
     log = (tmp_path / "t.log").read_text(encoding="utf-8", errors="replace")
+    assert "\n! " not in log, log[log.index("\n! "):][:300]
     return tmp_path / "t.pdf", log
 
 

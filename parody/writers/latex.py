@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from string import Template
 
@@ -301,6 +302,105 @@ def strip_frontmatter(md_path, dest_path, transform=None, hook=None):
     return dest_path
 
 
+_PRINT_ENV_KEYS = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
+                   "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
+                   "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD",
+                   "PARODY_PYTHON", "PARODY_ANIMATION_NOTE",
+                   "PARODY_SECTION_URL")
+
+
+@contextmanager
+def print_env(project, project_dir, build_dir, cloze_mode, active_meta):
+    """The environment print.lua reads while sections convert; restored after.
+
+    Yields the book's online base URL ("" when none), for PARODY_SECTION_URL.
+    Shared by build_pdf and the twin build, so a translated page converts
+    exactly as its English page did.
+    """
+    saved = {k: os.environ.get(k) for k in _PRINT_ENV_KEYS}
+    try:
+        os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
+        os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
+        os.environ["PARODY_SVG_CACHE"] = str(Path(build_dir) / "svg-cache")
+        # print.lua needs the mode only for figure variants; TeX branches on
+        # \clozemode for everything else.
+        os.environ["PARODY_CLOZE_MODE"] = cloze_mode
+        # Where `parody figures` puts what it built. Figures live there for books
+        # using the figures/ layout; books whose art still sits beside its section
+        # resolve from the chapter dir as before.
+        from .figures import figures_build_dir
+        fig_build = figures_build_dir(project)
+        os.environ["PARODY_FIGURES_BUILD"] = str(fig_build) if fig_build.is_dir() else ""
+        # An animated figure (.gif, …) prints as a still that print.lua extracts by
+        # running `python -m parody.stills`. THIS interpreter is the one with parody
+        # and Pillow on its path, whatever `python3` on PATH happens to be.
+        os.environ["PARODY_PYTHON"] = sys.executable
+        # ...and its caption says so. print.animation_note: false (or "") drops it.
+        note = (active_meta.get("print") or {}).get("animation_note",
+                                                    ANIMATION_NOTE_DEFAULT)
+        os.environ["PARODY_ANIMATION_NOTE"] = "" if note in (None, False) else str(note)
+        # The note links to the figure on the web, where it plays. The site is
+        # print.online_url, else book.companion_url; with neither the note is
+        # plain text. parody-web serves a section at <site>/<chapter>/<section>/.
+        online = ((active_meta.get("print") or {}).get("online_url")
+                  or (active_meta.get("book") or {}).get("companion_url") or "")
+        os.environ["PARODY_SECTION_URL"] = ""
+        yield str(online).rstrip("/")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def run_latexmk(project, project_dir, build_dir):
+    """Run the profile's latexmk on build_dir/main.tex; the PDF, or None without TeX."""
+    project_dir, build_dir = Path(project_dir), Path(build_dir)
+    from .figures import figures_build_dir
+    fig_build = figures_build_dir(project)
+    env = _tool_env()
+    # Section figures (\includegraphics, \inputpgf) stay in the content
+    # repo's chapter/assets dirs; let kpathsea find them from the build dir.
+    resource_dirs = [str(ch.directory) for ch in project.chapters]
+    if fig_build.is_dir():
+        resource_dirs.insert(0, str(fig_build))
+    assets = project_dir / "assets"
+    if assets.is_dir():
+        resource_dirs.append(str(assets))
+    env["TEXINPUTS"] = "." + os.pathsep + os.pathsep.join(resource_dirs) \
+        + os.pathsep + env.get("TEXINPUTS", "")
+    # luaotfload resolves \setmainfont{Family} against OSFONTDIR (plus the OS
+    # font dirs). Point it at the build dir so fonts a profile bundles there
+    # (e.g. a licensed Palatino.ttc copied in with the profile) resolve by
+    # family name in ANY environment — notably the Linux print container, where
+    # the font is not installed system-wide. Prepend so the bundled font is
+    # authoritative, giving identical host/container output.
+    env["OSFONTDIR"] = str(build_dir) + os.pathsep + env.get("OSFONTDIR", "")
+    if not shutil.which("latexmk", path=env["PATH"]):
+        print("⚠️  latexmk not found — wrote LaTeX sources to "
+              f"{build_dir}, skipping PDF compilation")
+        return None
+    result = subprocess.run(
+        ["latexmk", "-r", "latexmkrc", "main.tex"],
+        cwd=build_dir, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    produced = build_dir / "main.pdf"
+    if result.returncode != 0:
+        tail = "\n".join(result.stdout.splitlines()[-30:])
+        # A profile may run latexmk in force_mode to push past benign non-fatal
+        # errors a custom class emits (e.g. MIT Press's NewMath_MIT), so latexmk
+        # can exit nonzero yet still produce a complete PDF. Treat that as a
+        # warning; only a missing PDF is fatal.
+        if not produced.exists():
+            raise RuntimeError(
+                f"latexmk failed (exit {result.returncode}):\n{tail}")
+        print(f"⚠️  latexmk exited {result.returncode} but produced a PDF; "
+              f"continuing. Last output:\n{tail}")
+    return produced
+
+
 BUNDLED_PROFILES = Path(__file__).parent.parent / "profiles"
 # memoir is the foundational house style; `print` remains as the portable
 # stock-book fallback, selectable via --profile print.
@@ -505,41 +605,11 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
 
     # Convert sections. The filter resolves notebook includes and figure
     # paths against the SOURCE tree (pandoc itself runs in the build dir),
-    # so hand it the project/chapter context and an svg-conversion cache.
-    # Save/restore so the context never leaks past this build.
-    _ctx_keys = ("PARODY_PROJECT_DIR", "PARODY_NOTEBOOK_SLUG",
-                 "PARODY_SVG_CACHE", "PARODY_CHAPTER_DIR",
-                 "PARODY_CLOZE_MODE", "PARODY_FIGURES_BUILD",
-                 "PARODY_PYTHON", "PARODY_ANIMATION_NOTE",
-                 "PARODY_SECTION_URL")
-    _saved_env = {k: os.environ.get(k) for k in _ctx_keys}
-    os.environ["PARODY_PROJECT_DIR"] = str(project_dir)
-    os.environ["PARODY_NOTEBOOK_SLUG"] = project.slug
-    os.environ["PARODY_SVG_CACHE"] = str(build_dir / "svg-cache")
-    # print.lua needs the mode only for figure variants; TeX branches on
-    # \clozemode for everything else.
-    os.environ["PARODY_CLOZE_MODE"] = cloze_mode
-    # Where `parody figures` puts what it built. Figures live there for books
-    # using the figures/ layout; books whose art still sits beside its section
-    # resolve from the chapter dir as before.
-    from .figures import figures_build_dir
-    _fig_build = figures_build_dir(project)
-    os.environ["PARODY_FIGURES_BUILD"] = str(_fig_build) if _fig_build.is_dir() else ""
-    # An animated figure (.gif, …) prints as a still that print.lua extracts by
-    # running `python -m parody.stills`. THIS interpreter is the one with parody
-    # and Pillow on its path, whatever `python3` on PATH happens to be.
-    os.environ["PARODY_PYTHON"] = sys.executable
-    # ...and its caption says so. print.animation_note: false (or "") drops it.
-    _note = (active_meta.get("print") or {}).get("animation_note",
-                                                 ANIMATION_NOTE_DEFAULT)
-    os.environ["PARODY_ANIMATION_NOTE"] = "" if _note in (None, False) else str(_note)
-    # The note links to the figure on the web, where it plays. The site is
-    # print.online_url, else book.companion_url; with neither the note is
-    # plain text. parody-web serves a section at <site>/<chapter>/<section>/.
-    _online = ((active_meta.get("print") or {}).get("online_url")
-               or (active_meta.get("book") or {}).get("companion_url") or "")
-    _online = str(_online).rstrip("/")
-    os.environ["PARODY_SECTION_URL"] = ""
+    # so hand it the project/chapter context (print_env, restored after).
+    # Entered by hand and left in the finally below, to keep the long loop
+    # at its indentation.
+    _env = print_env(project, project_dir, build_dir, cloze_mode, active_meta)
+    _online = _env.__enter__()
     chapters_tex = []
     pagemap_order = []  # section keys in book order, for build_ranges
     # chapter_start: the number of the first (non-appendix) chapter (default 1).
@@ -689,11 +759,7 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
                   "heading and are left unlabelled (each heading's short hash "
                   "still is): " + ", ".join(sorted(dropped)))
     finally:
-        for k, v in _saved_env.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+        _env.__exit__(None, None, None)
 
     if pagemap and chapters_tex:
         # Closes the last section's range at the end of the body, so it stops
@@ -776,46 +842,9 @@ def build_pdf(project_dir, output_pdf=None, solutions=False, section=None,
     if companion_url:
         _render_qr_codes(build_dir, companion_url)
 
-    # latexmk
-    env = _tool_env()
-    # Section figures (\includegraphics, \inputpgf) stay in the content
-    # repo's chapter/assets dirs; let kpathsea find them from the build dir.
-    resource_dirs = [str(ch.directory) for ch in project.chapters]
-    if _fig_build.is_dir():
-        resource_dirs.insert(0, str(_fig_build))
-    assets = project_dir / "assets"
-    if assets.is_dir():
-        resource_dirs.append(str(assets))
-    env["TEXINPUTS"] = "." + os.pathsep + os.pathsep.join(resource_dirs) \
-        + os.pathsep + env.get("TEXINPUTS", "")
-    # luaotfload resolves \setmainfont{Family} against OSFONTDIR (plus the OS
-    # font dirs). Point it at the build dir so fonts a profile bundles there
-    # (e.g. a licensed Palatino.ttc copied in with the profile) resolve by
-    # family name in ANY environment — notably the Linux print container, where
-    # the font is not installed system-wide. Prepend so the bundled font is
-    # authoritative, giving identical host/container output.
-    env["OSFONTDIR"] = str(build_dir) + os.pathsep + env.get("OSFONTDIR", "")
-    if not shutil.which("latexmk", path=env["PATH"]):
-        print("⚠️  latexmk not found — wrote LaTeX sources to "
-              f"{build_dir}, skipping PDF compilation")
+    produced = run_latexmk(project, project_dir, build_dir)
+    if produced is None:
         return None
-    result = subprocess.run(
-        ["latexmk", "-r", "latexmkrc", "main.tex"],
-        cwd=build_dir, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-    )
-    produced = build_dir / "main.pdf"
-    if result.returncode != 0:
-        tail = "\n".join(result.stdout.splitlines()[-30:])
-        # A profile may run latexmk in force_mode to push past benign non-fatal
-        # errors a custom class emits (e.g. MIT Press's NewMath_MIT), so latexmk
-        # can exit nonzero yet still produce a complete PDF. Treat that as a
-        # warning; only a missing PDF is fatal.
-        if not produced.exists():
-            raise RuntimeError(
-                f"latexmk failed (exit {result.returncode}):\n{tail}")
-        print(f"⚠️  latexmk exited {result.returncode} but produced a PDF; "
-              f"continuing. Last output:\n{tail}")
     if output_pdf is None:
         suffix = "-solutions" if solutions else ""
         output_pdf = project_dir / f"{project.slug}{suffix}.pdf"
