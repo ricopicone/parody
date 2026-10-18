@@ -13,17 +13,21 @@
 \newwrite\parodytwinctr
 \immediate\openout\parodytwinctr=\jobname.twinctr\relax
 \makeatletter
-\newcommand\parodysctr[1]{%
+% Protected (\NewDocumentCommand): a mark that reaches a moving argument (a
+% figure caption) or a collected environment body (an xsim exercise) is
+% carried there as is. Expanded inside a definition, \parodysctr's ##1 is
+% "Illegal parameter number in definition".
+\NewDocumentCommand\parodysctr{m}{%
   {\def\@elt##1{##1=\the\csname c@##1\endcsname,}%
    \immediate\write\parodytwinctr{#1|\cl@@ckpt}}%
 }
-\newcommand\parodys[1]{\setattribute\parodytwinattr{#1}\parodysctr{#1}}
+\NewDocumentCommand\parodys{m}{\setattribute\parodytwinattr{#1}\parodysctr{#1}}
 % (\parodysctr alone, before a box opens, logs the counters as they are
 % before the box steps its number; the first write of a value wins.)
 % Material built in the output routine (headers, footers, a breakable box
 % rebuilt at a page break) must not inherit the mark that happened to be
 % current when the page filled: clear it for the output routine's group.
-\newcommand\parodysoff{\unsetattribute\parodytwinattr}
+\NewDocumentCommand\parodysoff{}{\unsetattribute\parodytwinattr}
 \AddToHook{begindocument/end}{\output=\expandafter{\expandafter\parodysoff\the\output}}
 \makeatother
 \directlua{dofile(kpse.find_file("parody-twinmarks.lua", "lua") or "parody-twinmarks.lua")}

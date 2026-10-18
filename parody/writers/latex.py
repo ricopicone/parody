@@ -60,8 +60,12 @@ def have_tool(name):
     return shutil.which(name, path=_tool_env()["PATH"]) is not None
 
 
-def section_to_latex(section_md, output_tex, resource_dir=None, crossref=True):
-    """Convert one section .md to a .tex fragment via pandoc + print.lua."""
+def section_to_latex(section_md, output_tex, resource_dir=None, crossref=True, input_root=None):
+    """Convert one section .md to a .tex fragment via pandoc + print.lua.
+
+    ``input_root``: the directory latexmk runs in, when the fragment is not at
+    the book build's sections/<ch>/<sec>.tex (the twin's pages/).
+    """
     import pypandoc
 
     filter_path = Path(__file__).parent.parent / "filters" / "print.lua"
@@ -77,12 +81,14 @@ def section_to_latex(section_md, output_tex, resource_dir=None, crossref=True):
         args += [f"--resource-path={resource_dir}"]
     output_tex = Path(output_tex)
     output_tex.parent.mkdir(parents=True, exist_ok=True)
-    # pypandoc needs cwd at the section dir so includes resolve relative paths
+    # pypandoc needs cwd at the section dir so includes resolve relative paths;
+    # it changes there before opening the file, so the file's path is absolute.
+    section_md = Path(section_md).resolve()
     tex = pypandoc.convert_file(
         str(section_md), "latex", format=PANDOC_FROM, extra_args=args,
-        cworkdir=str(Path(section_md).parent),
+        cworkdir=str(section_md.parent),
     )
-    tex = _externalize_exercise_verbatim(tex, output_tex)
+    tex = _externalize_exercise_verbatim(tex, output_tex, input_root)
     tex = _detoxify_exercise_longtables(tex)
     output_tex.write_text(tex, encoding="utf-8")
     return output_tex
@@ -95,7 +101,7 @@ _MINTED_RE = re.compile(
     r"\\begin\{(minted|listingsbox|listingsboxfloat)\}.*?\\end\{\1\}", re.S)
 
 
-def _externalize_exercise_verbatim(tex, output_tex):
+def _externalize_exercise_verbatim(tex, output_tex, input_root=None):
     """Move minted blocks inside xsim environments to \\input'd side files.
 
     xsim collects exercise/solution bodies by re-tokenizing them, which
@@ -103,7 +109,8 @@ def _externalize_exercise_verbatim(tex, output_tex):
     exercise dies with 'Paragraph ended before \\FV@BeginScanning'. The
     ancestor meta-book avoided this by \\input-ing code from side files;
     do the same mechanically. \\input paths are relative to the latexmk
-    cwd (the build dir), two levels up from sections/<ch>/<sec>.tex.
+    cwd (the build dir), two levels up from sections/<ch>/<sec>.tex, or
+    relative to ``input_root`` when given.
     """
     output_tex = Path(output_tex)
     counter = 0
@@ -114,7 +121,10 @@ def _externalize_exercise_verbatim(tex, output_tex):
             counter += 1
             side = output_tex.with_name(f"{output_tex.stem}-verb{counter}.tex")
             side.write_text(minted_match.group(0) + "\n", encoding="utf-8")
-            rel = f"sections/{output_tex.parent.name}/{side.name}"
+            if input_root is not None:
+                rel = side.resolve().relative_to(Path(input_root).resolve()).as_posix()
+            else:
+                rel = f"sections/{output_tex.parent.name}/{side.name}"
             return f"\\input{{{rel}}}"
         return _MINTED_RE.sub(to_input, env_match.group(0))
 

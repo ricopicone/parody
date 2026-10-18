@@ -102,6 +102,11 @@ How it works:
 Where a translation's sentences do not line up one to one with the English,
 the cut is made at the nearest position and reported as approximate.
 
+A TeX error in the twin fails the build, unless the English build has the
+same error: that one is the book's, already in the published PDF, and is
+reported but not fatal. An error in the marked English on a line that
+carries a mark fails the build too: a mark is somewhere it must not be.
+
 A build that passes every check also writes `<twin>.twin.json` beside the
 twin. It holds the twin's sha256, the sha256 of the English PDF it twins, and
 each section's twin page range. A book site uses it to serve per-section twins

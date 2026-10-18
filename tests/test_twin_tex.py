@@ -140,3 +140,24 @@ def test_paragraphs_keep_the_books_indent(tmp_path):
     doc = log.split("DOC-PI=")[1].split()[0]
     assert doc != "0.0pt"
     assert f"TWIN-PI={doc}" in log
+
+
+@needs_tex
+def test_a_mark_in_a_moving_argument_is_not_expanded(tmp_path):
+    # A mark that reaches a caption or a collected environment body is expanded
+    # inside a definition there: with a fragile \parodysctr that is "Illegal
+    # parameter number in definition" (seen in the electronics book's figure
+    # captions and its xsim exercises). Protected, it is carried as is.
+    for name in ("parody-twinmarks.sty", "parody-twinmarks.lua"):
+        shutil.copy2(SHARED_PROFILE_DIR / name, tmp_path / name)
+    (tmp_path / "m.tex").write_text(
+        "\\documentclass{article}\n\\usepackage{parody-twinmarks}\n\\begin{document}\n"
+        "\\edef\\x{\\parodys{1001001}Caption.}\\x\n"
+        "\\begin{figure}\\caption{\\parodys{1001002}Second. Third.}\\end{figure}\n"
+        "\\listoffigures\n\\parodysoff\n\\end{document}\n", encoding="utf-8")
+    for _ in range(2):
+        subprocess.run(["lualatex", "-interaction=nonstopmode", "m.tex"], cwd=tmp_path,
+                       env=_tool_env(), capture_output=True)
+    log = (tmp_path / "m.log").read_text(encoding="utf-8", errors="replace")
+    assert "\n! " not in log, log[log.index("\n! "):][:300]
+    assert "1001001|" in (tmp_path / "m.twinctr").read_text()

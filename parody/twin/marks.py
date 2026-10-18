@@ -115,6 +115,29 @@ def _innermost_div_takes_figures(text, offset):
     return bool(stack) and _figures_are_units(stack[-1])
 
 
+_FIGURE_DIV_CLASSES = {"figure", "subfigures"}
+_TABLE_CAPTION = re.compile(r"^[ \t]*Table:.*$", re.M)
+
+
+def _no_mark_zones(text):
+    """Spans no mark may fall in: a figure div from its opener to its closer
+    (its caption is a moving argument, where a mark is a TeX error, and a cut
+    inside would split the figure), and a table's caption line (a mark before
+    ``Table:`` undoes the caption)."""
+    zones, stack, offset = [], [], 0
+    for line in text.split("\n"):
+        if re.match(r"^:{3,}\s*[^\s:]", line):
+            classes = set(_div_classes(line))
+            stack.append((offset, bool(classes & _FIGURE_DIV_CLASSES)))
+        elif re.match(r"^:{3,}\s*$", line) and stack:
+            start, is_figure = stack.pop()
+            if is_figure:
+                zones.append((start, offset + len(line)))
+        offset += len(line) + 1
+    zones += [(m.start(), m.end()) for m in _TABLE_CAPTION.finditer(text)]
+    return zones
+
+
 def _is_box(chunk):
     return any(c in _BOX_CLASSES for c in _div_classes(chunk))
 
@@ -201,7 +224,8 @@ def sentence_starts(text, language="en"):
     for m in _NESTED_OPEN.finditer(text):
         if m.start() > 0 and not protected(m.end()) and _is_prose(text[m.end():]):
             starts.append(m.end())
-    return sorted(set(starts))
+    zones = _no_mark_zones(text)
+    return sorted({s for s in starts if not any(a <= s <= b for a, b in zones)})
 
 
 def _value(section, chunk, sentence):

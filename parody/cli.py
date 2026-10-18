@@ -211,6 +211,8 @@ def cmd_twin(args):
               + ", ".join(map(str, report.mismatched_pages)))
     for line in report.tex_errors[:10]:
         print(f"  ✗ TeX: {line}")
+    for line in report.inherited_errors[:10]:
+        print(f"  ! TeX (the English has it too): {line}")
     for line in report.coverage[:10]:
         print(f"  ✗ {line}")
     spilled = report.shipped_pages and report.shipped_pages != report.pages

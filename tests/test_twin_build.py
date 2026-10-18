@@ -6,8 +6,9 @@ import pytest
 
 from parody.translate.chunks import chunk_hash, split_chunks, split_frontmatter
 from parody.translate.store import TranslationFile, translation_path
-from parody.twin.build import (TwinReport, base_scale, build_twin, parse_twinfit, restore_code,
-                               section_ranges, write_twin_sidecar)
+from parody.twin.build import (TwinReport, base_scale, build_twin, log_errors, mark_errors,
+                               parse_twinfit, restore_code, section_ranges, twin_errors,
+                               write_twin_sidecar)
 from parody.twin.compose import SectionSource, align_translation, page_markdown
 from parody.twin.paginate import Piece, TwinPage
 from parody.writers.latex import have_tool
@@ -221,3 +222,41 @@ def test_sidecar_round_trip(tmp_path):
         "approximate": [4], "untranslated": 0, "stale": 0}
     no_sbs = write_twin_sidecar(twin, report)
     assert json.loads(no_sbs.read_text())["side_by_side"] is None
+
+
+# parody runs lualatex with -file-line-error, so an error is "file:line: …",
+# not "! …"; and LuaTeX wraps its log, message lines included. This line is
+# copied from the electronics book's marked build, where it wrapped at 80.
+_WRAPPED = "./sections/fundamentals/voltage-current-resistance-and-all-that.tex:456: Undefin"
+
+
+def test_log_errors_reads_both_styles_and_unwraps():
+    assert len(_WRAPPED) == 80
+    log = "\n".join(["noise", "! Missing $ inserted.", "l.12 x^", "",
+                     _WRAPPED, "ed control sequence.", "l.456 \\freadinglist", "   {{x}}",
+                     "./pages/p14-0.tex:40: Undefined control sequence.", "l.40 \\freadinglist"])
+    errors = log_errors(log)
+    assert [(e.message, e.context, e.file, e.line) for e in errors] == [
+        ("Missing $ inserted.", "x^", None, None),
+        ("Undefined control sequence.", "\\freadinglist",
+         "./sections/fundamentals/voltage-current-resistance-and-all-that.tex", 456),
+        ("Undefined control sequence.", "\\freadinglist", "./pages/p14-0.tex", 40)]
+
+
+def test_errors_the_english_has_too_are_inherited_not_new():
+    english = "./sections/a.tex:456: Undefined control sequence.\nl.456 \\freadinglist\n"
+    twin = ("./pages/p14-0.tex:40: Undefined control sequence.\nl.40 \\freadinglist\n"
+            "./pages/p15-0.tex:7: Missing $ inserted.\nl.7 x^\n")
+    new, inherited = twin_errors(twin, english)
+    assert new == ["./pages/p15-0.tex:7: Missing $ inserted. (x^)"]
+    assert inherited == ["./pages/p14-0.tex:40: Undefined control sequence. (\\freadinglist)"]
+
+
+def test_mark_errors_are_errors_on_a_marked_line(tmp_path):
+    (tmp_path / "sections" / "ch").mkdir(parents=True)
+    (tmp_path / "sections" / "ch" / "s.tex").write_text(
+        "a\n\\figcaption[]{fig:x}{\\parodys{4011001}Models.}\nplain \\freadinglist\n")
+    log = ("./sections/ch/s.tex:2: Illegal parameter number in definition of \\x.\nl.2 ...\n"
+           "./sections/ch/s.tex:3: Undefined control sequence.\nl.3 plain \\freadinglist\n")
+    assert mark_errors(log, tmp_path) == [
+        "./sections/ch/s.tex:2: Illegal parameter number in definition of \\x. (...)"]

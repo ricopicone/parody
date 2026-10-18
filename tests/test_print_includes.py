@@ -7,6 +7,7 @@ inlines a file verbatim; link/download-code becomes a pointer note.
 
 import shutil
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -118,3 +119,30 @@ def test_a_longtable_outside_an_exercise_is_untouched():
 
     tex = "\\begin{longtable}[]{@{}ll@{}}\na & b \\\\\n\\end{longtable}\n"
     assert _detoxify_exercise_longtables(tex) == tex
+
+
+def test_verbatim_side_files_are_input_relative_to_the_build_root(tmp_path):
+    # The twin compiles its pages from <twin>/pages/, not sections/<ch>/: the
+    # \input of an exercise's externalized code must name where the file is.
+    from parody.writers.latex import _externalize_exercise_verbatim
+    tex = ("\\begin{exercise}\nRun\n\\begin{minted}{python}\nprint(1)\n\\end{minted}\n"
+           "\\end{exercise}\n")
+    out = tmp_path / "pages" / "p45-0.tex"
+    out.parent.mkdir()
+    got = _externalize_exercise_verbatim(tex, out, input_root=tmp_path)
+    assert "\\input{pages/p45-0-verb1.tex}" in got
+    assert "print(1)" in (tmp_path / "pages" / "p45-0-verb1.tex").read_text()
+    # the book's own build keeps its sections/<ch>/ form
+    sec = tmp_path / "sections" / "ch" / "s.tex"
+    sec.parent.mkdir(parents=True)
+    assert "\\input{sections/ch/s-verb1.tex}" in _externalize_exercise_verbatim(tex, sec)
+
+
+def test_section_to_latex_accepts_a_relative_path(tmp_path, monkeypatch):
+    # pypandoc runs pandoc from the section's own directory, so a relative
+    # path (`parody twin .`) named a file that was not there.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "build" / "sections" / "ch").mkdir(parents=True)
+    (tmp_path / "build" / "sections" / "ch" / "s.md").write_text("Hello there.\n")
+    out = section_to_latex(Path("build/sections/ch/s.md"), Path("build/sections/ch/s.tex"))
+    assert "Hello there." in out.read_text()

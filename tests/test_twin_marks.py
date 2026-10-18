@@ -250,3 +250,32 @@ def test_a_figure_in_a_subfigure_div_nested_in_a_box_is_not_a_unit():
     text = ("::: {.exercise}\nSolve it.\n\n::: {.subfigures}\n![a](a.pdf)\n\n![b](b.pdf)\n:::\n\n"
             "Then explain.\n:::")
     assert [text[o:o + 4] for o in sentence_starts(text)] == ["Then"]
+
+
+def test_no_marks_inside_a_figure_div():
+    # A mark in a figure's caption lands in \figcaption{…}, a moving argument
+    # where it is a TeX error; and a cut there would split the figure.
+    chunk = ('::: {#fig:real_sources .figure .subfigures rows=1}\n\n'
+             '![Real voltage source model](a.pdf){#fig:a .subfigure .figure}\n\n'
+             '![Real current source model.](b.pdf){#fig:b .subfigure .figure}\n\n'
+             'Models for power-limited "real" sources. They sag under load.\n'
+             ':::')
+    assert sentence_starts(chunk) == []
+    marked = mark_section(chunk, 1)
+    caption = marked[marked.index("Models"):]
+    assert "\\parodys{" not in caption.split(":::")[0]
+
+
+def test_figure_div_inside_a_box_is_one_unit():
+    chunk = ('::: {.example}\nFirst we look. Then we see.\n\n'
+             '::: {#fig:x .figure .subfigures}\n\n![A.](a.pdf){#fig:xa .subfigure}\n\n'
+             'The caption. More of it.\n:::\n\nAfter the figure.\n:::')
+    starts = sentence_starts(chunk)
+    fig_open, fig_close = chunk.index("::: {#fig:x"), chunk.index(":::\n\nAfter")
+    assert not any(fig_open < s < fig_close for s in starts)
+    assert chunk.index("After the figure.") in starts
+
+
+def test_no_marks_in_a_table_caption():
+    chunk = "| a | b |\n|---|---|\n| 1 | 2 |\n\nTable: Measured values. Taken at noon. {#tbl:m}"
+    assert sentence_starts(chunk) == []

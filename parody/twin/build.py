@@ -34,6 +34,7 @@ from ..writers.latex import (
 from .compose import align_translation, english_sections, page_markdown
 from .inventory import TWINMARKS_FLAG, build_inventory
 from .languages import TWIN_LANGUAGES, twin_preamble
+from .marks import MARK_MACRO
 from .paginate import paginate
 
 _TWINFIT = re.compile(r"TWINFIT page=(-?\d+) scale=([0-9.]+)")
@@ -56,13 +57,95 @@ class TwinReport:
     abspages: list = field(default_factory=list)  # the English pages the twin pages twin
     english_pdf: Path | None = None
     shipped_pages: int = 0  # pages the twin PDF actually has; must equal pages
-    tex_errors: list = field(default_factory=list)  # "! …" lines from the twin's log
+    tex_errors: list = field(default_factory=list)  # errors the twin (or a mark) introduced
+    inherited_errors: list = field(default_factory=list)  # errors the English build has too
     coverage: list = field(default_factory=list)  # text on no twin page, or on two
     notes: list = field(default_factory=list)
     sections: dict = field(default_factory=dict)  # "chapter/section" → [first, last] twin page
 
 
 SIDECAR_SCHEMA = 1
+
+# parody's latexmkrc runs lualatex with -file-line-error, so an error reads
+# "file:line: message", not "! message"; both are read. LuaTeX also wraps its
+# log, message lines included: at 79 columns, and its file:line error lines at
+# 80 (both measured in the electronics book's log).
+_ERROR_HEAD = re.compile(r"^(?:! (?P<bang>.*)|(?P<file>\S+?\.tex):(?P<line>\d+): (?P<msg>.*))$")
+_CONTEXT = re.compile(r"^l\.\d+ (.*)$")
+_LOG_WIDTHS = (79, 80)
+
+
+@dataclass(frozen=True)
+class TexError:
+    message: str
+    context: str  # the last token TeX had read: the undefined macro, say
+    file: str | None = None
+    line: int | None = None
+
+    def __str__(self):
+        where = f"{self.file}:{self.line}: " if self.file else "! "
+        return f"{where}{self.message} ({self.context})"
+
+
+def _unwrap(log):
+    out, buf = [], ""
+    for line in log.splitlines():
+        buf += line
+        if len(line) not in _LOG_WIDTHS:
+            out.append(buf)
+            buf = ""
+    if buf:
+        out.append(buf)
+    return out
+
+
+def log_errors(log):
+    """Every TeX error in ``log``, in either style, as ``TexError``."""
+    lines = _unwrap(log)
+    errors = []
+    for i, line in enumerate(lines):
+        m = _ERROR_HEAD.match(line)
+        if not m:
+            continue
+        context = ""
+        for following in lines[i + 1:i + 8]:
+            c = _CONTEXT.match(following)
+            if c:
+                context = (c.group(1).split() or [""])[-1]
+                break
+        if m.group("file"):
+            errors.append(TexError(m.group("msg"), context, m.group("file"), int(m.group("line"))))
+        else:
+            errors.append(TexError(m.group("bang"), context))
+    return errors
+
+
+def twin_errors(twin_log, english_log):
+    """``(new, inherited)``: the twin's errors, split by whether the English
+    build has the same one (same message, same macro). An inherited error is
+    the book's, and the published PDF already carries it; a new one is the
+    twin's own."""
+    english = {(e.message, e.context) for e in log_errors(english_log)}
+    new, inherited = [], []
+    for e in log_errors(twin_log):
+        (inherited if (e.message, e.context) in english else new).append(str(e))
+    return new, inherited
+
+
+def mark_errors(marked_log, marked_dir):
+    """Errors of the marked English build on a line that carries a mark: a
+    mark in a place it must not be (a moving argument, say)."""
+    out = []
+    for e in log_errors(marked_log):
+        if not e.file:
+            continue
+        try:
+            lines = (Path(marked_dir) / e.file).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        if 0 < e.line <= len(lines) and f"\\{MARK_MACRO}" in lines[e.line - 1]:
+            out.append(str(e))
+    return out
 
 
 def section_ranges(pages, section_keys):
@@ -250,9 +333,10 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     """Build the twin PDF; returns ``(pdf path, TwinReport)``."""
     if language not in TWIN_LANGUAGES:
         raise ValueError(f"no twin typesetting for {language!r} (known: {', '.join(TWIN_LANGUAGES)})")
-    project_dir = Path(project_dir)
+    # absolute: pandoc and latexmk each run from directories of their own
+    project_dir = Path(project_dir).resolve()
     project = load_project(project_dir)
-    build_dir = Path(build_dir or project_dir / "build" / "twin")
+    build_dir = Path(build_dir or project_dir / "build" / "twin").resolve()
     build_dir.mkdir(parents=True, exist_ok=True)
     if published_pdf is None:
         published_pdf = build_pdf(project_dir, output_pdf=build_dir / "english.pdf",
@@ -315,7 +399,8 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
                 os.environ["PARODY_CHAPTER_DIR"] = str(Path(src.chapter.directory).resolve())
                 os.environ["PARODY_SECTION_URL"] = (f"{online}/{src.chapter.slug}/{src.slug}/"
                                                     if online else "")
-                section_to_latex(md_path, tex_path, resource_dir=src.chapter.directory)
+                section_to_latex(md_path, tex_path, resource_dir=src.chapter.directory,
+                                 input_root=twin_dir)
                 if any(p.section == section and p.chunk == 0 and p.start == 0 for p in page.pieces):
                     meta = dict(src.meta)
                     meta["title"] = translated[section].title or src.title or meta.get("title")
@@ -352,7 +437,10 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     final = fits()
     report.squeezed = [(p, s) for p, s in final if s < report.base_scale - 1e-9]
     log = (twin_dir / "main.log").read_text(encoding="utf-8", errors="replace")
-    report.tex_errors = [line for line in log.splitlines() if line.startswith("! ")]
+    marked_log = build_dir / "marked" / "main.log"
+    marked_log = marked_log.read_text(encoding="utf-8", errors="replace") if marked_log.is_file() else ""
+    report.tex_errors, report.inherited_errors = twin_errors(log, marked_log)
+    report.tex_errors += [f"marked English: {e}" for e in mark_errors(marked_log, build_dir / "marked")]
 
     out = Path(out or project_dir / f"{project.slug}-{language}.pdf")
     out.parent.mkdir(parents=True, exist_ok=True)
