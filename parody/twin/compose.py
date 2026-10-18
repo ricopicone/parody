@@ -93,6 +93,7 @@ def _is_footnote_definition(chunk):
 def page_markdown(page, english, translated, language, counters):
     """``([(section index, markdown)], notes)`` for one twin page."""
     groups, notes = [], []
+    run = None  # the marker the previous piece opened: one per run of chunks, not per chunk
     for piece in page.pieces:
         en = english[piece.section]
         en_text = en.chunks[piece.chunk]
@@ -100,14 +101,16 @@ def page_markdown(page, english, translated, language, counters):
             continue  # every page gets the section's definitions below
         tr = translated[piece.section]
         text, state = tr.texts[piece.chunk], tr.states[piece.chunk]
-        lang, blocks = language, []
+        lang, blocks, marker = language, [], None
         if text is None:
-            text, lang = en_text, "en"
-            blocks.append("\\parodyuntranslated")
+            text, lang, marker = en_text, "en", "\\parodyuntranslated"
             notes.append(f"untranslated: {en.key} chunk {piece.chunk}")
         elif state == "stale":
-            blocks.append("\\parodystale")
+            marker = "\\parodystale"
             notes.append(f"stale: {en.key} chunk {piece.chunk}")
+        if marker and marker != run:
+            blocks.append(marker)
+        run = marker
         if piece.start == 0 and piece.end is None:
             body = text
         else:

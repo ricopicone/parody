@@ -69,7 +69,9 @@ SIDECAR_SCHEMA = 1
 # parody's latexmkrc runs lualatex with -file-line-error, so an error reads
 # "file:line: message", not "! message"; both are read. LuaTeX also wraps its
 # log, message lines included: at 79 columns, and its file:line error lines at
-# 80 (both measured in the electronics book's log).
+# 80 (both measured in the electronics book's log). Joining every line of
+# exactly that length to the next is deliberate: TeX marks no wrap, and a
+# message that happens to be 79 or 80 long only loses its context token.
 _ERROR_HEAD = re.compile(r"^(?:! (?P<bang>.*)|(?P<file>\S+?\.tex):(?P<line>\d+): (?P<msg>.*))$")
 _CONTEXT = re.compile(r"^l\.\d+ (.*)$")
 _LOG_WIDTHS = (79, 80)
@@ -463,5 +465,5 @@ def pdf_pages(path):
     import pypdf
     try:
         return len(pypdf.PdfReader(str(path)).pages)
-    except (OSError, pypdf.errors.PyPdfError):
+    except Exception:  # noqa: BLE001 - pypdf raises ValueError, struct.error… on truncations
         return None

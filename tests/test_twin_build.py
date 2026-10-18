@@ -270,3 +270,33 @@ def test_an_unreadable_twin_pdf_has_no_page_count(tmp_path):
     bad.write_bytes(b"%PDF-1.5\n%truncated")
     assert pdf_pages(bad) is None
     assert pdf_pages(tmp_path / "absent.pdf") is None
+
+
+def test_a_run_of_untranslated_chunks_gets_one_marker():
+    # One marker per chunk made a partly translated page dense (315 in the
+    # electronics book) and pulled the whole twin's type size down.
+    tr = align_translation(_section(EN), _tf(EN[:2], lambda c: c.replace("alpha", "Alpha-DE")))
+    pieces = [Piece(1, 0, 0, None), Piece(1, 1, 0, None), Piece(1, 2, 0, None), Piece(1, 3, 0, None)]
+    groups, notes = page_markdown(TwinPage(5, 1, pieces=pieces), {1: _section(EN)}, {1: tr}, "de", {})
+    md = groups[0][1]
+    assert md.count("\\parodyuntranslated") == 1
+    assert md.index("\\parodyuntranslated") < md.index("Def one")
+    assert sum(n.startswith("untranslated") for n in notes) == 2  # still counted per chunk
+    # a translated chunk between two untranslated ones starts a new run
+    tr = align_translation(_section(EN), _tf([EN[1]], lambda c: c.replace("alpha", "Alpha-DE")))
+    pieces = [Piece(1, 0, 0, None), Piece(1, 1, 0, None), Piece(1, 2, 0, None)]
+    groups, _ = page_markdown(TwinPage(5, 1, pieces=pieces), {1: _section(EN)}, {1: tr}, "de", {})
+    assert groups[0][1].count("\\parodyuntranslated") == 2
+
+
+def test_any_pdf_reader_failure_means_unreadable(tmp_path, monkeypatch):
+    # pypdf raises more than its own errors on some truncations (ValueError,
+    # struct.error); "unreadable" is the contract, whatever the cause.
+    import pypdf
+    path = tmp_path / "t.pdf"
+    path.write_bytes(b"%PDF-1.5")
+
+    def explode(*a, **k):
+        raise ValueError("bad xref")
+    monkeypatch.setattr(pypdf, "PdfReader", explode)
+    assert pdf_pages(path) is None
