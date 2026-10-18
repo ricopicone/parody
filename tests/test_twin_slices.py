@@ -193,3 +193,70 @@ def test_a_cut_in_a_nested_definition_outdents_its_siblings_by_the_outer_block()
     s = slice_chunk(text, "de", i, None, en)
     assert s.text == ("Die Drehzahl wird geregelt.\n\nSynchron\n\n:   dreht synchron, ohne\n"
                       "    Schlupf.\n\nDanach.")
+
+
+def test_an_outdented_nested_list_does_not_run_on_into_the_outer_one():
+    # electronics 3.3 (both twins): the page starts in a list nested under
+    # item 6; outdented, it ran on into the outer item 7, which printed as 4
+    import json
+
+    import pypandoc
+
+    from parody.twin.marks import sentence_starts
+    from parody.writers.latex import PANDOC_FROM
+
+    text = ("5.  Fünf.\n\n6.  Sechs ist hier. Dann:\n\n    1.  Eins ist hier.\n\n"
+            "    2.  Zwei ist da.\n\n7.  Sieben.\n")
+    en = ("5.  Five.\n\n6.  Six is here. Then:\n\n    1.  One is here.\n\n"
+          "    2.  Two is there.\n\n7.  Seven.\n")
+    i = 1 + next(k for k, b in enumerate(sentence_starts(en, "en")) if en[b:].startswith("One"))
+    s = slice_chunk(text, "de", i, None, en)
+    assert s.text.startswith("1.  Eins ist hier.")
+    blocks = json.loads(pypandoc.convert_text(s.text, "json", format=PANDOC_FROM))["blocks"]
+    lists = [(b["c"][0][0], len(b["c"][1])) for b in blocks if b["t"] == "OrderedList"]
+    assert lists == [(1, 2), (7, 1)]
+
+
+def _blocks_of(markdown):
+    import json
+
+    import pypandoc
+
+    from parody.writers.latex import PANDOC_FROM
+    return json.loads(pypandoc.convert_text(markdown, "json", format=PANDOC_FROM))["blocks"]
+
+
+def _cut_at(en, sentence):
+    from parody.twin.marks import sentence_starts
+    return 1 + next(k for k, b in enumerate(sentence_starts(en, "en")) if en[b:].startswith(sentence))
+
+
+def test_a_cut_inside_a_tight_item_keeps_the_next_item_an_item():
+    # robotics 1.8 (zh): exercise parts with no blank line between them; the
+    # page starts in part (a)'s text, and (b) and (c) ran in as plain text
+    text = "a.  Erstens ist hier. Weiter\n    im Text.\nb.  Zweitens.\nc.  Drittens.\n"
+    en = "a.  First is here. Going\n    in the text.\nb.  Second.\nc.  Third.\n"
+    s = slice_chunk(text, "de", _cut_at(en, "Going"), None, en)
+    assert s.text.startswith("Weiter\nim Text.")
+    blocks = _blocks_of(s.text)
+    assert [b["t"] for b in blocks if b["t"] != "RawBlock"] == ["Para", "OrderedList"]
+    lst = next(b for b in blocks if b["t"] == "OrderedList")
+    assert lst["c"][0][0] == 2 and len(lst["c"][1]) == 2
+
+
+def test_a_cut_inside_a_tight_bullet_keeps_the_next_bullet_a_bullet():
+    text = "- Eins ist hier. Weiter\n  im Text.\n- Zwei.\n- Drei.\n"
+    en = "- One is here. Going\n  in the text.\n- Two.\n- Three.\n"
+    s = slice_chunk(text, "de", _cut_at(en, "Going"), None, en)
+    assert [b["t"] for b in _blocks_of(s.text)] == ["Para", "BulletList"]
+
+
+def test_a_cut_in_a_tight_nested_item_keeps_its_outer_sibling_an_item():
+    # the item that follows sits inside a block still open at the cut
+    text = ("Begriff\n\n:   Es gibt:\n\n    1.  Eins ist hier. Weiter\n        im Text.\n"
+            "    2.  Zwei.\n\nDanach.\n")
+    en = ("Term\n\n:   There are:\n\n    1.  One is here. Going\n        in the text.\n"
+          "    2.  Two.\n\nThen.\n")
+    s = slice_chunk(text, "de", _cut_at(en, "Going"), None, en)
+    lists = [(b["c"][0][0], len(b["c"][1])) for b in _blocks_of(s.text) if b["t"] == "OrderedList"]
+    assert lists == [(2, 1)]

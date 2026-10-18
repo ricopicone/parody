@@ -105,7 +105,9 @@ def _outdented(text, a, piece):
     vision techniques printed verbatim, colons and all, in both twins. So each
     line loses the indentation of the innermost block still open at it, which
     keeps what is nested under it nested; the first line indented less than
-    every open block ends them all, and it and what follows are left alone.
+    every open block ends them all, and it and what follows are left alone
+    (an item there, or in a block still open, gets a blank line before it so
+    it stays an item, and a numbered one a comment so it keeps its number).
     """
     depths = _open_depths(text, a)
     if not depths:
@@ -116,8 +118,20 @@ def _outdented(text, a, piece):
         if not row.strip():
             out.append("")
             continue
+        closed = False
         while depths and _indent(row) < depths[-1]:
             depths.pop()
+            closed = True
+        if closed and _LIST_ITEM.match(row):
+            # an item after the text of the one the cut was inside: a blank
+            # line first, or in a tight list it runs in to that text as words
+            # (robotics 1.8: exercise parts b and c); and before a numbered
+            # one a comment, or it runs on into an outdented numbered list
+            # above it and takes its number (electronics 3.3: item 7 printed
+            # as 4). Run-on bullets look the same, so they need no comment.
+            out += [""] * (out[-1] != "")
+            if row.lstrip()[0] not in "-*+":
+                out += ["<!-- -->", ""]
         if not depths:
             out.extend(rest[i:])
             break
