@@ -141,6 +141,47 @@ def cmd_figures(args):
     return 0
 
 
+def cmd_translate(args):
+    from .config import ProjectLayoutError, load_project
+    from .translate import engines
+    from .translate.languages import LANGUAGES
+    from .translate.run import project_status, translate_project
+
+    languages = [c.strip() for c in args.lang.split(",") if c.strip()] if args.lang else None
+    unknown = [c for c in languages or [] if c not in LANGUAGES]
+    if unknown:
+        print(f"error: unknown language {', '.join(unknown)} "
+              f"(known: {', '.join(LANGUAGES)})", file=sys.stderr)
+        return 1
+    try:
+        project = load_project(args.project_dir)
+        if args.status:
+            statuses = project_status(project, languages=languages, sections=args.section)
+            for st in statuses:
+                if st.state != "current":
+                    detail = f" ({st.todo} of {st.total} chunks)" if st.todo else ""
+                    print(f"{st.language} {st.chapter}/{st.section}: {st.state}{detail}")
+            _translate_summary(statuses)
+            return 0
+        if project.translations is None:
+            raise ProjectLayoutError("parody.yaml has no translations: key")
+        engine = engines.make_engine(project.translations)
+        statuses = translate_project(project, engine, languages=languages,
+                                     sections=args.section, jobs=args.jobs)
+    except ProjectLayoutError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    _translate_summary(statuses)
+    return 1 if any(st.state in ("partial", "failed") for st in statuses) else 0
+
+
+def _translate_summary(statuses):
+    from collections import Counter
+
+    counts = Counter(st.state for st in statuses)
+    print("translations: " + ", ".join(f"{n} {state}" for state, n in sorted(counts.items())))
+
+
 def cmd_publish(args):
     from .publish import publish
 
@@ -398,6 +439,20 @@ def main(argv=None):
     p_fig.add_argument("--force", action="store_true",
                        help="rebuild every figure, not just the stale ones")
     p_fig.set_defaults(func=cmd_figures)
+
+    p_tr = sub.add_parser(
+        "translate",
+        help="translate published sections into the book's translations: "
+             "languages, writing translations/<lang>/<chapter>/<section>.md")
+    p_tr.add_argument("project_dir", nargs="?", default=".", help="project directory")
+    p_tr.add_argument("--lang", help="comma-separated languages (default: all configured)")
+    p_tr.add_argument("--section", action="append", metavar="CH/SEC",
+                      help="only this section (repeatable)")
+    p_tr.add_argument("--status", action="store_true",
+                      help="report what is missing or stale; translate nothing")
+    p_tr.add_argument("--jobs", type=int, default=1,
+                      help="languages translated at once (default 1)")
+    p_tr.set_defaults(func=cmd_translate)
 
     p_check = sub.add_parser("check", help="validate an artifact against the schema")
     p_check.add_argument("artifact", nargs="?", help="artifact JSON path")

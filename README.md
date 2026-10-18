@@ -37,11 +37,42 @@ parody watch <project_dir>                 # rebuild on save (pip install 'parod
 parody pdf <project_dir> [--solutions] [--clozes MODE] [--section ch/sec]  # print PDF (needs TeX)
 parody check <artifact.json>               # validate artifact against schema
 parody check --toolchain                   # verify pinned toolchain versions
+parody translate [project_dir] [--status] [--lang zh,de] [--section ch/sec]  # translations
 ```
 
 Content repos use `parody.yaml` + `chapters/<ch>/<sec>.md`; the legacy
 System A layout (`__meta.yaml` + `chapter_*/`) builds bit-compatibly and
 remains covered by golden tests.
+
+## Translations
+
+A book opts in with a `translations:` key in `parody.yaml`:
+
+```yaml
+translations:
+  languages: [zh, ko, de, fr, es]   # Simplified Chinese, Korean, German, French, Spanish
+  engine: claude-code               # default; or anthropic-api (pip install 'parody[translate-api]')
+  model: claude-opus-5-5            # default
+```
+
+`parody translate` translates every published section (drafts never) into
+`translations/<lang>/<chapter>/<section>.md`. You review the result and commit
+it. Each section is cut into chunks filed under a hash of their English. A
+re-run translates only the chunks whose English changed, and leaves every
+other chunk byte for byte as it was. Every chunk must keep its maths, blanks,
+key terms, references, ids and code exactly, or it is retried and, failing
+that, not written. `--status` reports what is missing or stale without
+translating anything.
+
+Key terms (`[…]{.keyword}`) get the English term attached (`en="…"`). Each
+language keeps a glossary at `translations/<lang>/glossary.yaml`, which every
+later translation follows. You can edit it by hand.
+
+The `claude-code` engine runs Claude Code headless (`claude -p`) on your own
+Claude login, so it uses your subscription's limits, not API billing. In `-p`
+mode Claude Code bills the API whenever `ANTHROPIC_API_KEY` is set, so the
+engine removes it and `ANTHROPIC_AUTH_TOKEN` from Claude Code's environment.
+Log in with `claude` once before the first run.
 
 ## Fill-in-the-blank (cloze) content
 

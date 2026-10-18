@@ -255,3 +255,49 @@ def test_editions_book_is_refused(tmp_path):
     book = _book(tmp_path, extra_yaml="editions:\n- id: ed1\n")
     with pytest.raises(ProjectLayoutError, match="edition"):
         _run(book, FakeEngine())
+
+
+# --- the command -------------------------------------------------------------
+
+from parody.cli import main  # noqa: E402
+
+
+def _no_engine(config):
+    raise AssertionError("--status must not build an engine")
+
+
+def test_cli_status_needs_no_engine(tmp_path, monkeypatch, capsys):
+    import parody.translate.engines as engines
+    monkeypatch.setattr(engines, "make_engine", _no_engine)
+    book = _book(tmp_path)
+    assert main(["translate", str(book), "--status"]) == 0
+    out = capsys.readouterr().out
+    assert "de" in out and "missing" in out and "ch/one" in out
+
+
+def test_cli_without_key_errors(tmp_path, capsys):
+    (tmp_path / "parody.yaml").write_text("title: T\nslug: t\nchapters: []\n")
+    assert main(["translate", str(tmp_path)]) == 1
+    assert "no translations: key" in capsys.readouterr().err
+
+
+def test_cli_translate_uses_engine(tmp_path, monkeypatch, capsys):
+    import parody.translate.engines as engines
+    monkeypatch.setattr(engines, "make_engine", lambda config: FakeEngine())
+    book = _book(tmp_path)
+    assert main(["translate", str(book), "--section", "ch/two"]) == 0
+    assert translation_path(book, "de", "ch", "two").exists()
+    assert not translation_path(book, "de", "ch", "one").exists()
+    assert "✓ de ch/two" in capsys.readouterr().out
+
+
+def test_cli_exit_code_on_failure(tmp_path, monkeypatch):
+    import parody.translate.engines as engines
+    monkeypatch.setattr(engines, "make_engine",
+                        lambda config: FakeEngine(transform=lambda i, t: t.replace("$", "")))
+    assert main(["translate", str(_book(tmp_path)), "--section", "ch/two"]) == 1
+
+
+def test_cli_rejects_unknown_language(tmp_path, capsys):
+    assert main(["translate", str(_book(tmp_path)), "--lang", "xx", "--status"]) == 1
+    assert "xx" in capsys.readouterr().err
