@@ -441,14 +441,17 @@ in project memory apply: `electronics-ricopic-one-release-chain`,
    has `parody twin`. Merge the book's `twins` branch.
 3. **Tag the book.** The print job publishes the English, then builds one twin
    per language with `continue-on-error`, and attaches `twins.zip` beside
-   `print.zip`. Check the job log: a language that failed its checks is left
-   out of the zip, with the reason in the log.
+   `print.zip`. A language that failed its checks is left out of the zip and
+   marks the step failed; the reason is in its log.
 4. **parody-web.** Merge `twins` and publish 0.100.0 (TwinPdf, migration 0016,
    `import_artifact --twin`, twin URLs and links).
 5. **homepage-django.** Merge its `twins` branch, bump the pin to
    `parody-web[print,readalong]==0.100.0`, and add
    `"translations": ["de", "zh"]` to the book's `features` in
-   `teaching/content-manifest.json`.
+   `teaching/content-manifest.json`, all in one commit on main. With the
+   branch merged but the pin still 0.99.0, `import_books` passes `--twin` to
+   a parody-web that does not know it and the deploy fails; and a concurrent
+   deploy ships whatever is on main (`homepage-deploy-ships-origin-main-not-your-commit`).
 6. **Fetch, check, commit, deploy.** Run `scripts/fetch_notebook_artifacts.py
    --update -n electronics --tag <tag>`. It unpacks each language's twin into
    `teaching/notebooks_data/`. Then run `check_book_features --book
