@@ -425,6 +425,45 @@ re-typeset). The PDF-composition gotchas in project memory apply:
 - Chunking long sections for the engine, retry policy, and rate-limit
   handling on the subscription.
 
+## Release chain for twins
+
+How twin PDFs reach a book site (built in subsystem 3; the ricopic.one chains
+in project memory apply: `electronics-ricopic-one-release-chain`,
+`pypi-propagation-lag-is-measured-from-the-box`). In order:
+
+1. **parody.** Merge `mellow-harbor` (0.61.0 translate step, 0.62.x twin pages
+   and the twin sidecar) to main and publish to PyPI.
+2. **The book.** Translate and commit: `parody translate --lang de,zh`, then
+   commit `translations/`. Re-pin the print job's parody to `parody[twin]` at
+   that release. For electronics this is a jump from 0.54.2, so it is a
+   migration: rebuild and read the English PDF before tagging. The `Translated
+   twins` step (`scripts/build-twins.sh`) only builds when the pinned parody
+   has `parody twin`. Merge the book's `twins` branch.
+3. **Tag the book.** The print job publishes the English, then builds one twin
+   per language with `continue-on-error`, and attaches `twins.zip` beside
+   `print.zip`. Check the job log: a language that failed its checks is left
+   out of the zip, with the reason in the log.
+4. **parody-web.** Merge `twins` and publish 0.100.0 (TwinPdf, migration 0016,
+   `import_artifact --twin`, twin URLs and links).
+5. **homepage-django.** Merge its `twins` branch, bump the pin to
+   `parody-web[print,readalong]==0.100.0`, and add
+   `"translations": ["de", "zh"]` to the book's `features` in
+   `teaching/content-manifest.json`.
+6. **Fetch, check, commit, deploy.** Run `scripts/fetch_notebook_artifacts.py
+   --update -n electronics --tag <tag>`. It unpacks each language's twin into
+   `teaching/notebooks_data/`. Then run `check_book_features --book
+   electronics`, which fails on a missing twin, a twin of another English
+   build, or a declared language with no twin. Commit, and deploy once
+   `pip download` of the new pin works on the box.
+7. **Verify live.** Count the book's `TwinPdf` rows over SSM and fetch one
+   section's `pdf/de/` signed in. A curl of a gated page proves nothing:
+   see `rtcbook-verify-live-via-psql`.
+
+What the twins cost in the repo: each language adds the twin (about 0.6 MB
+for one chapter of electronics) and its side-by-side sheets (about 1.7 MB) to
+`teaching/notebooks_data/`, committed with every repin, as the English PDF
+already is.
+
 ## Open questions for Rico
 
 None. The builder check raised three questions. Rico answered the overflow
