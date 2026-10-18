@@ -53,6 +53,34 @@ _INLINE_HEAD = re.compile(
     r"|>[ \t]*|\[\^[^\]\s]+\]:[ \t]*|[:~][ \t]+)")
 
 
+_DIV_HEAD = re.compile(r"^:{3,}\s*[^\s:]")
+# A line that opens a block of its own, where an inline mark cannot go.
+_BLOCK_START = re.compile(r"^(?:\$\$|!\[|```|~~~|:::|#|\||\\begin\{|[-*+] |\d+[.)] |>)")
+
+
+# The breakable boxes (parody-environments.sty), rebuilt at a page break.
+# Other divs keep their head outside: print.lua parses some structurally.
+_BOX_CLASSES = {"definition", "theorem", "lemma", "corollary", "proposition",
+                "example", "infobox"}
+
+
+def _is_box(chunk):
+    m = re.match(r"^:{3,}\s*(?:\{([^}]*)\}|([\w-]+))", chunk)
+    if not m:
+        return False
+    names = m.group(2) and [m.group(2)] or re.findall(r"\.([\w-]+)", m.group(1) or "")
+    return any(n in _BOX_CLASSES for n in names)
+
+
+def _opens_with_text(div_chunk):
+    """Whether the line after a div's opener is ordinary text."""
+    rest = div_chunk.partition("\n")[2]
+    # Prose starts with a letter or digit, or opens emphasis, a link or a
+    # quote. Anything else (raw HTML, a block marker) keeps the head outside.
+    return bool(rest) and (rest[0].isalnum() or rest[0] in "*_[(\"'“‘") \
+        and not _BLOCK_START.match(rest)
+
+
 def sentence_starts(text, language="en"):
     """Offsets in ``text`` where a new sentence begins."""
     kind = "cased" if language in _CASED else language
@@ -108,6 +136,20 @@ def mark_section(body, section_index):
         m = _INLINE_HEAD.match(marked)
         if m:
             parts.append(marked[:m.end()] + head + marked[m.end():])
+        elif _is_box(marked) and _opens_with_text(marked):
+            # Inside the div, so it is re-run when a breakable box is rebuilt
+            # at a page break (in the output routine, where marks are off).
+            # Only inline in text: a structural div (subfigures) must hold
+            # nothing but its own blocks.
+            # After the first word: as the box's very first token the mark
+            # changed the box's layout and moved lines between pages.
+            opener, _, rest = marked.partition("\n")
+            m_word = re.match(r"\S+[ \t]+", rest)
+            cut = m_word.end() if m_word and "\n" not in m_word.group(0) else len(rest.split("\n", 1)[0])
+            parts.append(f"{opener}\n{rest[:cut]}{head}{rest[cut:]}")
         else:
             parts.append(f"{head}\n\n{marked}")
+    # Cleared at the end, or the last mark rides on into whatever follows the
+    # section: the next chapter's heading, the back matter.
+    parts.append(f"\\{MARK_MACRO}off")
     return "\n\n".join(parts)

@@ -152,3 +152,17 @@ def test_build_inventory_on_tiny_book(tmp_path):
     assert inv.section_index == {"one/first": 1, "one/second": 2}
     assert {v // 1_000_000 for _, _, v, _ in inv.rows} == {1, 2}
     assert inv.marked_pdf.exists()
+
+
+@needs_tex
+def test_lines_inside_a_box_are_counted_one_by_one(tmp_path):
+    book = _book(tmp_path)
+    long = " ".join(["This definition goes on for a good while so that it wraps."] * 6)
+    (book / "chapters" / "one" / "first.md").write_text(
+        f"---\ntitle: First\n---\n\nIntro.\n\n::: {{#def:x .definition}}\n{long}\n:::\n")
+    published = build_pdf(book, output_pdf=tmp_path / "en.pdf")
+    inv = build_inventory(book, tmp_path / "twin-build", published)
+    # The box sits in a paragraph line of its own; counted as that one line,
+    # every sentence in it would get 1. Its second sentence wraps onto two.
+    second_sentence = 1_002_001  # section 1, chunk 1 (the definition), sentence 1
+    assert sum(n for _, _, v, n in inv.rows if v == second_sentence) == 2

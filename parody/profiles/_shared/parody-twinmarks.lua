@@ -20,9 +20,23 @@ local function leaves(head, seen)
   end
 end
 
+local function is_line(m)
+  return m.id == HLIST and (m.subtype == 1 or m.subtype == 6 or m.subtype == 7)
+end
+
+-- A box set in a paragraph (a breakable definition box, say) is itself a
+-- "line" holding many lines: count those, not the box.
+local function holds_lines(head)
+  for m in node.traverse(head) do
+    if is_line(m) then return true end
+    if (m.id == HLIST or m.id == VLIST) and m.list and holds_lines(m.list) then return true end
+  end
+  return false
+end
+
 local function rows(head, counts)
   for m in node.traverse(head) do
-    if m.id == HLIST and (m.subtype == 1 or m.subtype == 6 or m.subtype == 7) then
+    if is_line(m) and not (m.list and holds_lines(m.list)) then
       local seen = {}
       if m.list then leaves(m.list, seen) end
       for v in pairs(seen) do counts[v] = (counts[v] or 0) + 1 end

@@ -18,5 +18,10 @@
   {\def\@elt##1{##1=\the\csname c@##1\endcsname,}%
    \immediate\write\parodytwinctr{#1|\cl@@ckpt}}%
 }
+% Material built in the output routine (headers, footers, a breakable box
+% rebuilt at a page break) must not inherit the mark that happened to be
+% current when the page filled: clear it for the output routine's group.
+\newcommand\parodysoff{\unsetattribute\parodytwinattr}
+\AddToHook{begindocument/end}{\output=\expandafter{\expandafter\parodysoff\the\output}}
 \makeatother
 \directlua{dofile(kpse.find_file("parody-twinmarks.lua", "lua") or "parody-twinmarks.lua")}
