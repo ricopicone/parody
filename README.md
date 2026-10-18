@@ -62,8 +62,11 @@ it. Each section is cut into chunks filed under a hash of their English. A
 re-run translates only the chunks whose English changed, and leaves every
 other chunk byte for byte as it was. Every chunk must keep its maths, blanks,
 key terms, references, ids and code exactly, or it is retried and, failing
-that, not written. `--status` reports what is missing or stale without
-translating anything.
+that, not written. A box's `title="…"` is the one attribute that is
+translated, since readers see it as the box's heading. `--status` reports what
+is missing or stale without translating anything. To redo a chunk (after a
+change to what the translator is told, say), delete it from the translation
+file and re-run.
 
 Key terms (`[…]{.keyword}`) get the English term attached (`en="…"`). Each
 language keeps a glossary at `translations/<lang>/glossary.yaml`, which every

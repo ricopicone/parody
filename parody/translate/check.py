@@ -96,8 +96,10 @@ def _walk(node, facts):
             facts.ids[ident] += 1
         facts.classes.update(classes)
         # caption_plain is a leftover of the LaTeX migration that nothing reads;
-        # its prose may be translated or not.
-        facts.attrs.update((k, v) for k, v in kvs if k != "caption_plain")
+        # its prose may be translated or not. A title is the heading a reader
+        # sees on a box: its prose is translated, but it must still be there.
+        facts.attrs.update((k, ("…" if v.strip() else "") if k == "title" else v)
+                           for k, v in kvs if k != "caption_plain")
         if "cloze" in classes:
             facts.cloze += 1
         if t == "Span" and "keyword" in classes:

@@ -20,7 +20,7 @@ The section arrives split into numbered chunks, each starting with a line `<<<ch
 The chunks are Pandoc Markdown with extensions. Translate the prose; preserve every piece of markup exactly:
 
 - Math: everything between `$…$` and `$$…$$` stays byte-for-byte identical, including `\\text{…}`, `\\cloze{…}` and environment names. Do not translate inside math.
-- Attributes and ids: keep `{#…}`, `{.…}`, `h="…"`, `width="…"` and the like exactly.
+- Attributes and ids: keep `{#…}`, `{.…}`, `h="…"`, `width="…"` and the like exactly. The one exception is a box's `title="…"`, the heading the reader sees on it: translate the title, keep `title=` and its double quotes, and use no double quote inside it.
 - `[xx]{.hashref}` spans: keep them exactly; do not translate their contents.
 - Cross-references such as `[@fig:voltage_divider_demo]`: keep exactly, positioned where the grammar of {LANGUAGE} needs them.
 - Images `![caption](path){…}`: translate the caption, keep the path and attributes.

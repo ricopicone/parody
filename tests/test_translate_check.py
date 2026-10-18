@@ -168,3 +168,17 @@ def test_caption_plain_is_free_text():
     # A leftover of the LaTeX migration that nothing reads.
     assert compare_chunks(['![Cap](x.pdf){#fig:x caption_plain="The forces"}'],
                           ['![Kräfte](x.pdf){#fig:x caption_plain="Die Kräfte"}']) == {}
+
+
+def test_box_title_may_be_translated():
+    # A box's title is the heading the reader sees, so it is prose.
+    en = ['::: {.example title="Two rotations, two orders"}\nText.\n:::']
+    tr = ['::: {.example title="Zwei Drehungen, zwei Reihenfolgen"}\nText.\n:::']
+    assert compare_chunks(en, tr) == {}
+
+
+def test_box_title_must_survive():
+    en = ['::: {.example title="Two rotations"}\nText.\n:::']
+    for tr in ('::: {.example}\nText.\n:::', '::: {.example title=""}\nText.\n:::'):
+        problems = compare_chunks(en, [tr])
+        assert any("attributes" in p for p in problems[0]), tr

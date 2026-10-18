@@ -66,3 +66,9 @@ def test_parse_rejects_chatter_before_first_marker():
 def test_parse_keeps_inner_code_fences():
     body = "```python\nx = 1\n```"
     assert parse_response(f"<<<chunk 1>>>\n{body}\n", [1]) == {1: body}
+
+
+def test_system_prompt_translates_box_titles():
+    text = system_prompt("de", {})
+    assert 'title="…"' in text
+    assert "translate the title" in text
