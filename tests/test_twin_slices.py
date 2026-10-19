@@ -293,3 +293,39 @@ def test_nested_footnote_definitions_are_collected_whole():
     assert footnote_definitions(nested) == [
         "[^x]: Eine Notiz\n    über zwei Zeilen.\n\n    Und ein zweiter Absatz."]
     assert footnote_definitions("Kein Fußnotentext.") == []
+
+
+# A cut inside inline emphasis left each half unbalanced: a literal "*" or
+# "**" on the twin page (robotics zh/de exercise notes, electronics zh
+# "**系统化方法。**").
+
+def _cut_pair(text, lang, en, cut):
+    return (slice_chunk(text, lang, 0, cut, en).text, slice_chunk(text, lang, cut, None, en).text)
+
+
+def test_a_cut_before_the_closing_emphasis_moves_past_it():
+    # the zh rule cuts after 。 with no space, so before the closing "**";
+    # an English of as many sentences maps cut 1 onto exactly that boundary
+    text = "2.  **系统化方法。** 现在完整地遵循方法。写出方程。\n"
+    en = "2.  Systematic method. Now follow the method fully. Write the equations.\n"
+    from parody.twin.marks import sentence_starts
+    assert text[sentence_starts(text, "zh")[0]:].startswith("**")
+    assert len(sentence_starts(text, "zh")) == len(sentence_starts(en, "en"))
+    left, right = _cut_pair(text, "zh", en, 1)
+    assert left.endswith("**系统化方法。**"), left
+    assert right.startswith("现在"), right
+
+
+def test_emphasis_open_at_a_cut_is_closed_and_reopened():
+    text = "Bestimmen Sie $M'$.\n\n*Stützt sich auf [@sec:a]. Der Buchstabe stammt aus der Übung.*\n"
+    en = "Find $M'$.\n\n*Draws on [@sec:a]. The letter comes from the exercise.*\n"
+    left, right = _cut_pair(text, "de", en, 2)
+    assert left.endswith("*Stützt sich auf [@sec:a].*"), left
+    assert right == "*Der Buchstabe stammt aus der Übung.*", right
+
+
+def test_bullets_and_maths_do_not_count_as_emphasis():
+    text = "* Eins hat $a*b$ hier. Zwei folgt.\n* Drei.\n"
+    en = "* One has $a*b$ here. Two follows.\n* Three.\n"
+    left, right = _cut_pair(text, "de", en, 1)
+    assert not left.endswith("*") and not right.startswith("*"), (left, right)

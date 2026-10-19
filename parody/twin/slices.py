@@ -195,6 +195,51 @@ def without_footnote_definitions(text):
     return "".join(kept).strip()
 
 
+_STARS = re.compile(r"(?<!\\)\*+")
+_NOT_EMPHASIS = re.compile(r"\$\$.*?\$\$|\$[^$\n]*\$|`[^`\n]*`", re.S)
+
+
+def _paragraph_start(text, pos):
+    """Where the paragraph (or list item) holding ``pos`` starts: emphasis
+    cannot be open across a blank line or into another item."""
+    start = text.rfind("\n\n", 0, pos)
+    start = 0 if start == -1 else start + 2
+    line = text.rfind("\n", 0, pos) + 1
+    while line > start:
+        if _LIST_ITEM.match(text, line):
+            return line
+        line = text.rfind("\n", 0, line - 1) + 1
+    return start
+
+
+def _open_emphasis(text, pos):
+    """The ``*`` emphasis open at ``pos`` ("", "*", "**" or "***"), counted
+    from its paragraph's start, skipping maths, code and list bullets."""
+    seg = text[_paragraph_start(text, pos):pos]
+    seg = _NOT_EMPHASIS.sub(lambda m: " " * len(m.group()), seg)
+    italic = bold = False
+    for m in _STARS.finditer(seg):
+        line = seg.rfind("\n", 0, m.start()) + 1
+        if not seg[line:m.start()].strip() and seg[m.end():m.end() + 1] in (" ", "\t"):
+            continue  # a bullet
+        run = len(m.group())
+        if run in (1, 3):
+            italic = not italic
+        if run in (2, 3):
+            bold = not bold
+    return "**" * bold + "*" * italic
+
+
+def _past_closing_emphasis(text, pos):
+    """``pos`` moved past the run that closes the emphasis open there, when
+    that run is what follows: a sentence that ends inside "**系统化方法。**"
+    is cut after its "**", not before."""
+    opened = _open_emphasis(text, pos)
+    if opened and text.startswith(opened[::-1], pos):
+        return pos + len(opened)
+    return pos
+
+
 _ATTR_TOKEN = re.compile(r'[^\s=]+="[^"]*"|[^\s=]+=\S+|\S+')
 
 
@@ -269,8 +314,8 @@ def slice_chunk(text, language, start, end, english):
         j = round(i * len(bounds) / max(en_count, 1))
         return 0 if j <= 0 else bounds[min(j, len(bounds)) - 1]
 
-    a = _item_start(text, offset(start))
-    b = len(text) if end is None else _item_start(text, offset(end))
+    a = _past_closing_emphasis(text, _item_start(text, offset(start)))
+    b = len(text) if end is None else _past_closing_emphasis(text, _item_start(text, offset(end)))
     if end is not None and b < a:
         b = a
     # Footnote definitions inside the chunk go in no slice: the page gets them
@@ -293,6 +338,15 @@ def slice_chunk(text, language, start, end, english):
     piece = "".join(kept).strip()
     if a > 0:
         piece = _outdented(text, a, piece)
+    # Emphasis open across the cut is closed before it and reopened after,
+    # or each half prints a literal "*" (a note in italics over several
+    # sentences, cut between them).
+    if a > 0:
+        piece = _open_emphasis(text, a) + piece
+    if end is not None:
+        closing = _open_emphasis(text, b)[::-1]
+        if closing:
+            piece = piece.rstrip() + closing
 
     reopened = False
     if a > 0:
