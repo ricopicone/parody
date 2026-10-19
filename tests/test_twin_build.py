@@ -441,3 +441,48 @@ def test_a_whole_chunk_does_not_define_its_nested_note_twice():
     page = TwinPage(5, 1, pieces=[Piece(1, 0, 0, None), Piece(1, 1, 0, None)])
     (_, md), = page_markdown(page, {1: _section(NOTED_EN)}, {1: tr}, "de", {})[0]
     assert md.count("[^rad]:") == 1, md
+
+
+YAML_TWO = """\
+title: Twin Two
+slug: twin-two
+authors: [Tester]
+chapters:
+  - slug: one
+    title: One
+    sections: [first]
+  - slug: two
+    title: Two
+    sections: [third]
+translations:
+  languages: [de]
+"""
+
+
+@needs_tex
+def test_a_twin_of_some_chapters_resolves_references_to_the_others(tmp_path):
+    # A twin of chapter one alone printed ?? for its reference to chapter two,
+    # and the check refused the whole language for it (System Dynamics: up to
+    # four such references in each later chapter)
+    book = tmp_path / "book"
+    (book / "chapters" / "one").mkdir(parents=True)
+    (book / "chapters" / "two").mkdir(parents=True)
+    (book / "parody.yaml").write_text(YAML_TWO)
+    first = ("---\ntitle: First\n---\n\n# First {#sec:first}\n\nAs [@sec:third] shows, alpha holds. "
+             + _para(1) + "\n")
+    third = "---\ntitle: Third\n---\n\n# Third {#sec:third}\n\n" + _para(2) + "\n"
+    (book / "chapters" / "one" / "first.md").write_text(first)
+    (book / "chapters" / "two" / "third.md").write_text(third)
+    meta, body = split_frontmatter(first)
+    chunks = split_chunks(body)
+    TranslationFile(language="de", source="chapters/one/first.md", title="First (de)",
+                    title_hash=chunk_hash(meta["title"]),
+                    chunks=[(chunk_hash(c), c.replace("alpha", "Alpha-DE")) for c in chunks]
+                    ).write(translation_path(book, "de", "one", "first"))
+    pdf, report = build_twin(book, "de", chapters=["one"], out=tmp_path / "twin.pdf")
+    assert report.references == [], report.references
+    assert report.tex_errors == [], report.tex_errors
+    import pypdf
+    text = " ".join(" ".join((p.extract_text() or "").split()) for p in pypdf.PdfReader(str(pdf)).pages)
+    assert "??" not in text, text[:300]
+    assert "2.1" in text, text[:300]

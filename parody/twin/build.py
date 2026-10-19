@@ -139,6 +139,29 @@ _NEWLABEL = re.compile(r"\\newlabel\{([^}@]+)\}\{\{([^}]*)\}")
 _UNDEFINED_REF = re.compile(r"Reference `([^']+)' on page \S+ undefined")
 
 
+_NEWLABEL_LINE = re.compile(r"^\\newlabel\{([^}]+)\}.*$", re.M)
+
+
+def _read(path):
+    return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+
+
+def _labels_tag(path):
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12] if path.is_file() else "none"
+
+
+def english_labels(english_aux, twin_aux):
+    """The English aux's ``\\newlabel`` lines for the labels the twin does not
+    define, for the twin to read: a twin of some chapters references the
+    others, and printed ?? for each (System Dynamics: up to four in a
+    chapter), which refused the whole language. The English number is the
+    right one to print — the twin pairs page for page with the English."""
+    have = set(re.findall(r"^\\newlabel\{([^}]+)\}", twin_aux, re.M))
+    lines = [m.group(0) for m in _NEWLABEL_LINE.finditer(english_aux) if m.group(1) not in have]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
 def reference_problems(english_aux, twin_aux, english_log, twin_log):
     """What a reader would find wrong in the twin's references: a label the
     twin numbers differently from the English (counters are restored, so they
@@ -506,11 +529,21 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     preamble = marked_main.split("\\begin{document}")[0]
     preamble = preamble.replace(TWINMARKS_FLAG + "\n", "").replace("\\usepackage{parody-pagemap}\n", "")
 
+    # The English's labels the twin does not define (english_labels): written
+    # after the first run, read by every run after it.
+    labels = twin_dir / "english-labels.tex"
+    labels.unlink(missing_ok=True)
+
     def write_main(scale):
         body = "".join(_page_tex(page, inputs, scale, cm, sm, ct, cl)
                        for page, inputs, cm, sm, ct, cl in composed)
         (twin_dir / "main.tex").write_text(
-            preamble + twin_preamble(language) + "\n\\begin{document}\n\\mainmatter\n"
+            preamble + twin_preamble(language)
+            # its hash, so latexmk runs again when the labels change: it does
+            # not watch a file that was not there on its first run
+            + f"\n% english-labels {_labels_tag(labels)}"
+            + "\n\\makeatletter\\InputIfFileExists{english-labels.tex}{}{}\\makeatother"
+            + "\n\\begin{document}\n\\mainmatter\n"
             + body + "\\end{document}\n", encoding="utf-8")
 
     def fits():
@@ -520,6 +553,8 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
 
     write_main(1.0)
     needed = [s for (p, s), (page, *_) in zip(fits(), composed) if page.pieces]
+    labels.write_text(english_labels(
+        _read(build_dir / "marked" / "main.aux"), _read(twin_dir / "main.aux")), encoding="utf-8")
     report.base_scale = base_scale(needed)
     write_main(report.base_scale)
     final = fits()
