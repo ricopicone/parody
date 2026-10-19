@@ -34,7 +34,7 @@ from ..writers.latex import (
 from .compose import align_translation, english_sections, page_markdown
 from .inventory import TWINMARKS_FLAG, build_inventory
 from .languages import TWIN_LANGUAGES, twin_preamble
-from .marks import MARK_MACRO
+from .marks import MARK_MACRO, decode
 from .paginate import paginate
 
 _TWINFIT = re.compile(r"TWINFIT page=(-?\d+) scale=([0-9.]+)")
@@ -495,7 +495,10 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
         if tex and tex.is_file():
             tex_by_section[i] = tex.read_text(encoding="utf-8")
     floats = set().union(*map(float_units, tex_by_section.values()))
-    pages = paginate(inv.rows, inv.counters, selected, firsts, floats)
+    definitions = {(i, k) for i in selected if i in english
+                   for k, chunk in enumerate(english[i].chunks) if chunk.startswith("[^")}
+    footnotes = {v for _, _, v, _ in inv.rows if decode(v)[:2] in definitions}
+    pages = paginate(inv.rows, inv.counters, selected, firsts, floats, footnotes)
 
     translated = {i: align_translation(english[i], _read_translation(project_dir, language, english[i]))
                   for i in selected if i in english}

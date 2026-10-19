@@ -104,3 +104,15 @@ def test_a_float_on_the_page_its_text_continues_on_stays_there():
     pages = paginate(rows, _ctr(V(1, 0), V(1, 1), V(1, 2)), {1}, set(), floats={V(1, 1)})
     assert [[q.chunk for q in p.pieces] for p in pages] == [[0], [1, 2]]
     assert not any(p.notes for p in pages)
+
+
+def test_a_footnote_set_on_its_reference_s_page_is_not_reported_as_moved():
+    # a footnote's definition is written at the section's end but printed on
+    # the page of its reference: every twin page sets its section's footnotes,
+    # so it moving back is expected, not a unit out of order
+    rows = [(5, 3, V(1, 0), 5), (6, 4, V(1, 1), 8), (5, 3, V(1, 2), 1)]
+    pages = paginate(rows, _ctr(V(1, 0), V(1, 1), V(1, 2)), {1}, set(), footnotes={V(1, 2)})
+    assert not any(p.notes for p in pages)
+    # and a unit that is out of order is named by its printed page number
+    pages = paginate(rows, _ctr(V(1, 0), V(1, 1), V(1, 2)), {1}, set())
+    assert pages[-1].notes == [f"unit {V(1, 2)} on page 3 is out of order; kept after its predecessor"]

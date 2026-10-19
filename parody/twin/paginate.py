@@ -32,12 +32,16 @@ class TwinPage:
     first_unit: int | None = None
 
 
-def paginate(rows, counters, sections, first_section_of_chapter, floats=frozenset()):
+def paginate(rows, counters, sections, first_section_of_chapter, floats=frozenset(),
+             footnotes=frozenset()):
     """One ``TwinPage`` per page in the span of ``sections``, blank ones included.
 
     ``floats`` are the units LaTeX may move: a float that went ahead of the
     text written after it stays with the text it was written in, instead of
-    taking that text to its own page.
+    taking that text to its own page. ``footnotes`` are the units of footnote
+    definitions, printed on their reference's page, often before the text
+    written ahead of them: every twin page sets its section's footnotes, so
+    that is not a move worth a note.
     """
     lines = defaultdict(dict)  # unit → {abspage: lines}
     page_number = {}
@@ -78,7 +82,9 @@ def paginate(rows, counters, sections, first_section_of_chapter, floats=frozense
         else:
             continue
         if previous is not None and page < placed[previous]:
-            notes[placed[previous]].append(f"unit {v} on page {page} is out of order; kept after its predecessor")
+            if v not in footnotes:
+                notes[placed[previous]].append(f"unit {v} on page {page_number.get(page, page)} "
+                                               "is out of order; kept after its predecessor")
             page = placed[previous]
         placed[v] = page
         previous = v
