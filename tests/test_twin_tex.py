@@ -203,3 +203,27 @@ def test_a_chapter_opened_on_a_twin_page_keeps_its_labels(tmp_path):
     assert "Reference `uy' on page" not in log
     text = _text(pdf)[0]
     assert "Kapitel 2 und 2" in text.replace("\u00a0", " "), text[:200]
+
+
+@needs_tex
+def test_a_label_takes_the_label_the_english_had_at_the_page(tmp_path):
+    # \chapter sets the current label inside the page's group, so after the
+    # group a label under an unnumbered heading came out empty (System
+    # Dynamics' lead-in: 11 labels); and a page starting mid-section had none
+    body = ("\\begin{twinpage}{11}{1.0}{\\parodytwinset{chapter}{2}\\parodytwinlabel{2}}{}{}[Einleitung]\n"
+            "\\section*{Ohne Nummer}\\label{unnumbered}\nText.\n\\end{twinpage}\n"
+            "\\begin{twinpage}{12}{1.0}{\\parodytwinset{chapter}{2}\\parodytwinset{section}{3}"
+            "\\parodytwinlabel{2.3}}{}{}\nMitten im Abschnitt.\\label{mid}\n\\end{twinpage}\n")
+    pdf, log = _compile(tmp_path, body, runs=2)
+    aux = (tmp_path / "t.aux").read_text(encoding="utf-8", errors="replace")
+    assert "\\newlabel{unnumbered}{{2}" in aux, [line for line in aux.splitlines() if "label" in line]
+    assert "\\newlabel{mid}{{2.3}" in aux, [line for line in aux.splitlines() if "label" in line]
+
+
+@needs_tex
+def test_a_captioned_table_on_a_twin_page_compiles(tmp_path):
+    body = ("\\begin{twinpage}{5}{1.0}{\\parodytwinset{chapter}{1}}{}{}\nText.\n\n"
+            "\\begin{table}[H]\n\\tabcaption[][nofloat]{}{Eine Tabelle.}\n"
+            "\\begin{tabular}{ll}\na & b \\\\\n\\end{tabular}\n\\end{table}\n\\end{twinpage}\n")
+    pdf, log = _compile(tmp_path, body)
+    assert "Eine Tabelle" in _text(pdf)[0]

@@ -37,12 +37,16 @@ def read_counters(path):
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         if "|" not in line:
             continue
-        value, _, pairs = line.partition("|")
+        value, _, rest = line.partition("|")
+        pairs, has_label, label = rest.partition("|")
         value = int(value)
         if value in counters:
             continue
         counters[value] = {name: int(n) for name, _, n in
                            (p.partition("=") for p in pairs.split(",") if "=" in p)}
+        if has_label:
+            # \@currentlabel there, as a \label would record it (restore_code)
+            counters[value]["@currentlabel"] = label.strip()
     return counters
 
 

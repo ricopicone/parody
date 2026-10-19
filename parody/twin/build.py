@@ -152,12 +152,23 @@ def reference_problems(english_aux, twin_aux, english_log, twin_log):
     return out
 
 
-def mark_errors(marked_log, marked_dir):
+def _context_tail(context):
+    """An error's context, comparable across builds: TeX cuts a long input
+    line at the front ("..."), and where depends on the line, which the marks
+    lengthen."""
+    return context.lstrip(".")[-12:]
+
+
+def mark_errors(marked_log, marked_dir, published_log=""):
     """Errors of the marked English build on a line that carries a mark: a
-    mark in a place it must not be (a moving argument, say)."""
+    mark in a place it must not be (a moving argument, say). One the published
+    English build has too (same message, same macro) is the book's own: the
+    marks add lines, so only its line number moved (System Dynamics 2.1's
+    unknown TikZ keys)."""
+    published = {(e.message, _context_tail(e.context)) for e in log_errors(published_log)}
     out = []
     for e in log_errors(marked_log):
-        if not e.file:
+        if not e.file or (e.message, _context_tail(e.context)) in published:
             continue
         try:
             lines = (Path(marked_dir) / e.file).read_text(encoding="utf-8").splitlines()
@@ -166,6 +177,20 @@ def mark_errors(marked_log, marked_dir):
         if 0 < e.line <= len(lines) and f"\\{MARK_MACRO}" in lines[e.line - 1]:
             out.append(str(e))
     return out
+
+
+def _published_log(published_pdf, build_dir):
+    """The log of the build that made the published English PDF, where parody
+    leaves it: the twin's own English build, or ``parody publish``'s
+    ``print/main.log`` beside the PDF. Empty when there is none."""
+    pdf = Path(published_pdf)
+    own = Path(build_dir) / "english.pdf"
+    candidates = ([Path(build_dir) / "english" / "main.log"] if pdf == own
+                  else [pdf.parent / "print" / "main.log"])
+    for log in candidates:
+        if log.is_file():
+            return log.read_text(encoding="utf-8", errors="replace")
+    return ""
 
 
 def section_ranges(pages, section_keys):
@@ -233,9 +258,35 @@ def base_scale(scales):
 
 
 def restore_code(counters):
-    """``\\parodytwinset`` calls restoring the document counters the English had."""
-    return "".join(f"\\parodytwinset{{{name}}}{{{value}}}" for name, value in counters.items()
+    """``\\parodytwinset`` calls restoring the document counters the English
+    had, then ``\\parodytwinlabel`` restoring its current label (what a
+    ``\\label`` there records), when the marks logged one."""
+    code = "".join(f"\\parodytwinset{{{name}}}{{{value}}}" for name, value in counters.items()
                    if name not in _SKIP_COUNTERS and "@" not in name)
+    if "@currentlabel" in counters:
+        code += f"\\parodytwinlabel{{{counters['@currentlabel']}}}"
+    return code
+
+
+_FLOAT_OPEN = re.compile(r"\\begin\{(figure|table)\}(\[[^\]]*\])?")
+
+
+def floats_here(tex):
+    """``tex`` with every figure and table set here (``[H]``).
+
+    A twin page is set in a minipage, where a float is "Not in outer par
+    mode"; and here is where the English put it, on the page this twin page
+    twins. Starred floats and longtables are left as they are (and reported
+    as unsupported).
+    """
+    return _FLOAT_OPEN.sub(lambda m: f"\\begin{{{m.group(1)}}}[H]", tex)
+
+
+def mismatches_that_matter(mismatched, abspages):
+    """The mismatched English pages among those the twin twins: a twin of some
+    chapters is not wrong because another chapter's marked English differs."""
+    twinned = set(abspages)
+    return [p for p in mismatched if p in twinned]
 
 
 def _value(section, chunk, sentence):
@@ -396,7 +447,9 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
         tex = build_dir / "marked" / "sections" / english[i].chapter.slug / f"{english[i].slug}.tex"
         if i in english and tex.is_file():
             tex_by_section[i] = tex.read_text(encoding="utf-8")
-    report = TwinReport(language=language, mismatched_pages=list(inv.mismatched_pages),
+    report = TwinReport(language=language,
+                        mismatched_pages=mismatches_that_matter(
+                            inv.mismatched_pages, [p.abspage for p in pages]),
                         pages=len(pages), abspages=[p.abspage for p in pages],
                         english_pdf=Path(published_pdf),
                         sections=section_ranges(pages, index),
@@ -437,6 +490,8 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
                     if before is not None:
                         tex = f"\\parodytwinset{{section}}{{{before}}}%\n" + tex
                     tex_path.write_text(tex, encoding="utf-8")
+                tex_path.write_text(floats_here(tex_path.read_text(encoding="utf-8")),
+                                    encoding="utf-8")
                 inputs.append(f"\\input{{pages/{tex_path.name}}}")
             chapmark, secmark = _marks(page, english, translated, titles, inv.counters), ""
             chapter_title, chapter_labels = None, []
@@ -473,7 +528,9 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     marked_log = build_dir / "marked" / "main.log"
     marked_log = marked_log.read_text(encoding="utf-8", errors="replace") if marked_log.is_file() else ""
     report.tex_errors, report.inherited_errors = twin_errors(log, marked_log)
-    report.tex_errors += [f"marked English: {e}" for e in mark_errors(marked_log, build_dir / "marked")]
+    report.tex_errors += [f"marked English: {e}" for e in
+                          mark_errors(marked_log, build_dir / "marked",
+                                      _published_log(published_pdf, build_dir))]
 
     def text(path):
         return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""

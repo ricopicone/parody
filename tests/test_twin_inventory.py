@@ -194,3 +194,28 @@ def test_a_section_head_logs_the_number_before_the_heading_takes_it(tmp_path):
     assert inv.mismatched_pages == []
     assert inv.counters[1_001_000]["section"] == 0
     assert inv.counters[2_001_000]["section"] == 1
+
+
+def test_read_counters_keeps_the_current_label(tmp_path):
+    # the label a \label at the mark would record: the twin restores it, or a
+    # label after an unnumbered heading or equation comes out empty
+    (tmp_path / "main.twinctr").write_text(
+        "1001000|page=1,chapter=1,|1\n1001001|page=1,chapter=1,section=2,|1.2\n"
+        "1001002|page=1,chapter=1,\n")
+    counters = read_counters(tmp_path / "main.twinctr")
+    assert counters[1001000] == {"page": 1, "chapter": 1, "@currentlabel": "1"}
+    assert counters[1001001]["@currentlabel"] == "1.2"
+    assert "@currentlabel" not in counters[1001002]  # an older log: no label field
+
+
+@needs_tex
+def test_each_mark_logs_the_current_label(tmp_path):
+    # System Dynamics' lead-in: unnumbered headings and equations right after
+    # \chapter, whose labels the English numbers as the chapter
+    book = _book(tmp_path)
+    (book / "chapters" / "one" / "first.md").write_text(
+        "---\ntitle: First\n---\n\nOpening words.\n\n## Unnumbered {.unnumbered #unn}\n\nMore words.\n")
+    published = build_pdf(book, output_pdf=tmp_path / "en.pdf")
+    inv = build_inventory(book, tmp_path / "twin-build", published)
+    labels = {v["@currentlabel"] for k, v in inv.counters.items() if k // 1_000_000 == 1}
+    assert labels and all(lab.strip() for lab in labels), labels

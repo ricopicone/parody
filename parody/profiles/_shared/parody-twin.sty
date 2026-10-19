@@ -23,6 +23,13 @@
 % English had; one this document lacks is skipped, not an error.
 \newcommand{\parodytwinset}[2]{\ifcsname c@#1\endcsname\setcounter{#1}{#2}\fi}
 
+% \parodytwinlabel{label}: the current label the English had there, so a
+% \label before the page's first numbered thing records what the English
+% recorded. Without it a label under an unnumbered heading right after a
+% chapter heading came out empty: \chapter sets the label inside the page's
+% group (System Dynamics' lead-in, 11 labels).
+\newcommand{\parodytwinlabel}[1]{\def\@currentlabel{#1}}
+
 \newcommand{\parodytwinuntranslatedtext}{English: not yet translated}
 \newcommand{\parodytwinstaletext}{may lag the English}
 \newcommand{\parodyuntranslated}{{\footnotesize\itshape[\parodytwinuntranslatedtext]}\ }

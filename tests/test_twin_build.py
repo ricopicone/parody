@@ -101,6 +101,31 @@ def test_restore_code_skips_internal_counters():
     assert code == "\\parodytwinset{chapter}{1}\\parodytwinset{thmctr}{4}"
 
 
+def test_restore_code_restores_the_current_label():
+    code = restore_code({"chapter": 1, "section": 2, "@currentlabel": "1.2"})
+    assert code == "\\parodytwinset{chapter}{1}\\parodytwinset{section}{2}\\parodytwinlabel{1.2}"
+
+
+def test_floats_on_a_twin_page_are_set_here():
+    # a float inside the twin page's minipage is "Not in outer par mode"
+    # (System Dynamics 1.4's captioned pipe tables); and here is where the
+    # English put it, on the page this twin page twins
+    from parody.twin.build import floats_here
+    tex = ("\\begin{table}\n\\tabcaption{x}\n\\end{table}\n\\begin{figure}[htbp]\n\\end{figure}\n"
+           "\\begin{table}[H]\n\\end{table}\n\\begin{figure*}\n\\end{figure*}\n\\begin{longtable}{l}\n")
+    assert floats_here(tex) == (
+        "\\begin{table}[H]\n\\tabcaption{x}\n\\end{table}\n\\begin{figure}[H]\n\\end{figure}\n"
+        "\\begin{table}[H]\n\\end{table}\n\\begin{figure*}\n\\end{figure*}\n\\begin{longtable}{l}\n")
+
+
+def test_only_the_pages_the_twin_twins_must_match():
+    # a twin of chapter 1 alone is not wrong because chapter 2's marked
+    # English paginates differently (System Dynamics, Korean, chapter 1 only)
+    from parody.twin.build import mismatches_that_matter
+    assert mismatches_that_matter([89, 90, 103], [11, 12, 13]) == []
+    assert mismatches_that_matter([12, 89], [11, 12, 13]) == [12]
+
+
 YAML = """\
 title: Twin Build
 slug: twin-build
@@ -260,6 +285,24 @@ def test_mark_errors_are_errors_on_a_marked_line(tmp_path):
            "./sections/ch/s.tex:3: Undefined control sequence.\nl.3 plain \\freadinglist\n")
     assert mark_errors(log, tmp_path) == [
         "./sections/ch/s.tex:2: Illegal parameter number in definition of \\x. (...)"]
+
+
+def test_a_marked_line_error_the_published_english_has_too_is_the_books(tmp_path):
+    # System Dynamics 2.1: an unknown TikZ key in a sentence the marks wrap.
+    # The published English has the same error (at another line: the marks
+    # add lines), so the mark did not cause it, and it must not fail the twin.
+    (tmp_path / "sections" / "ch").mkdir(parents=True)
+    (tmp_path / "sections" / "ch" / "s.tex").write_text(
+        "a\n\\parodys{4011001}Graphs \\tikz{\\draw[branch] (0,0);}.\n"
+        "\\figcaption[]{fig:x}{\\parodys{4011002}Models.}\n")
+    marked = ("./sections/ch/s.tex:2: Package pgfkeys Error: I do not know the key '/tikz/branch'.\n"
+              "l.2 ...\\tikz{\\draw[branch]\n"
+              "./sections/ch/s.tex:3: Illegal parameter number in definition of \\x.\nl.3 ...\n")
+    published = ("./sections/ch/s.tex:1: Package pgfkeys Error: I do not know the key '/tikz/branch'.\n"
+                 "l.1 Graphs \\tikz{\\draw[branch]\n")
+    assert mark_errors(marked, tmp_path, published) == [
+        "./sections/ch/s.tex:3: Illegal parameter number in definition of \\x. (...)"]
+    assert len(mark_errors(marked, tmp_path)) == 2  # no published log: both stand
 
 
 def test_an_unreadable_twin_pdf_has_no_page_count(tmp_path):

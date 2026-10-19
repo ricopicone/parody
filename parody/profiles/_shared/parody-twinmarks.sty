@@ -17,9 +17,13 @@
 % figure caption) or a collected environment body (an xsim exercise) is
 % carried there as is. Expanded inside a definition, \parodysctr's ##1 is
 % "Illegal parameter number in definition".
+% The third field is \@currentlabel, as a \label here would record it: a twin
+% page restores it, or a label under an unnumbered heading (or equation) the
+% page starts with comes out empty. Detokenized, so a \protect'ed command in
+% it is written as itself.
 \NewDocumentCommand\parodysctr{m}{%
   {\def\@elt##1{##1=\the\csname c@##1\endcsname,}%
-   \immediate\write\parodytwinctr{#1|\cl@@ckpt}}%
+   \immediate\write\parodytwinctr{#1|\cl@@ckpt|\detokenize\expandafter{\@currentlabel}}}%
 }
 \NewDocumentCommand\parodys{m}{\setattribute\parodytwinattr{#1}\parodysctr{#1}}
 % (\parodysctr alone, before a box opens, logs the counters as they are
