@@ -126,6 +126,7 @@ def test_cli_twin_prints_where_a_unit_left_its_english_page(tmp_path, monkeypatc
     report = TwinReport(language="de", pages=2, abspages=[5, 6], english_pdf=tmp_path / "en.pdf", notes=[
         "page 37: unit 9016000, a float on page 38 in English, is set with the text it was written in",
         "page 37: untranslated 9001000",
+        "page 38: unit 9018001, ahead of the text after it on page 39 in English, is set with the text it was written in",
         "page 40: unit 9020000 on page 39 is out of order; kept after its predecessor"])
     build, _ = _fake_build(report)
     monkeypatch.setattr(B, "build_twin", build)
@@ -133,4 +134,5 @@ def test_cli_twin_prints_where_a_unit_left_its_english_page(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert "moved: page 37: unit 9016000, a float on page 38" in out
     assert "moved: page 40: unit 9020000" in out
+    assert "moved: page 38: unit 9018001, ahead" in out
     assert "untranslated 9001000" not in out

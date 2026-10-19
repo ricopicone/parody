@@ -12,6 +12,9 @@ from dataclasses import dataclass, field
 
 from .marks import decode
 
+# How many units past one a page break is looked for in (``following``).
+_LOOKAHEAD = 8
+
 
 @dataclass(frozen=True)
 class Piece:
@@ -58,10 +61,18 @@ def paginate(rows, counters, sections, first_section_of_chapter, floats=frozense
         most = max(here.values())
         return min(p for p, n in here.items() if n == most)
 
-    def went_ahead(i, page):
-        """Whether the text after the float ``units[i]`` is on an earlier page."""
-        later = (w for w in units[i + 1:] if w in lines and w not in floats)
-        return next((most_lines(w) < page for w in later), False)
+    def following(i):
+        """The earliest page of the text just after ``units[i]``: of the next
+        few units with lines that are neither floats nor footnotes, which
+        LaTeX may move. A few, not one: a run of moved units (a footnote's
+        two sentences) ends before the text resumes."""
+        pages = []
+        for w in units[i + 1:]:
+            if w in lines and w not in floats and w not in footnotes:
+                pages.append(most_lines(w))
+                if len(pages) == _LOOKAHEAD:
+                    break
+        return min(pages, default=None)
 
     notes = defaultdict(list)
     placed = {}
@@ -70,12 +81,23 @@ def paginate(rows, counters, sections, first_section_of_chapter, floats=frozense
         here = lines.get(v)
         if here:
             page = most_lines(v)
-            if (v in floats and previous is not None and page > placed[previous]
-                    and went_ahead(i, page)):
-                notes[placed[previous]].append(
-                    f"unit {v}, a float on page {page_number.get(page, page)} in English, "
-                    "is set with the text it was written in")
-                page = placed[previous]
+            after = following(i) if previous is not None and page > placed[previous] else None
+            if after is not None and after < page:
+                # the text after it is on an earlier page. A unit that only
+                # straddles the break (a box whose frame, rebuilt on the next
+                # page, carries its head's mark) goes to the earlier page it
+                # is on too. One that went ahead of the text (a float, a
+                # footnote's sentences at the next page's foot) stays with
+                # the text it was written in, rather than take that text on.
+                earlier = [p for p in here if placed[previous] <= p <= after]
+                if earlier and v not in floats:
+                    page = max(earlier)
+                else:
+                    kind = "a float" if v in floats else "ahead of the text after it"
+                    notes[placed[previous]].append(
+                        f"unit {v}, {kind} on page {page_number.get(page, page)} in English, "
+                        "is set with the text it was written in")
+                    page = placed[previous]
         elif previous is not None:
             page = placed[previous]
             notes[page].append(f"unit {v} is not on any page; placed after its predecessor")

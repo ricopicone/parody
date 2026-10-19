@@ -207,7 +207,7 @@ def cmd_twin(args):
     for line in report.unsupported:
         print(f"  {line}")
     moved = [n for n in report.notes
-             if "out of order" in n or "not on any page" in n or "a float on page" in n]
+             if "out of order" in n or "not on any page" in n or "set with the text" in n]
     for line in moved[:10]:
         print(f"  moved: {line}")
     if len(moved) > 10:

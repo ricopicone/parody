@@ -114,5 +114,33 @@ def test_a_footnote_set_on_its_reference_s_page_is_not_reported_as_moved():
     pages = paginate(rows, _ctr(V(1, 0), V(1, 1), V(1, 2)), {1}, set(), footnotes={V(1, 2)})
     assert not any(p.notes for p in pages)
     # and a unit that is out of order is named by its printed page number
-    pages = paginate(rows, _ctr(V(1, 0), V(1, 1), V(1, 2)), {1}, set())
-    assert pages[-1].notes == [f"unit {V(1, 2)} on page 3 is out of order; kept after its predecessor"]
+    rows = [(6, 4, V(1, 0), 4), (5, 3, V(1, 1), 3)]
+    pages = paginate(rows, _ctr(V(1, 0), V(1, 1)), {1}, set())
+    assert pages[-1].notes == [f"unit {V(1, 1)} on page 3 is out of order; kept after its predecessor"]
+
+
+def test_a_box_head_split_over_a_page_break_stays_with_its_first_sentences():
+    # robotics zh: an example box opens at the foot of page 59 and runs on;
+    # its frame, rebuilt on page 60, carries the head's mark, so the head had
+    # more lines on 60 and took the six sentences printed on 59 there
+    rows = [(59, 59, V(1, 0), 30), (59, 59, V(1, 1, 0), 2), (60, 60, V(1, 1, 0), 6),
+            (59, 59, V(1, 1, 1), 3), (59, 59, V(1, 1, 2), 3), (60, 60, V(1, 1, 3), 9),
+            (60, 60, V(1, 2), 10)]
+    counters = _ctr(V(1, 0), V(1, 1, 0), V(1, 1, 1), V(1, 1, 2), V(1, 1, 3), V(1, 2))
+    pages = paginate(rows, counters, {1}, set())
+    assert [[(q.chunk, q.start, q.end) for q in p.pieces] for p in pages] == [
+        [(0, 0, None), (1, 0, 3)], [(1, 3, None), (2, 0, None)]]
+    assert not any(p.notes for p in pages)
+
+
+def test_a_footnote_s_sentences_on_the_next_page_do_not_take_the_text_after_them():
+    # robotics: two sentences of an inline footnote print at the foot of
+    # page 87; the three sentences after the footnote are on page 86, and
+    # were taken to twin page 87 with them
+    rows = [(86, 86, V(1, 0, 0), 6), (87, 87, V(1, 0, 1), 5), (87, 87, V(1, 0, 2), 3),
+            (86, 86, V(1, 0, 3), 2), (86, 86, V(1, 0, 4), 3), (87, 87, V(1, 0, 5), 4),
+            (87, 87, V(1, 1), 6)]
+    pages = paginate(rows, _ctr(*(V(1, 0, n) for n in range(6)), V(1, 1)), {1}, set())
+    assert [[(q.chunk, q.start, q.end) for q in p.pieces] for p in pages] == [
+        [(0, 0, 5)], [(0, 5, None), (1, 0, None)]]
+    assert len(pages[0].notes) == 2 and all("on page 87 in English" in n for n in pages[0].notes)
