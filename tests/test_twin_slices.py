@@ -329,3 +329,52 @@ def test_bullets_and_maths_do_not_count_as_emphasis():
     en = "* One has $a*b$ here. Two follows.\n* Three.\n"
     left, right = _cut_pair(text, "de", en, 1)
     assert not left.endswith("*") and not right.startswith("*"), (left, right)
+
+
+def test_an_under_indented_continuation_keeps_the_next_item_an_item():
+    # robotics intro/problems: items whose continuation lines are indented 3
+    # under content at 4. Pandoc reads them as the item's; the outdent read
+    # them as ending it, and "d." ran in to the paragraph as words.
+    text = "a.  Erstens ist hier. Weiter\n   im Text, zu wenig eingerückt.\nb.  Zweitens.\n"
+    en = "a.  First is here. Going\n   on in the text, under-indented.\nb.  Second.\n"
+    right = slice_chunk(text, "de", _cut_at(en, "Going"), None, en).text
+    blocks = [b for b in _blocks_of(right) if b["t"] != "RawBlock"]
+    assert [b["t"] for b in blocks] == ["Para", "OrderedList"], right
+
+
+def test_an_example_list_marker_travels_with_its_item_and_its_number():
+    # "@." was cut off its item (a literal "@." on the twin page), and every
+    # twin page restarted the example numbers at 1
+    text = "Beispiele:\n\n@. Ein Roomba.\n@. Ein Desktop-Computer.\n@. Ein Toaster.\n"
+    en = "Examples:\n\n@. A Roomba.\n@. A desktop computer.\n@. A toaster.\n"
+    left = slice_chunk(text, "de", 0, 2, en).text
+    right = slice_chunk(text, "de", 2, None, en).text
+    assert not left.rstrip().endswith("@."), left
+    lists = [(b["c"][0][0], len(b["c"][1])) for b in _blocks_of(right) if b["t"] == "OrderedList"]
+    assert lists == [(2, 2)], (right, lists)
+
+
+def test_a_slice_opening_on_a_list_marker_mid_paragraph_keeps_it_as_text():
+    # a wrapped line starting "(iii)": the boundary falls after it, the cut
+    # moved back to the line start so the "marker" travelled, and the slice
+    # began with "(iii)", which pandoc read as a list marker and dropped
+    text = "Er ordnet ein: (i) gut, (ii) schlecht oder\n(iii) angemessen. Begründen Sie.\n"
+    en = "He classifies: (i) good, (ii) bad or\n(iii) fair. Justify each.\n"
+    from parody.twin.marks import sentence_starts
+    starts = sentence_starts(text, "de")
+    assert text[starts[0]:].startswith("angemessen") and len(starts) == len(sentence_starts(en, "en"))
+    right = slice_chunk(text, "de", 1, None, en).text
+    (block,) = _blocks_of(right)
+    assert block["t"] == "Para", right
+    assert block["c"][0] == {"t": "Str", "c": "(iii)"}, block["c"][:2]
+
+
+def test_an_item_right_after_a_fence_is_an_item():
+    # a list straight after "::: example-solution" is a list: escaping its
+    # first marker made "1." text in every solution that opened a page
+    text = "Frage eins?\n\n::: example-solution\n1.  Erstens ist es so.\n2.  Zweitens.\n:::\n"
+    en = "Question one?\n\n::: example-solution\n1.  First it is so.\n2.  Second.\n:::\n"
+    right = slice_chunk(text, "de", 1, None, en).text
+    assert "\\\\" not in right, right
+    lists = [b for b in _blocks_of(right) if b["t"] == "Div"]
+    assert lists and lists[0]["c"][1][0]["t"] == "OrderedList", right

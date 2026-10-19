@@ -55,12 +55,53 @@ def _closer(opener):
     return "</div>" if _HTML_DIV_OPEN.match(opener) else ":::"
 
 
+# A list marker as the slicer reads one: marks' _LIST_ITEM, plus pandoc's
+# example-list markers ("@.", "(@)", "@good.") and "#.". Kept apart from
+# _LIST_ITEM, which decides where the English's marks go.
+_ITEM_MARKER = re.compile(
+    r"^[ \t]*(?:[-*+]|\(?(?:[0-9]{1,9}|[a-z]|[ivxlc]{1,6}|@[\w-]*|#)[.)]"
+    r"|\(?(?:[A-Z]|[IVXLC]{1,6})[.)](?=[ \t]{2}))[ \t]+", re.M)
+_EXAMPLE_MARKER = re.compile(r"^([ \t]*)\(?@[\w-]*[.)]", re.M)
+# lines that end a block whatever their indent, never a lazy continuation
+_BLOCK_BREAK = re.compile(r"[ \t]*(:::|#|\||<)")
+
+
 def _item_start(text, offset):
     """A cut just after a list marker moves to the start of the item's line,
     so the marker travels with its item."""
     line_start = text.rfind("\n", 0, offset) + 1
-    m = _LIST_ITEM.match(text, line_start)
+    m = _ITEM_MARKER.match(text, line_start)
     return line_start if m and m.end() == offset else offset
+
+
+def _is_item_line(text, line_start):
+    """Whether the marker at ``line_start`` begins a list item: pandoc's list
+    cannot interrupt a paragraph, so a wrapped line that happens to start
+    "(iii)" or "1." is text. It is an item after a blank line, another item,
+    an indented line (an item's continuation), or a fence or heading."""
+    if line_start == 0:
+        return True
+    prev_start = text.rfind("\n", 0, line_start - 1) + 1
+    prev = text[prev_start:line_start - 1]
+    return (not prev.strip() or bool(_ITEM_MARKER.match(prev)) or _indent(prev) > 0
+            or bool(_BLOCK_BREAK.match(prev)))
+
+
+def _escape_marker(piece):
+    """``piece`` with the list marker it opens on made text: "\\(iii)", "1\\."."""
+    if piece[:1] in "(-*+#@":
+        return "\\" + piece
+    m = re.match(r"[^.)\s]*", piece)
+    return piece[:m.end()] + "\\" + piece[m.end():]
+
+
+def _numbered_examples(text, a, piece):
+    """``piece`` with its example-list markers ("@.") numbered as the English
+    numbers them: each twin page is a document of its own, where pandoc would
+    count from 1 again. Counted from the chunk's examples before the cut."""
+    n = len(_EXAMPLE_MARKER.findall(text[:a]))
+    count = iter(range(n + 1, n + 1 + len(_EXAMPLE_MARKER.findall(piece))))
+    return _EXAMPLE_MARKER.sub(lambda m: f"{m.group(1)}({next(count)})", piece)
 
 
 # Where a line's own content starts: its indentation, then a list or
@@ -118,11 +159,18 @@ def _outdented(text, a, piece):
         if not row.strip():
             out.append("")
             continue
+        # a line straight after another, not a marker or a fence, continues
+        # the innermost block whatever its indent (pandoc's lazy lines, or
+        # one under-indented: robotics intro/problems indents 3 under 4)
+        if (depths and _indent(row) < depths[-1] and out[-1] != ""
+                and not _ITEM_MARKER.match(row) and not _BLOCK_BREAK.match(row)):
+            out.append(row[min(_indent(row), depths[-1]):])
+            continue
         closed = False
         while depths and _indent(row) < depths[-1]:
             depths.pop()
             closed = True
-        if closed and _LIST_ITEM.match(row):
+        if closed and _ITEM_MARKER.match(row):
             # an item after the text of the one the cut was inside: a blank
             # line first, or in a tight list it runs in to that text as words
             # (robotics 1.8: exercise parts b and c); and before a numbered
@@ -338,6 +386,10 @@ def slice_chunk(text, language, start, end, english):
     piece = "".join(kept).strip()
     if a > 0:
         piece = _outdented(text, a, piece)
+        if text.rfind("\n", 0, a) + 1 == a and _ITEM_MARKER.match(text, a) \
+                and not _is_item_line(text, a):
+            piece = _escape_marker(piece)
+        piece = _numbered_examples(text, a, piece)
     # Emphasis open across the cut is closed before it and reopened after,
     # or each half prints a literal "*" (a note in italics over several
     # sentences, cut between them).
