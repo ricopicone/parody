@@ -32,8 +32,13 @@ class TwinPage:
     first_unit: int | None = None
 
 
-def paginate(rows, counters, sections, first_section_of_chapter):
-    """One ``TwinPage`` per page in the span of ``sections``, blank ones included."""
+def paginate(rows, counters, sections, first_section_of_chapter, floats=frozenset()):
+    """One ``TwinPage`` per page in the span of ``sections``, blank ones included.
+
+    ``floats`` are the units LaTeX may move: a float that went ahead of the
+    text written after it stays with the text it was written in, instead of
+    taking that text to its own page.
+    """
     lines = defaultdict(dict)  # unit → {abspage: lines}
     page_number = {}
     for abspage, page, value, n in rows:
@@ -44,14 +49,29 @@ def paginate(rows, counters, sections, first_section_of_chapter):
     if not units:
         return []
 
+    def most_lines(v):
+        here = lines[v]
+        most = max(here.values())
+        return min(p for p, n in here.items() if n == most)
+
+    def went_ahead(i, page):
+        """Whether the text after the float ``units[i]`` is on an earlier page."""
+        later = (w for w in units[i + 1:] if w in lines and w not in floats)
+        return next((most_lines(w) < page for w in later), False)
+
     notes = defaultdict(list)
     placed = {}
     previous = None
-    for v in units:
+    for i, v in enumerate(units):
         here = lines.get(v)
         if here:
-            most = max(here.values())
-            page = min(p for p, n in here.items() if n == most)
+            page = most_lines(v)
+            if (v in floats and previous is not None and page > placed[previous]
+                    and went_ahead(i, page)):
+                notes[placed[previous]].append(
+                    f"unit {v}, a float on page {page_number.get(page, page)} in English, "
+                    "is set with the text it was written in")
+                page = placed[previous]
         elif previous is not None:
             page = placed[previous]
             notes[page].append(f"unit {v} is not on any page; placed after its predecessor")

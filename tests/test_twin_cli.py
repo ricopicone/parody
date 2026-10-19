@@ -116,3 +116,21 @@ def test_cli_fails_on_reference_problems(tmp_path, monkeypatch, capsys):
     assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "t.pdf")]) == 1
     assert "label crumble" in capsys.readouterr().out
     assert not (tmp_path / "t.twin.json").exists()
+
+
+def test_cli_twin_prints_where_a_unit_left_its_english_page(tmp_path, monkeypatch, capsys):
+    # a unit set on another page than the English's was only in report.notes,
+    # which nothing printed
+    import parody.twin.build as B
+    (tmp_path / "en.pdf").write_bytes(b"%PDF en")
+    report = TwinReport(language="de", pages=2, abspages=[5, 6], english_pdf=tmp_path / "en.pdf", notes=[
+        "page 37: unit 9016000, a float on page 38 in English, is set with the text it was written in",
+        "page 37: untranslated 9001000",
+        "page 40: unit 9020000 on page 39 is out of order; kept after its predecessor"])
+    build, _ = _fake_build(report)
+    monkeypatch.setattr(B, "build_twin", build)
+    assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "t.pdf")]) == 0
+    out = capsys.readouterr().out
+    assert "moved: page 37: unit 9016000, a float on page 38" in out
+    assert "moved: page 40: unit 9020000" in out
+    assert "untranslated 9001000" not in out

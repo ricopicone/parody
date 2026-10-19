@@ -81,3 +81,26 @@ def test_pieces_cover_every_chunk_exactly_once():
     # predecessor's page
     assert pages[0].pieces == [Piece(1, 0, 0, 3)]
     assert pages[1].pieces == [Piece(1, 0, 3, None)]
+
+
+def test_a_float_that_went_ahead_of_its_text_stays_with_the_text():
+    # English page 37 holds a heading and its sentence; the table written
+    # before them floated to page 38. The heading must not follow the table
+    # onto twin page 38, where a reader looking across from 37 cannot find it.
+    rows = [(37, 37, V(1, 0), 5), (38, 38, V(1, 1), 8), (37, 37, V(1, 2), 1),
+            (37, 37, V(1, 3), 2), (38, 38, V(1, 4), 6)]
+    counters = _ctr(*(V(1, k) for k in range(5)))
+    pages = paginate(rows, counters, {1}, set(), floats={V(1, 1)})
+    assert [p.abspage for p in pages] == [37, 38]
+    assert [q.chunk for q in pages[0].pieces] == [0, 1, 2, 3]
+    assert [q.chunk for q in pages[1].pieces] == [4]
+    assert any("float" in n and "38" in n for n in pages[0].notes)
+
+
+def test_a_float_on_the_page_its_text_continues_on_stays_there():
+    # the table floated to the top of page 38 and the text went on there too:
+    # twin page 38 opens with it, as the English does
+    rows = [(37, 37, V(1, 0), 5), (38, 38, V(1, 1), 8), (38, 38, V(1, 2), 4)]
+    pages = paginate(rows, _ctr(V(1, 0), V(1, 1), V(1, 2)), {1}, set(), floats={V(1, 1)})
+    assert [[q.chunk for q in p.pieces] for p in pages] == [[0], [1, 2]]
+    assert not any(p.notes for p in pages)

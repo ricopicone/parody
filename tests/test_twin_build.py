@@ -74,6 +74,34 @@ def test_page_markdown_stale_uses_old_translation():
     assert any("stale" in n for n in notes)
 
 
+def test_a_stale_translation_whose_maths_or_labels_changed_sets_the_english():
+    # the English renamed a label and corrected an equation since: the old
+    # translation would print the old maths and leave the new label undefined,
+    # which refused the whole language until someone re-translated
+    en = ["Prose alpha.", "So $x = 2$ holds. {#eq:new}", "Refers to [@eq:new] alpha."]
+    old = ["Prose alpha.", "So $x = 1$ holds. {#eq:old}", "Refers to [@eq:old] alpha."]
+    typo = ["Prose alpah.", "So $x = 2$ holds. {#eq:new}", "Refers to [@eq:new] alpha."]
+    tf = _tf(old, lambda c: c.replace("alpha", "Alpha-DE"))
+    tr = align_translation(_section(en), tf)
+    assert tr.states == ["current", "missing", "missing"]
+    assert tr.texts[1:] == [None, None]
+    # a prose edit keeps the older translation, marked as lagging
+    tr = align_translation(_section(en), _tf(typo, lambda c: c.replace("alpah", "Alpha-DE")))
+    assert tr.states == ["stale", "current", "current"]
+    assert tr.texts[0] == "Prose Alpha-DE."
+
+
+def test_an_untranslated_footnote_is_marked_and_counted():
+    # a footnote added after the translation was set in English with no
+    # marker, and the report did not count it
+    tf = _tf(EN[:4], lambda c: c.replace("alpha", "Alpha-DE"))  # the definition is new
+    tr = align_translation(_section(EN), tf)
+    groups, notes = page_markdown(TwinPage(5, 1, pieces=[Piece(1, 3, 0, None)]),
+                                  {1: _section(EN)}, {1: tr}, "de", {})
+    assert "[^1]: \\parodyuntranslated The note alpha." in groups[0][1]
+    assert "untranslated: ch/s chunk 4" in notes
+
+
 def test_reopened_box_steps_its_counter_back():
     tr = align_translation(_section(EN), _tf(EN, lambda c: c))
     counters = {V(1, 2, 0): {"thmctr": 3, "equation": 1}, V(1, 2, 1): {"thmctr": 4, "equation": 1}}
@@ -116,6 +144,17 @@ def test_floats_on_a_twin_page_are_set_here():
     assert floats_here(tex) == (
         "\\begin{table}[H]\n\\tabcaption{x}\n\\end{table}\n\\begin{figure}[H]\n\\end{figure}\n"
         "\\begin{table}[H]\n\\end{table}\n\\begin{figure*}\n\\end{figure*}\n\\begin{longtable}{l}\n")
+
+
+def test_float_units_are_the_marks_of_floats_latex_may_move():
+    # the mark before a float and those in it go where LaTeX puts the float;
+    # one set here does not move
+    from parody.twin.build import float_units
+    tex = ("\\parodys{1001000}\nText.\n\n\\parodys{1002000}\n\n\\begin{table}\n"
+           "\\tabcaption{A \\parodys{1002001}caption.}\n\\end{table}\n\n"
+           "\\parodys{1003000}\n\\begin{figure}[H]\nhere\n\\end{figure}\n"
+           "\\parodys{1004000}\n\\begin{figure*}\nwide\n\\end{figure*}\n")
+    assert float_units(tex) == {1002000, 1002001, 1004000}
 
 
 def test_only_the_pages_the_twin_twins_must_match():
@@ -320,15 +359,16 @@ def test_a_run_of_untranslated_chunks_gets_one_marker():
     tr = align_translation(_section(EN), _tf(EN[:2], lambda c: c.replace("alpha", "Alpha-DE")))
     pieces = [Piece(1, 0, 0, None), Piece(1, 1, 0, None), Piece(1, 2, 0, None), Piece(1, 3, 0, None)]
     groups, notes = page_markdown(TwinPage(5, 1, pieces=pieces), {1: _section(EN)}, {1: tr}, "de", {})
-    md = groups[0][1]
+    md, _, footnotes = groups[0][1].partition("\n\n[^1]:")
     assert md.count("\\parodyuntranslated") == 1
     assert md.index("\\parodyuntranslated") < md.index("Def one")
-    assert sum(n.startswith("untranslated") for n in notes) == 2  # still counted per chunk
+    assert footnotes.startswith(" \\parodyuntranslated")  # the footnote, apart from the run
+    assert sum(n.startswith("untranslated") for n in notes) == 3  # still counted per chunk
     # a translated chunk between two untranslated ones starts a new run
     tr = align_translation(_section(EN), _tf([EN[1]], lambda c: c.replace("alpha", "Alpha-DE")))
     pieces = [Piece(1, 0, 0, None), Piece(1, 1, 0, None), Piece(1, 2, 0, None)]
     groups, _ = page_markdown(TwinPage(5, 1, pieces=pieces), {1: _section(EN)}, {1: tr}, "de", {})
-    assert groups[0][1].count("\\parodyuntranslated") == 2
+    assert groups[0][1].partition("\n\n[^1]:")[0].count("\\parodyuntranslated") == 2
 
 
 def test_any_pdf_reader_failure_means_unreadable(tmp_path, monkeypatch):
@@ -486,3 +526,77 @@ def test_a_twin_of_some_chapters_resolves_references_to_the_others(tmp_path):
     text = " ".join(" ".join((p.extract_text() or "").split()) for p in pypdf.PdfReader(str(pdf)).pages)
     assert "??" not in text, text[:300]
     assert "2.1" in text, text[:300]
+
+
+YAML_APPENDIX = YAML_TWO.replace("    sections: [third]\n", "    sections: [third]\n    appendix: true\n")
+
+
+@needs_tex
+def test_an_appendix_twin_numbers_as_the_english_does(tmp_path):
+    # the English prints Appendix A and (A.1); twin pages never switched to
+    # \appendix, so they printed 2 and (2.1) and the labels disagreed
+    book = tmp_path / "book"
+    (book / "chapters" / "one").mkdir(parents=True)
+    (book / "chapters" / "two").mkdir(parents=True)
+    (book / "parody.yaml").write_text(YAML_APPENDIX)
+    first = "---\ntitle: First\n---\n\n# First {#sec:first}\n\n" + _para(1) + "\n"
+    third = ("---\ntitle: Third\n---\n\n# Third {#sec:third}\n\nAlpha holds:\n\n"
+             "$$x = 1$$ {#eq:alpha}\n\nBy [@eq:alpha], alpha holds. " + _para(2) + "\n")
+    (book / "chapters" / "one" / "first.md").write_text(first)
+    (book / "chapters" / "two" / "third.md").write_text(third)
+    meta, body = split_frontmatter(third)
+    chunks = split_chunks(body)
+    TranslationFile(language="de", source="chapters/two/third.md", title="Third (de)",
+                    title_hash=chunk_hash(meta["title"]),
+                    chunks=[(chunk_hash(c), c.replace("Alpha", "Alpha-DE")) for c in chunks]
+                    ).write(translation_path(book, "de", "two", "third"))
+    pdf, report = build_twin(book, "de", chapters=["two"], out=tmp_path / "twin.pdf")
+    assert report.references == [], report.references
+    assert report.tex_errors == [], report.tex_errors
+    import pypdf
+    text = " ".join(" ".join((p.extract_text() or "").split()) for p in pypdf.PdfReader(str(pdf)).pages)
+    assert "(A.1)" in text, text[:400]
+    assert "(2.1)" not in text, text[:400]
+
+
+def test_english_citations_are_the_keys_the_english_bbl_holds():
+    from parody.twin.build import english_citations
+    bbl = ("\\refsection{0}\n  \\datalist[entry]{nty/global//global/global/global}\n"
+           "    \\entry{alpha1999}{book}{}{}\n      \\field{labelnumber}{1}\n    \\endentry\n"
+           "    \\entry{zeta2001}{article}{}{}\n    \\endentry\n")
+    assert english_citations(bbl) == ["alpha1999", "zeta2001"]
+    assert english_citations("") == []
+
+
+BIB_TWO = """\
+@book{alpha1999, author={Aardvark, Ann}, title={Alpha}, year={1999}, publisher={P}}
+@book{zeta2001, author={Zebra, Zed}, title={Zeta}, year={2001}, publisher={P}}
+"""
+
+
+@needs_tex
+def test_a_twin_of_some_chapters_numbers_citations_as_the_english(tmp_path):
+    # the English numbers a citation among all the book cites; a twin of some
+    # chapters numbered it among its own (System Dynamics, Korean: [2] for [12])
+    book = tmp_path / "book"
+    (book / "chapters" / "one").mkdir(parents=True)
+    (book / "chapters" / "two").mkdir(parents=True)
+    (book / "parody.yaml").write_text(YAML_TWO)
+    (book / "book.bib").write_text(BIB_TWO)
+    first = "---\ntitle: First\n---\n\n# First {#sec:first}\n\nAs Zebra shows [@zeta2001], alpha holds. " \
+        + _para(1) + "\n"
+    third = "---\ntitle: Third\n---\n\n# Third {#sec:third}\n\nAs Aardvark shows [@alpha1999]. " \
+        + _para(2) + "\n"
+    (book / "chapters" / "one" / "first.md").write_text(first)
+    (book / "chapters" / "two" / "third.md").write_text(third)
+    meta, body = split_frontmatter(first)
+    chunks = split_chunks(body)
+    TranslationFile(language="de", source="chapters/one/first.md", title="First (de)",
+                    title_hash=chunk_hash(meta["title"]),
+                    chunks=[(chunk_hash(c), c.replace("alpha", "Alpha-DE")) for c in chunks]
+                    ).write(translation_path(book, "de", "one", "first"))
+    pdf, report = build_twin(book, "de", chapters=["one"], out=tmp_path / "twin.pdf")
+    assert report.tex_errors == [], report.tex_errors
+    import pypdf
+    text = " ".join(" ".join((p.extract_text() or "").split()) for p in pypdf.PdfReader(str(pdf)).pages)
+    assert "Zebra shows [2]" in text, text[:400]

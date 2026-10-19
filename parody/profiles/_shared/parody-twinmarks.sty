@@ -21,9 +21,14 @@
 % page restores it, or a label under an unnumbered heading (or equation) the
 % page starts with comes out empty. Detokenized, so a \protect'ed command in
 % it is written as itself.
+% "@appendix=1" once the English is past \appendix (chapters A, B, …), so a
+% twin page switches too: its chapter counter alone does not say so.
+\def\parody@appchapapp{\appendixname}
 \NewDocumentCommand\parodysctr{m}{%
   {\def\@elt##1{##1=\the\csname c@##1\endcsname,}%
-   \immediate\write\parodytwinctr{#1|\cl@@ckpt|\detokenize\expandafter{\@currentlabel}}}%
+   \immediate\write\parodytwinctr{#1|\cl@@ckpt
+     @appendix=\ifx\@chapapp\parody@appchapapp 1\else 0\fi,|%
+     \detokenize\expandafter{\@currentlabel}}}%
 }
 \NewDocumentCommand\parodys{m}{\setattribute\parodytwinattr{#1}\parodysctr{#1}}
 % (\parodysctr alone, before a box opens, logs the counters as they are

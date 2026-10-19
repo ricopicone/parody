@@ -5,16 +5,19 @@ For each page's pieces the translation is cut to the English page's extent:
 - a chunk with no translation yet sets its English, marked "not yet
   translated";
 - one whose English changed since it was translated sets the older
-  translation, marked "may lag the English".
+  translation, marked "may lag the English", while its maths, ids,
+  references and images still match; otherwise the English, as untranslated.
 
 Footnote definitions always come along with their section, since pandoc only
 sets the ones a page refers to. A box reopened on the page after a break
 steps its counter back first, so it keeps its number.
 """
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..translate.check import compare_chunks
 from ..translate.chunks import align_chunks, chunk_hash, split_chunks, split_frontmatter
 from .slices import footnote_definitions, slice_chunk, without_footnote_definitions
 
@@ -72,6 +75,15 @@ def align_translation(section, translation):
     for k, j, state in align_chunks(hashes, stored):
         if j is not None:
             texts[k], states[k] = translation.chunks[j][1], state
+    # A stale translation is set only while it keeps what the current English
+    # must keep (its maths, ids, references, images): the old maths would
+    # print, and a renamed label would be undefined and refuse the twin. Such
+    # a chunk sets the English, as if not yet translated.
+    stale = [k for k, state in enumerate(states) if state == "stale"]
+    if stale:
+        changed = compare_chunks([section.chunks[k] for k in stale], [texts[k] for k in stale])
+        for i in changed:
+            texts[stale[i]], states[stale[i]] = None, "missing"
     return AlignedTranslation(texts, states, translation.title)
 
 
@@ -90,6 +102,9 @@ def _box_step_back(section, chunk, counters, start=1):
              for name in BOX_COUNTERS
              if name in head and name in inside and inside[name] > head[name]]
     return "\n".join(lines)
+
+
+_FOOTNOTE_START = re.compile(r"^\[\^([^\]\s]+)\]:[ \t]*")
 
 
 def _is_footnote_definition(chunk):
@@ -136,17 +151,26 @@ def page_markdown(page, english, translated, language, counters):
             groups[-1] = (piece.section, groups[-1][1] + "\n\n" + markdown)
         else:
             groups.append((piece.section, markdown))
-    # Footnote definitions, for whatever references the page holds.
+    # Footnote definitions, for whatever references the page holds, marked
+    # (and, where the page refers to them, counted) like any other chunk.
     for i, (section, markdown) in enumerate(groups):
         en, tr = english[section], translated[section]
-        definitions = [tr.texts[k] or en.chunks[k] for k, c in enumerate(en.chunks)
-                       if _is_footnote_definition(c)]
-        # and those inside a chunk (an exercise, an example, a list item),
-        # which no slice carries: the reference may be on this page and the
-        # definition's sentences on another
+        definitions = []
         for k, c in enumerate(en.chunks):
-            if not _is_footnote_definition(c):
-                definitions += footnote_definitions(tr.texts[k] or c)
+            text, state = tr.texts[k], tr.states[k]
+            # those inside a chunk (an exercise, an example, a list item) too,
+            # which no slice carries: the reference may be on this page and
+            # the definition's sentences on another
+            found = [text or c] if _is_footnote_definition(c) else footnote_definitions(text or c)
+            for definition in found:
+                if text is None or state == "stale":
+                    kind = "untranslated" if text is None else "stale"
+                    definition = _FOOTNOTE_START.sub(
+                        lambda m: f"{m.group(0)}\\parody{kind} ", definition, count=1)
+                    label = _FOOTNOTE_START.match(definition)
+                    if _is_footnote_definition(c) and label and f"[^{label.group(1)}]" in markdown:
+                        notes.append(f"{kind}: {en.key} chunk {k}")
+                definitions.append(definition)
         if definitions:
             groups[i] = (section, markdown + "\n\n" + "\n\n".join(definitions))
     return groups, notes

@@ -162,6 +162,16 @@ def english_labels(english_aux, twin_aux):
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+_BBL_ENTRY = re.compile(r"^\s*\\entry\{([^}]+)\}", re.M)
+
+
+def english_citations(english_bbl):
+    """The keys the English cites, from its ``.bbl``: the twin cites them all
+    (``\\nocite``), or a twin of some chapters numbers each citation among
+    its own and prints [2] where the English prints [12]."""
+    return list(dict.fromkeys(_BBL_ENTRY.findall(english_bbl)))
+
+
 def reference_problems(english_aux, twin_aux, english_log, twin_log):
     """What a reader would find wrong in the twin's references: a label the
     twin numbers differently from the English (counters are restored, so they
@@ -280,11 +290,17 @@ def base_scale(scales):
     return min(1.0, math.floor(value * 100 + 1e-9) / 100)
 
 
+def _appendix_code(counters):
+    """``\\appendix`` where the English was past it, so chapters print A, B, …"""
+    return "\\appendix" if counters.get("@appendix") else ""
+
+
 def restore_code(counters):
     """``\\parodytwinset`` calls restoring the document counters the English
     had, then ``\\parodytwinlabel`` restoring its current label (what a
-    ``\\label`` there records), when the marks logged one."""
-    code = "".join(f"\\parodytwinset{{{name}}}{{{value}}}" for name, value in counters.items()
+    ``\\label`` there records), when the marks logged one. In an appendix,
+    ``\\appendix`` first: it resets the chapter counter the calls then set."""
+    code = _appendix_code(counters) + "".join(f"\\parodytwinset{{{name}}}{{{value}}}" for name, value in counters.items()
                    if name not in _SKIP_COUNTERS and "@" not in name)
     if "@currentlabel" in counters:
         code += f"\\parodytwinlabel{{{counters['@currentlabel']}}}"
@@ -303,6 +319,25 @@ def floats_here(tex):
     as unsupported).
     """
     return _FLOAT_OPEN.sub(lambda m: f"\\begin{{{m.group(1)}}}[H]", tex)
+
+
+_MARK_TEX = re.compile(rf"\\{MARK_MACRO}\{{(\d+)\}}")
+_FLOAT_BODY = re.compile(rf"((?:\\{MARK_MACRO}\{{\d+\}}\s*)*)"
+                         r"\\begin\{(figure\*?|table\*?)\}(\[[^\]]*\])?(.*?)\\end\{\2\}", re.S)
+
+
+def float_units(tex):
+    """The mark values of the floats in a marked section's ``tex``.
+
+    The mark just before a float and those inside it travel with it to the
+    page LaTeX puts it on, which need not be the page of the text around it.
+    A float set here ([H]) stays in the text.
+    """
+    units = set()
+    for m in _FLOAT_BODY.finditer(tex):
+        if m.group(3) != "[H]":
+            units.update(int(v) for v in _MARK_TEX.findall(m.group(1) + m.group(4)))
+    return units
 
 
 def mismatches_that_matter(mismatched, abspages):
@@ -403,7 +438,7 @@ def _marks(page, english, translated, titles, counters):
     src = english[section]
     chapter_no = page.counters.get("chapter", 0)
     chapter_title = titles.get(src.chapter.slug) or src.chapter.title
-    code = f"\\parodytwinset{{chapter}}{{{chapter_no}}}"
+    code = _appendix_code(page.counters) + f"\\parodytwinset{{chapter}}{{{chapter_no}}}"
     right = ""
     if section_prints_a_heading(src.slug, src.meta, src.source.read_text(encoding="utf-8")):
         if section in starts:
@@ -452,9 +487,16 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
                    if index[f"{chapter.slug}/{s}"] in printed]
             if ids:
                 firsts.add(min(ids))
-    pages = paginate(inv.rows, inv.counters, selected, firsts)
-
     english = english_sections(project, index)
+    tex_by_section = {}
+    for i in selected:
+        tex = (build_dir / "marked" / "sections" / english[i].chapter.slug / f"{english[i].slug}.tex"
+               if i in english else None)
+        if tex and tex.is_file():
+            tex_by_section[i] = tex.read_text(encoding="utf-8")
+    floats = set().union(*map(float_units, tex_by_section.values()))
+    pages = paginate(inv.rows, inv.counters, selected, firsts, floats)
+
     translated = {i: align_translation(english[i], _read_translation(project_dir, language, english[i]))
                   for i in selected if i in english}
     titles = _chapter_titles(project_dir, language)
@@ -465,11 +507,6 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     page_numbers = {}
     for abspage, page_no, _, _ in inv.rows:
         page_numbers.setdefault(abspage, page_no)
-    tex_by_section = {}
-    for i in selected:
-        tex = build_dir / "marked" / "sections" / english[i].chapter.slug / f"{english[i].slug}.tex"
-        if i in english and tex.is_file():
-            tex_by_section[i] = tex.read_text(encoding="utf-8")
     report = TwinReport(language=language,
                         mismatched_pages=mismatches_that_matter(
                             inv.mismatched_pages, [p.abspage for p in pages]),
@@ -534,6 +571,9 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     labels = twin_dir / "english-labels.tex"
     labels.unlink(missing_ok=True)
 
+    cited = english_citations(_read(build_dir / "marked" / "main.bbl"))
+    nocite = f"\\nocite{{{','.join(cited)}}}\n" if cited else ""
+
     def write_main(scale):
         body = "".join(_page_tex(page, inputs, scale, cm, sm, ct, cl)
                        for page, inputs, cm, sm, ct, cl in composed)
@@ -543,7 +583,7 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
             # not watch a file that was not there on its first run
             + f"\n% english-labels {_labels_tag(labels)}"
             + "\n\\makeatletter\\InputIfFileExists{english-labels.tex}{}{}\\makeatother"
-            + "\n\\begin{document}\n\\mainmatter\n"
+            + "\n\\begin{document}\n" + nocite + "\\mainmatter\n"
             + body + "\\end{document}\n", encoding="utf-8")
 
     def fits():

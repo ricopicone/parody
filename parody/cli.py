@@ -206,6 +206,12 @@ def cmd_twin(args):
         print(f"  {report.untranslated} untranslated and {report.stale} stale chunk(s) set with a marker")
     for line in report.unsupported:
         print(f"  {line}")
+    moved = [n for n in report.notes
+             if "out of order" in n or "not on any page" in n or "a float on page" in n]
+    for line in moved[:10]:
+        print(f"  moved: {line}")
+    if len(moved) > 10:
+        print(f"  moved: … and {len(moved) - 10} more")
     if report.mismatched_pages:
         print("  ✗ the marked English differs from the published PDF on pages "
               + ", ".join(map(str, report.mismatched_pages)))
