@@ -227,3 +227,15 @@ def test_a_captioned_table_on_a_twin_page_compiles(tmp_path):
             "\\begin{tabular}{ll}\na & b \\\\\n\\end{tabular}\n\\end{table}\n\\end{twinpage}\n")
     pdf, log = _compile(tmp_path, body)
     assert "Eine Tabelle" in _text(pdf)[0]
+
+
+@needs_tex
+def test_spanish_maths_operators_print_plain(tmp_path):
+    # babel-spanish accents \lim, \max, \min, \inf and mod unless es-minimal:
+    # "l§ım", "m§ax" in the book's maths font, with no TeX error to say so
+    body = ("\\begin{twinpage}{3}{1.0}{\\parodytwinset{chapter}{1}}{}{}\n"
+            "Texto $\\lim_{x \\to 0} f(x) = \\max g$.\n\\end{twinpage}\n")
+    pdf, log = _compile(tmp_path, body, language="es")
+    text = _text(pdf)[0].replace(" ", "")
+    assert "lim" in text and "max" in text, text
+    assert "§" not in text and "ı" not in text, text

@@ -65,7 +65,10 @@ TWIN_LANGUAGES = {
                   "stale": "peut différer de l’anglais"},
     },
     "es": {
-        "preamble": "\\usepackage[spanish,es-noshorthands,shorthands=off]{babel}",
+        # es-minimal: without it babel-spanish accents \lim, \max, \min, \inf and
+        # mod (printed "l§ım", "m§ax" in the book's maths font, with no TeX error)
+        # and numbers sections "2.2." with ▪ bullets
+        "preamble": "\\usepackage[spanish,es-minimal,es-noshorthands,shorthands=off]{babel}",
         "names": _names("Definición", "Teorema", "Lema", "Corolario", "Proposición",
                         "Ejemplo", "Recuadro", "Problema", "Ejercicio de laboratorio",
                         "Solución de laboratorio"),
