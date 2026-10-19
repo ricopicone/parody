@@ -380,3 +380,11 @@ def test_a_straight_quote_after_the_stop_opens_the_next_sentence_when_none_is_op
     text = '这里写着"那儿有个位置。"这句话。"生命"一词很难。'
     starts = sentence_starts(text, "zh")
     assert [text[b:b + 3] for b in starts] == ['这句话', '"生命']
+
+
+def test_german_quotes_end_and_open_sentences():
+    # „…“: the closing “ was not a closer and „ hid the capital after it, so
+    # robotics de lost every boundary next to a quotation
+    text = "Er ging. „Das geht.“ Dann kam mehr."
+    starts = sentence_starts(text, "de")
+    assert [text[b:b + 4] for b in starts] == ["„Das", "Dann"]

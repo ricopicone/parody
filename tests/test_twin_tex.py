@@ -239,3 +239,18 @@ def test_spanish_maths_operators_print_plain(tmp_path):
     text = _text(pdf)[0].replace(" ", "")
     assert "lim" in text and "max" in text, text
     assert "§" not in text and "ı" not in text, text
+
+
+@needs_tex
+@pytest.mark.parametrize("language, chapter, section", [("ko", "1장", "1.1절"), ("zh", "第1章", "第1.1节")])
+def test_chapter_and_section_references_read_the_language_s_way(tmp_path, language, chapter, section):
+    # "장 1", "节 1.1": the name went before the number, as in English
+    try:
+        L.cjk_font(language)
+    except RuntimeError:
+        pytest.skip(f"no {language} font")
+    body = ("\\chapter{A}\\label{ch:a}\n\\section{B}\\label{sec:b}\n"
+            "See \\cref{ch:a} and \\cref{sec:b}. \\Cref{ch:a}.\n")
+    pdf, _ = _compile(tmp_path, body, language, runs=2)
+    text = " ".join(_text(pdf)).replace(" ", "")
+    assert f"See{chapter}and{section}" in text, text[-200:]

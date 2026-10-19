@@ -36,7 +36,7 @@ TWIN_LANGUAGES = {
         "extra_names": {},
         "cref": _cref(figure=("Abbildung", "Abbildungen"), table=("Tabelle", "Tabellen"),
                       equation=("Gleichung", "Gleichungen"), section=("Abschnitt", "Abschnitte"),
-                      chapter=("Kapitel", "Kapitel"), definition=("Definition", "Definitionen"),
+                      chapter=("Kapitel", "Kapitel"), appendix=("Anhang", "Anhänge"), definition=("Definition", "Definitionen"),
                       theorem=("Satz", "Sätze"), lemma=("Lemma", "Lemmata"),
                       corollary=("Korollar", "Korollare"), proposition=("Proposition", "Propositionen"),
                       examplectr=("Beispiel", "Beispiele"), infoboxctr=("Kasten", "Kästen"),
@@ -54,7 +54,7 @@ TWIN_LANGUAGES = {
         "extra_names": {},
         "cref": _cref(figure=("figure", "figures"), table=("tableau", "tableaux"),
                       equation=("équation", "équations"), section=("section", "sections"),
-                      chapter=("chapitre", "chapitres"), definition=("définition", "définitions"),
+                      chapter=("chapitre", "chapitres"), appendix=("annexe", "annexes"), definition=("définition", "définitions"),
                       theorem=("théorème", "théorèmes"), lemma=("lemme", "lemmes"),
                       corollary=("corollaire", "corollaires"), proposition=("proposition", "propositions"),
                       examplectr=("exemple", "exemples"), infoboxctr=("encadré", "encadrés"),
@@ -75,7 +75,7 @@ TWIN_LANGUAGES = {
         "extra_names": {},
         "cref": _cref(figure=("figura", "figuras"), table=("tabla", "tablas"),
                       equation=("ecuación", "ecuaciones"), section=("sección", "secciones"),
-                      chapter=("capítulo", "capítulos"), definition=("definición", "definiciones"),
+                      chapter=("capítulo", "capítulos"), appendix=("apéndice", "apéndices"), definition=("definición", "definiciones"),
                       theorem=("teorema", "teoremas"), lemma=("lema", "lemas"),
                       corollary=("corolario", "corolarios"), proposition=("proposición", "proposiciones"),
                       examplectr=("ejemplo", "ejemplos"), infoboxctr=("recuadro", "recuadros"),
@@ -94,11 +94,14 @@ TWIN_LANGUAGES = {
         "extra_names": {"figurename": "图", "tablename": "表", "chaptername": "章",
                         "contentsname": "目录"},
         "cref": _cref(figure=("图", "图"), table=("表", "表"), equation=("式", "式"),
-                      section=("节", "节"), chapter=("章", "章"), definition=("定义", "定义"),
+                      section=("节", "节"), chapter=("章", "章"), appendix=("附录", "附录"), definition=("定义", "定义"),
                       theorem=("定理", "定理"), lemma=("引理", "引理"), corollary=("推论", "推论"),
                       proposition=("命题", "命题"), examplectr=("例", "例"), infoboxctr=("框", "框"),
                       exercise=("习题", "习题"), labexercise=("习题", "习题"),
                       listingctr=("代码", "代码"), algorithmctr=("算法", "算法")),
+        # a chapter or section is numbered inside its word: 第3章, 第1.2节
+        "cref_format": {"chapter": "第{}章", "section": "第{}节", "subsection": "第{}节",
+                        "subsubsection": "第{}节"},
         "capitalised": True,
         "notes": {"untranslated": "英文：尚未翻译", "stale": "可能与英文不一致"},
     },
@@ -111,12 +114,15 @@ TWIN_LANGUAGES = {
         "extra_names": {"figurename": "그림", "tablename": "표", "chaptername": "장",
                         "contentsname": "차례"},
         "cref": _cref(figure=("그림", "그림"), table=("표", "표"), equation=("식", "식"),
-                      section=("절", "절"), chapter=("장", "장"), definition=("정의", "정의"),
+                      section=("절", "절"), chapter=("장", "장"), appendix=("부록", "부록"), definition=("정의", "정의"),
                       theorem=("정리", "정리"), lemma=("보조정리", "보조정리"),
                       corollary=("따름정리", "따름정리"), proposition=("명제", "명제"),
                       examplectr=("예제", "예제"), infoboxctr=("상자", "상자"),
                       exercise=("문제", "문제"), labexercise=("문제", "문제"),
                       listingctr=("코드", "코드"), algorithmctr=("알고리즘", "알고리즘")),
+        # the word follows the number: 3장, 1.2절
+        "cref_format": {"chapter": "{}장", "section": "{}절", "subsection": "{}절",
+                        "subsubsection": "{}절"},
         "capitalised": True,
         "notes": {"untranslated": "영어: 아직 번역되지 않음", "stale": "영어 원문과 다를 수 있음"},
     },
@@ -162,6 +168,10 @@ def twin_preamble(language):
     for counter, (one, many) in spec["cref"].items():
         lines.append(f"\\crefname{{{counter}}}{{{one}}}{{{many}}}")
         lines.append(f"\\Crefname{{{counter}}}{{{_cap(one)}}}{{{_cap(many)}}}")
+    for counter, form in spec.get("cref_format", {}).items():
+        form = form.replace("{}", "#2#1#3")  # #2 and #3 bracket the link
+        lines.append(f"\\crefformat{{{counter}}}{{{form}}}")
+        lines.append(f"\\Crefformat{{{counter}}}{{{form}}}")
     notes = spec["notes"]
     lines.append(f"\\renewcommand{{\\parodytwinuntranslatedtext}}{{{notes['untranslated']}}}")
     lines.append(f"\\renewcommand{{\\parodytwinstaletext}}{{{notes['stale']}}}")

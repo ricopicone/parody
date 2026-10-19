@@ -40,7 +40,8 @@ _PROTECTED = re.compile(
 _CLOSERS = "\"'”’»)］）」』"
 _BOUNDARY = {
     # end . ? ! , any closers, whitespace, then a capital letter
-    "cased": re.compile(rf"[.?!][{_CLOSERS}]*([ \t]+|\n[ \t]*)(?=\S)"),
+    # (German closes a quotation with “ and ‘: „So.“ Dann)
+    "cased": re.compile(rf"[.?!][{_CLOSERS}“‘]*([ \t]+|\n[ \t]*)(?=\S)"),
     "ko": re.compile(rf"[.?!][{_CLOSERS}]*([ \t]+|\n[ \t]*)(?=\S)"),
     "zh": re.compile(rf"[。！？][{_CLOSERS}]*[ \t]*\n?[ \t]*(?=\S)"),
 }
@@ -164,8 +165,9 @@ def _opens_with_text(div_chunk):
 
 
 def _first_letter(text, offset):
-    """The first character at ``offset`` past opening markup ([ * _ quotes brackets)."""
-    m = re.match(r"[\[*_\"'“‘(]*(.)", text[offset:offset + 12], re.S)
+    """The first character at ``offset`` past opening markup ([ * _ quotes brackets,
+    and the openers „ ‚ « ‹ ¿ ¡ of German, French and Spanish)."""
+    m = re.match(r"[\[*_\"'“‘(„‚«‹¿¡]*(.)", text[offset:offset + 12], re.S)
     return m.group(1) if m else ""
 
 
