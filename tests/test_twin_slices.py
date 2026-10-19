@@ -260,3 +260,36 @@ def test_a_cut_in_a_tight_nested_item_keeps_its_outer_sibling_an_item():
     s = slice_chunk(text, "de", _cut_at(en, "Going"), None, en)
     lists = [(b["c"][0][0], len(b["c"][1])) for b in _blocks_of(s.text) if b["t"] == "OrderedList"]
     assert lists == [(2, 1)]
+
+
+# A footnote defined inside the chunk that refers to it (an exercise, an
+# example, a list item): the definition travelled with whichever slice held its
+# text, so a page cut between them printed a literal [^x] on one page and lost
+# the note on the next (robotics' differential-drive example, electronics'
+# decibels exercise); a cut inside it made its tail body text.
+
+NOTED = ("::: {.example}\nDer Wagen fährt.[^rad] Er dreht sich. Danach hält er.\n\n"
+         "[^rad]: Das Rad rollt. Es gleitet nicht.\n\nZum Schluss steht er.\n:::\n")
+NOTED_EN = ("::: {.example}\nThe cart rolls.[^rad] It turns. Then it stops.\n\n"
+            "[^rad]: The wheel rolls. It does not slip.\n\nAt last it stands.\n:::\n")
+
+
+def test_a_nested_footnote_definition_is_in_no_slice():
+    from parody.twin.marks import sentence_starts
+    n = len(sentence_starts(NOTED_EN, "en"))
+    for cut in range(1, n + 1):
+        left = slice_chunk(NOTED, "de", 0, cut, NOTED_EN).text
+        right = slice_chunk(NOTED, "de", cut, None, NOTED_EN).text
+        for piece in (left, right):
+            assert "[^rad]:" not in piece, (cut, piece)
+            assert "Es gleitet nicht" not in piece, (cut, piece)
+
+
+def test_nested_footnote_definitions_are_collected_whole():
+    from parody.twin.slices import footnote_definitions
+    assert footnote_definitions(NOTED) == ["[^rad]: Das Rad rollt. Es gleitet nicht."]
+    nested = ("a.  Erstens.[^x]\n\n    [^x]: Eine Notiz\n        über zwei Zeilen.\n\n"
+              "        Und ein zweiter Absatz.\n\nb.  Zweitens.\n")
+    assert footnote_definitions(nested) == [
+        "[^x]: Eine Notiz\n    über zwei Zeilen.\n\n    Und ein zweiter Absatz."]
+    assert footnote_definitions("Kein Fußnotentext.") == []

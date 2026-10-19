@@ -139,6 +139,62 @@ def _outdented(text, a, piece):
     return "\n".join(out)
 
 
+_FOOTNOTE_DEFINITION = re.compile(r"^([ \t]*)\[\^[^\]\s]+\]:", re.M)
+_NOT_A_CONTINUATION = re.compile(r"[ \t]*(:::|\[\^[^\]\s]+\]:)")
+
+
+def _footnote_spans(text):
+    """``[(start, end)]`` of each footnote definition in ``text``: its marker
+    line, then lines that continue it — indented deeper than the marker, or a
+    lazy line straight after it — up to its last line's end. A fenced-div
+    fence, another definition, or a list item no deeper than the marker ends
+    it, as does a blank line before a line no deeper than the marker."""
+    spans = []
+    for m in _FOOTNOTE_DEFINITION.finditer(text):
+        indent = len(m.group(1))
+        line_end = text.find("\n", m.start())
+        end = len(text) if line_end == -1 else line_end + 1
+        at, blank = end, False
+        while at < len(text):
+            nxt = text.find("\n", at)
+            stop = len(text) if nxt == -1 else nxt + 1
+            line = text[at:stop].rstrip("\n")
+            if not line.strip():
+                blank = True
+            elif _NOT_A_CONTINUATION.match(line) or (
+                    _indent(line) <= indent and (blank or _LIST_ITEM.match(line))):
+                break
+            else:
+                end, blank = stop, False
+            at = stop
+        spans.append((m.start(), end))
+    return spans
+
+
+def footnote_definitions(text):
+    """Each footnote definition inside ``text``, whole and outdented to the
+    margin: what a twin page appends, so the note is there whichever page holds
+    its reference."""
+    out = []
+    for s, e in _footnote_spans(text):
+        block = text[s:e].rstrip()
+        indent = _indent(block.split("\n", 1)[0])
+        lines = [line[min(indent, _indent(line)):] for line in block.split("\n")]
+        out.append("\n".join(lines))
+    return out
+
+
+def without_footnote_definitions(text):
+    """``text`` with the footnote definitions inside it taken out (a chunk set
+    whole: the page appends them, as for a slice)."""
+    kept, at = [], 0
+    for s, e in _footnote_spans(text):
+        kept.append(text[at:s])
+        at = e
+    kept.append(text[at:])
+    return "".join(kept).strip()
+
+
 _ATTR_TOKEN = re.compile(r'[^\s=]+="[^"]*"|[^\s=]+=\S+|\S+')
 
 
@@ -217,7 +273,24 @@ def slice_chunk(text, language, start, end, english):
     b = len(text) if end is None else _item_start(text, offset(end))
     if end is not None and b < a:
         b = a
-    piece = text[a:b].strip()
+    # Footnote definitions inside the chunk go in no slice: the page gets them
+    # whole (compose.page_markdown, by footnote_definitions), whichever page
+    # holds the reference. A cut inside one moves past it.
+    spans = _footnote_spans(text)
+    for s, e in spans:
+        if s < a < e:
+            a = e
+        if s < b < e:
+            b = s
+    if end is not None and b < a:
+        b = a
+    kept, at = [], a
+    for s, e in spans:
+        if a <= s and e <= b:
+            kept.append(text[at:s])
+            at = e
+    kept.append(text[at:b])
+    piece = "".join(kept).strip()
     if a > 0:
         piece = _outdented(text, a, piece)
 

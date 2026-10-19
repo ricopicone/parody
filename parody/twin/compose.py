@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..translate.chunks import align_chunks, chunk_hash, split_chunks, split_frontmatter
-from .slices import slice_chunk
+from .slices import footnote_definitions, slice_chunk, without_footnote_definitions
 
 # Counters a box steps when it opens (parody-environments.sty).
 BOX_COUNTERS = ("thmctr", "examplectr", "infoboxctr", "listingctr", "algorithmctr",
@@ -118,7 +118,8 @@ def page_markdown(page, english, translated, language, counters):
             blocks.append(marker)
         run = marker
         if piece.start == 0 and piece.end is None:
-            body = text
+            # its nested footnote definitions come below, with the section's
+            body = without_footnote_definitions(text)
         else:
             cut = slice_chunk(text, lang, piece.start, piece.end, en_text)
             body = cut.text
@@ -140,6 +141,12 @@ def page_markdown(page, english, translated, language, counters):
         en, tr = english[section], translated[section]
         definitions = [tr.texts[k] or en.chunks[k] for k, c in enumerate(en.chunks)
                        if _is_footnote_definition(c)]
+        # and those inside a chunk (an exercise, an example, a list item),
+        # which no slice carries: the reference may be on this page and the
+        # definition's sentences on another
+        for k, c in enumerate(en.chunks):
+            if not _is_footnote_definition(c):
+                definitions += footnote_definitions(tr.texts[k] or c)
         if definitions:
             groups[i] = (section, markdown + "\n\n" + "\n\n".join(definitions))
     return groups, notes

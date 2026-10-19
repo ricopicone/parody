@@ -419,3 +419,25 @@ def test_sections_titled_in_front_matter_number_as_in_the_english(tmp_path):
     assert report.references == []
     aux = (tmp_path / "book" / "build" / "twin" / "twin-de" / "main.aux").read_text()
     assert "\\newlabel{sec:first}{{1.1}" in aux and "\\newlabel{sec:third}{{1.3}" in aux
+
+
+NOTED_EN = ["# S {#sec:s}",
+            "::: {.example}\nThe cart rolls.[^rad] It turns. Then it stops.\n\n"
+            "[^rad]: The wheel rolls. It does not slip.\n\nAt last it stands.\n:::"]
+
+
+def test_a_nested_note_comes_with_every_page_of_its_section():
+    # the reference on one page, the definition's sentences on the next: the
+    # note was printed as a literal [^rad] on one and lost on the other
+    tr = align_translation(_section(NOTED_EN), _tf(NOTED_EN, lambda c: c.replace("cart", "Wagen")))
+    for page in (TwinPage(5, 1, pieces=[Piece(1, 0, 0, None), Piece(1, 1, 0, 2)]),
+                 TwinPage(6, 2, pieces=[Piece(1, 1, 2, None)])):
+        (_, md), = page_markdown(page, {1: _section(NOTED_EN)}, {1: tr}, "de", {})[0]
+        assert md.count("[^rad]: The wheel rolls. It does not slip.") == 1, md
+
+
+def test_a_whole_chunk_does_not_define_its_nested_note_twice():
+    tr = align_translation(_section(NOTED_EN), _tf(NOTED_EN, lambda c: c))
+    page = TwinPage(5, 1, pieces=[Piece(1, 0, 0, None), Piece(1, 1, 0, None)])
+    (_, md), = page_markdown(page, {1: _section(NOTED_EN)}, {1: tr}, "de", {})[0]
+    assert md.count("[^rad]:") == 1, md
