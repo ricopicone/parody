@@ -372,3 +372,11 @@ def test_a_box_head_mark_is_never_inside_its_first_word(first, rest):
 def test_first_word_takes_whole_maths_code_and_spans(line, word):
     from parody.twin.marks import _after_first_word
     assert line[:_after_first_word(line)] == word
+
+
+def test_a_straight_quote_after_the_stop_opens_the_next_sentence_when_none_is_open():
+    # zh with straight quotes: "。"" was taken as the stop and its closing
+    # quote, also when that quote opens the next phrase, which then lost it
+    text = '这里写着"那儿有个位置。"这句话。"生命"一词很难。'
+    starts = sentence_starts(text, "zh")
+    assert [text[b:b + 3] for b in starts] == ['这句话', '"生命']

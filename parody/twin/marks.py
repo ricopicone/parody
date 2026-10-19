@@ -175,6 +175,20 @@ def _starts_a_sentence(text, offset):
     return bool(rest.strip()) and not rest.startswith("[^") and not re.match(r":{3,}", rest)
 
 
+def _quote_opens_next(text, m):
+    """Where a Chinese sentence ending at ``m`` starts the next one.
+
+    Straight quotes do not say which way they face: a ``"`` right after the
+    stop closes a quotation only when one is open in the paragraph, and
+    otherwise opens the next sentence's, which must not lose it.
+    """
+    quote = m.start() + 1
+    if not text.startswith('"', quote):
+        return m.end()
+    paragraph = text.rfind("\n\n", 0, m.start()) + 1
+    return quote if text.count('"', paragraph, m.start()) % 2 == 0 else m.end()
+
+
 def sentence_starts(text, language="en"):
     """Offsets in ``text`` where a new sentence begins."""
     kind = "cased" if language in _CASED else language
@@ -187,19 +201,20 @@ def sentence_starts(text, language="en"):
         for m in pattern.finditer(text, last, p_start):
             if m.end() >= p_start:
                 continue
-            if kind == "cased" and not _first_letter(text, m.end()).isupper():
+            end = _quote_opens_next(text, m) if kind == "zh" else m.end()
+            if kind == "cased" and not _first_letter(text, end).isupper():
                 continue
             word = _WORD_BEFORE.search(text, 0, m.start())
             if word:
                 token = word.group(1).lower()
                 if (len(token) == 1 and token.isalpha()) or token in abbreviations:
                     continue
-            if not _starts_a_sentence(text, m.end()):
+            if not _starts_a_sentence(text, end):
                 continue
             line = text[text.rfind("\n", 0, m.start()) + 1:m.start()]
-            if _MARKER_NUMBER.fullmatch(line) or _LIST_ITEM.match(text, m.end()):
+            if _MARKER_NUMBER.fullmatch(line) or _LIST_ITEM.match(text, end):
                 continue  # a list marker's own full stop, or a break onto an item
-            starts.append(m.end())
+            starts.append(end)
         # A display whose maths ends in . ? or ! ends its sentence too.
         if text.startswith("$$", p_start) and _DISPLAY_END.search(text[p_start + 2:p_end - 2]):
             after = _AFTER_DISPLAY.match(text, p_end)
