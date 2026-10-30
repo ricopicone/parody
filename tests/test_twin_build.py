@@ -229,6 +229,65 @@ def test_build_twin_tiny_book(tmp_path):
     assert any(t.startswith("1.2 Second (de)") for t in texts[second[0] - 1:second[0]])
 
 
+def _write_cloze_book(tmp_path):
+    """The tiny book with blanks: a word, a word in a long sentence, and a
+    passage, in the English and (marked up the same way) in the translation."""
+    book = _write_tiny_book(tmp_path)
+    first = book / "chapters" / "one" / "first.md"
+    text = first.read_text().replace(
+        "Sentence number 3 of paragraph 2 says alpha things.",
+        "Sentence number 3 of paragraph 2 says [KEYWORDONE]{.cloze} alpha things.", 1).replace(
+        "Sentence number 5 of paragraph 6 says alpha things.",
+        "Sentence number 5 of paragraph 6 says [KEYWORDTWO and more]{.cloze} alpha things.", 1)
+    text = text.replace(_para(8), _para(8) + "\n\n::: cloze\nKEYPASSAGE " + _para(80) + "\n:::", 1)
+    first.write_text(text)
+    meta, body = split_frontmatter(text)
+    TranslationFile(language="de", source="chapters/one/first.md",
+                    title=meta["title"] + " (de)", title_hash=chunk_hash(meta["title"]),
+                    chunks=[(chunk_hash(c), c.replace("alpha", "Alpha-DE"))
+                            for c in split_chunks(body)]
+                    ).write(translation_path(book, "de", "one", "first"))
+    return book
+
+
+@needs_tex
+def test_the_key_twin_is_the_twin_with_its_blanks_filled(tmp_path):
+    """Same pages, same lines, the answers written in: a reader's ink on the
+    blank twin lies on the key just as well (task #865)."""
+    import pypdf
+    book = _write_cloze_book(tmp_path)
+    pdf, report = build_twin(book, "de", out=tmp_path / "twin.pdf", key=True)
+    assert report.tex_errors == [] and report.mismatched_pages == []
+    assert report.key_problems == [] and report.key_moved == []
+    assert report.key_pdf == tmp_path / "twin-key.pdf"
+
+    def pages(path):
+        # no whitespace: kerning splits a word in extraction ("KEYPASS AGE")
+        return ["".join(p.extract_text().split()) for p in pypdf.PdfReader(str(path)).pages]
+    blank, key = pages(pdf), pages(report.key_pdf)
+    assert len(key) == len(blank) == report.pages
+    answers = ["KEYWORDONE", "KEYWORDTWOandmore", "KEYPASSAGE"]
+    for answer in answers:
+        assert not any(answer in t for t in blank), answer
+        assert any(answer in t for t in key), answer
+    # page for page: a page with no blank is the blank twin's exactly, and one
+    # with a blank opens and closes on the same words
+    for b, k in zip(blank, key):
+        if any(answer in k for answer in answers):
+            assert k[:60] == b[:60] and k[-60:] == b[-60:]
+        else:
+            assert k == b
+
+
+@needs_tex
+def test_no_key_twin_for_a_book_without_blanks(tmp_path):
+    book = _write_tiny_book(tmp_path)
+    (book / "parody.yaml").write_text(YAML + "cloze:\n  default: full\n")
+    _, report = build_twin(book, "de", out=tmp_path / "twin.pdf", key=True)
+    assert report.key_pdf is None
+    assert "not blank" in report.key_problems[0]
+
+
 def test_coverage_check_flags_a_gap():
     from parody.twin.build import coverage_problems
     pages = [TwinPage(5, 1, pieces=[Piece(1, 0, 0, 2)]), TwinPage(6, 2, pieces=[Piece(1, 0, 3, None)])]
@@ -286,6 +345,15 @@ def test_sidecar_round_trip(tmp_path):
         "approximate": [4], "untranslated": 0, "stale": 0}
     no_sbs = write_twin_sidecar(twin, report)
     assert json.loads(no_sbs.read_text())["side_by_side"] is None
+    assert "key" not in json.loads(no_sbs.read_text())  # no key twin: none named
+
+    key = tmp_path / "book-de-key.pdf"
+    key.write_bytes(b"%PDF key")
+    report.key_pdf = key
+    keyed = write_twin_sidecar(twin, report, None, tmp_path / "book-de-sbs-key.pdf")
+    assert json.loads(keyed.read_text())["key"] == {
+        "pdf": "book-de-key.pdf", "sha256": hashlib.sha256(b"%PDF key").hexdigest(),
+        "side_by_side": "book-de-sbs-key.pdf"}
 
 
 # parody runs lualatex with -file-line-error, so an error is "file:line: …",

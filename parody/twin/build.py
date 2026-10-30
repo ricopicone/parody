@@ -63,6 +63,9 @@ class TwinReport:
     references: list = field(default_factory=list)  # labels/refs the twin gets wrong
     notes: list = field(default_factory=list)
     sections: dict = field(default_factory=dict)  # "chapter/section" → [first, last] twin page
+    key_pdf: Path | None = None  # the key twin, when asked for and built cleanly
+    key_problems: list = field(default_factory=list)  # why there is no key twin
+    key_moved: list = field(default_factory=list)  # pages the key fitted at another scale
 
 
 SIDECAR_SCHEMA = 1
@@ -247,11 +250,13 @@ def section_ranges(pages, section_keys):
     return out
 
 
-def write_twin_sidecar(pdf, report, side_by_side=None):
+def write_twin_sidecar(pdf, report, side_by_side=None, key_side_by_side=None):
     """Write ``<twin>.twin.json`` beside the twin PDF; returns its path.
 
     It names the English PDF the twin pairs with by sha256, so a book site
-    can refuse a twin of an older English build.
+    can refuse a twin of an older English build. ``key`` names the key twin
+    (and its sheets) when one was built: same pages, same ranges, blanks
+    filled — absent otherwise, which a site reads as "no key".
     """
     from ..writers.pagemap import sha256_file
 
@@ -272,6 +277,12 @@ def write_twin_sidecar(pdf, report, side_by_side=None):
         "untranslated": report.untranslated,
         "stale": report.stale,
     }
+    if report.key_pdf:
+        payload["key"] = {
+            "pdf": Path(report.key_pdf).name,
+            "sha256": sha256_file(report.key_pdf),
+            "side_by_side": Path(key_side_by_side).name if key_side_by_side else None,
+        }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -462,8 +473,14 @@ def _page_tex(page, inputs, scale, chapmark, secmark, chapter_title, chapter_lab
             f"{{{chapmark}}}{{{secmark}}}{opt}\n" + "\n".join(inputs) + "\n\\end{twinpage}\n")
 
 
-def build_twin(project_dir, language, chapters=None, published_pdf=None, out=None, build_dir=None):
-    """Build the twin PDF; returns ``(pdf path, TwinReport)``."""
+def build_twin(project_dir, language, chapters=None, published_pdf=None, out=None, build_dir=None,
+               key=False):
+    """Build the twin PDF; returns ``(pdf path, TwinReport)``.
+
+    With ``key``, also the key twin beside it (``<out stem>-key.pdf``): the
+    same pages with the blanks filled in, at ``report.key_pdf`` when it built
+    cleanly page for page, else None with ``report.key_problems`` saying why.
+    """
     if language not in TWIN_LANGUAGES:
         raise ValueError(f"no twin typesetting for {language!r} (known: {', '.join(TWIN_LANGUAGES)})")
     # absolute: pandoc and latexmk each run from directories of their own
@@ -521,49 +538,59 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
                                                       inv.rows, page_numbers, tex_by_section))
 
     cloze_mode = resolve_cloze_mode(project.meta)
-    composed = []
-    with print_env(project, project_dir, twin_dir, cloze_mode, project.meta) as online:
-        for page in pages:
-            groups, notes = page_markdown(page, english, translated, language, inv.counters)
-            report.untranslated += sum(n.startswith("untranslated") for n in notes)
-            report.stale += sum(n.startswith("stale") for n in notes)
-            if any(n.startswith("approximate") for n in notes):
-                report.approximate.append(page.page)
-            report.notes += [f"page {page.page}: {n}" for n in notes + page.notes]
-            inputs = []
-            for k, (section, markdown) in enumerate(groups):
-                src = english[section]
-                md_path = twin_dir / "pages" / f"p{page.abspage}-{k}.md"
-                md_path.write_text(markdown + "\n", encoding="utf-8")
-                tex_path = md_path.with_suffix(".tex")
-                os.environ["PARODY_CHAPTER_DIR"] = str(Path(src.chapter.directory).resolve())
-                os.environ["PARODY_SECTION_URL"] = (f"{online}/{src.chapter.slug}/{src.slug}/"
-                                                    if online else "")
-                section_to_latex(md_path, tex_path, resource_dir=src.chapter.directory,
-                                 input_root=twin_dir)
-                if any(p.section == section and p.chunk == 0 and p.start == 0 for p in page.pieces):
-                    meta = dict(src.meta)
-                    meta["title"] = translated[section].title or src.title or meta.get("title")
-                    tex = synthesize_section_heading(
-                        tex_path.read_text(encoding="utf-8"), meta, src.slug)
-                    # The section number as the English had it just before the
-                    # heading: past any draft sections it skipped, which the
-                    # twin page's own restore (its first section's) predates.
-                    before = (inv.counters.get(_value(section, 0, 0)) or {}).get("section")
-                    if before is not None:
-                        tex = f"\\parodytwinset{{section}}{{{before}}}%\n" + tex
-                    tex_path.write_text(tex, encoding="utf-8")
-                tex_path.write_text(floats_here(tex_path.read_text(encoding="utf-8")),
-                                    encoding="utf-8")
-                inputs.append(f"\\input{{pages/{tex_path.name}}}")
-            chapmark, secmark = _marks(page, english, translated, titles, inv.counters), ""
-            chapter_title, chapter_labels = None, []
-            if page.chapter_start and page.first_unit is not None:
-                chapter = english[page.first_unit // 1_000_000].chapter
-                chapter_title = titles.get(chapter.slug) or chapter.title
-                chapter_labels = [chapter.slug] + (
-                    [chapter.hash] if chapter.hash and chapter.hash != chapter.slug else [])
-            composed.append((page, inputs, chapmark, secmark, chapter_title, chapter_labels))
+    page_groups = []
+    for page in pages:
+        groups, notes = page_markdown(page, english, translated, language, inv.counters)
+        report.untranslated += sum(n.startswith("untranslated") for n in notes)
+        report.stale += sum(n.startswith("stale") for n in notes)
+        if any(n.startswith("approximate") for n in notes):
+            report.approximate.append(page.page)
+        report.notes += [f"page {page.page}: {n}" for n in notes + page.notes]
+        page_groups.append((page, groups))
+
+    def compose(into, mode):
+        """Convert every page's translated markdown under ``into`` in cloze
+        ``mode``; returns what write_main sets, page by page."""
+        composed = []
+        with print_env(project, project_dir, into, mode, project.meta) as online:
+            for page, groups in page_groups:
+                inputs = []
+                for k, (section, markdown) in enumerate(groups):
+                    src = english[section]
+                    md_path = into / "pages" / f"p{page.abspage}-{k}.md"
+                    md_path.write_text(markdown + "\n", encoding="utf-8")
+                    tex_path = md_path.with_suffix(".tex")
+                    os.environ["PARODY_CHAPTER_DIR"] = str(Path(src.chapter.directory).resolve())
+                    os.environ["PARODY_SECTION_URL"] = (f"{online}/{src.chapter.slug}/{src.slug}/"
+                                                        if online else "")
+                    section_to_latex(md_path, tex_path, resource_dir=src.chapter.directory,
+                                     input_root=into)
+                    if any(p.section == section and p.chunk == 0 and p.start == 0 for p in page.pieces):
+                        meta = dict(src.meta)
+                        meta["title"] = translated[section].title or src.title or meta.get("title")
+                        tex = synthesize_section_heading(
+                            tex_path.read_text(encoding="utf-8"), meta, src.slug)
+                        # The section number as the English had it just before the
+                        # heading: past any draft sections it skipped, which the
+                        # twin page's own restore (its first section's) predates.
+                        before = (inv.counters.get(_value(section, 0, 0)) or {}).get("section")
+                        if before is not None:
+                            tex = f"\\parodytwinset{{section}}{{{before}}}%\n" + tex
+                        tex_path.write_text(tex, encoding="utf-8")
+                    tex_path.write_text(floats_here(tex_path.read_text(encoding="utf-8")),
+                                        encoding="utf-8")
+                    inputs.append(f"\\input{{pages/{tex_path.name}}}")
+                chapmark, secmark = _marks(page, english, translated, titles, inv.counters), ""
+                chapter_title, chapter_labels = None, []
+                if page.chapter_start and page.first_unit is not None:
+                    chapter = english[page.first_unit // 1_000_000].chapter
+                    chapter_title = titles.get(chapter.slug) or chapter.title
+                    chapter_labels = [chapter.slug] + (
+                        [chapter.hash] if chapter.hash and chapter.hash != chapter.slug else [])
+                composed.append((page, inputs, chapmark, secmark, chapter_title, chapter_labels))
+        return composed
+
+    composed = compose(twin_dir, cloze_mode)
 
     marked_main = (build_dir / "marked" / "main.tex").read_text(encoding="utf-8")
     preamble = marked_main.split("\\begin{document}")[0]
@@ -577,30 +604,30 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
     cited = english_citations(_read(build_dir / "marked" / "main.bbl"))
     nocite = f"\\nocite{{{','.join(cited)}}}\n" if cited else ""
 
-    def write_main(scale):
+    def write_main(into, pages_tex, scale, head=preamble):
         body = "".join(_page_tex(page, inputs, scale, cm, sm, ct, cl)
-                       for page, inputs, cm, sm, ct, cl in composed)
-        (twin_dir / "main.tex").write_text(
-            preamble + twin_preamble(language)
+                       for page, inputs, cm, sm, ct, cl in pages_tex)
+        (into / "main.tex").write_text(
+            head + twin_preamble(language)
             # its hash, so latexmk runs again when the labels change: it does
             # not watch a file that was not there on its first run
-            + f"\n% english-labels {_labels_tag(labels)}"
+            + f"\n% english-labels {_labels_tag(into / 'english-labels.tex')}"
             + "\n\\makeatletter\\InputIfFileExists{english-labels.tex}{}{}\\makeatother"
             + "\n\\begin{document}\n" + nocite + "\\mainmatter\n"
             + body + "\\end{document}\n", encoding="utf-8")
 
-    def fits():
-        if run_latexmk(project, project_dir, twin_dir) is None:
+    def fits(into):
+        if run_latexmk(project, project_dir, into) is None:
             raise RuntimeError("the twin build needs TeX (latexmk + lualatex)")
-        return parse_twinfit((twin_dir / "main.log").read_text(encoding="utf-8", errors="replace"))
+        return parse_twinfit((into / "main.log").read_text(encoding="utf-8", errors="replace"))
 
-    write_main(1.0)
-    needed = [s for (p, s), (page, *_) in zip(fits(), composed) if page.pieces]
+    write_main(twin_dir, composed, 1.0)
+    needed = [s for (p, s), (page, *_) in zip(fits(twin_dir), composed) if page.pieces]
     labels.write_text(english_labels(
         _read(build_dir / "marked" / "main.aux"), _read(twin_dir / "main.aux")), encoding="utf-8")
     report.base_scale = base_scale(needed)
-    write_main(report.base_scale)
-    final = fits()
+    write_main(twin_dir, composed, report.base_scale)
+    final = fits(twin_dir)
     report.squeezed = [(p, s) for p, s in final if s < report.base_scale - 1e-9]
     log = (twin_dir / "main.log").read_text(encoding="utf-8", errors="replace")
     marked_log = build_dir / "marked" / "main.log"
@@ -628,6 +655,38 @@ def build_twin(project_dir, language, chapters=None, published_pdf=None, out=Non
             "the twin PDF is unreadable: TeX stopped part-way (see the latexmk output)")
     else:
         report.shipped_pages = shipped
+
+    if key:
+        if cloze_mode != "blank":
+            report.key_problems.append(
+                f"the book's clozes print {cloze_mode!r}, not blank: there is no key to build")
+            return out, report
+        # The key twin: the same pages, converted and set again in key mode at
+        # the blank twin's scale. Key takes exactly the room blank does (the
+        # profiles' contract), so each page fits as its blank one did and a
+        # reader's ink on the blank twin lies on the key just as well.
+        key_dir = build_dir / f"twin-{language}-key"
+        (key_dir / "pages").mkdir(parents=True, exist_ok=True)
+        _copy_support(build_dir / "marked", key_dir)
+        shutil.copy2(labels, key_dir / "english-labels.tex")
+        flag = "\\def\\clozemode{blank}"
+        if preamble.count(flag) != 1:
+            report.key_problems.append(f"the preamble does not set {flag} once")
+            return out, report
+        write_main(key_dir, compose(key_dir, "key"), report.base_scale,
+                   head=preamble.replace(flag, "\\def\\clozemode{key}"))
+        key_final = fits(key_dir)
+        key_log = (key_dir / "main.log").read_text(encoding="utf-8", errors="replace")
+        report.key_problems += [f"TeX: {e}" for e in twin_errors(key_log, marked_log)[0]]
+        report.key_moved = [p for (p, s), (_, t) in zip(final, key_final) if abs(s - t) > 1e-9]
+        key_out = out.with_name(f"{out.stem}-key.pdf")
+        shutil.copy2(key_dir / "main.pdf", key_out)
+        key_pages = pdf_pages(key_out)
+        if key_pages != shipped:
+            report.key_problems.append(
+                f"the key twin has {key_pages} pages for the twin's {shipped}")
+        if not report.key_problems:
+            report.key_pdf = key_out
     return out, report
 
 

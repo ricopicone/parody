@@ -17,9 +17,14 @@ def test_cli_twin_requires_lang(tmp_path):
 def _fake_build(report):
     calls = {}
 
-    def build(project_dir, language, chapters=None, published_pdf=None, out=None, build_dir=None):
-        calls.update(project_dir=project_dir, language=language, chapters=chapters, out=out)
+    def build(project_dir, language, chapters=None, published_pdf=None, out=None, build_dir=None,
+              key=False):
+        calls.update(project_dir=project_dir, language=language, chapters=chapters, out=out,
+                     key=key)
         Path(out).write_bytes(b"%PDF-1.4")
+        if key and report.key_pdf is True:  # stands for "the key built"
+            report.key_pdf = Path(out).with_name(Path(out).stem + "-key.pdf")
+            report.key_pdf.write_bytes(b"%PDF-1.4 key")
         return Path(out), report
     return build, calls
 
@@ -136,3 +141,55 @@ def test_cli_twin_prints_where_a_unit_left_its_english_page(tmp_path, monkeypatc
     assert "moved: page 40: unit 9020000" in out
     assert "moved: page 38: unit 9018001, ahead" in out
     assert "untranslated 9001000" not in out
+
+
+def test_cli_twin_key_writes_the_key_its_sheets_and_names_them(tmp_path, monkeypatch, capsys):
+    import json
+
+    import parody.twin.build as B
+    import parody.twin.sidebyside as S
+    (tmp_path / "en.pdf").write_bytes(b"%PDF en")
+    report = TwinReport(language="de", pages=1, abspages=[5], english_pdf=tmp_path / "en.pdf",
+                        key_pdf=True)
+    build, calls = _fake_build(report)
+    monkeypatch.setattr(B, "build_twin", build)
+    made = []
+
+    def sbs(en, tw, pages, out):
+        made.append((Path(tw).name, Path(out).name))
+        Path(out).write_bytes(b"%PDF sheets")
+        return Path(out)
+    monkeypatch.setattr(S, "side_by_side", sbs)
+    code = main(["twin", str(tmp_path), "--lang", "de", "--key", "-o", str(tmp_path / "b-de.pdf"),
+                 "--side-by-side", str(tmp_path / "b-de-sbs.pdf")])
+    assert code == 0 and calls["key"] is True
+    assert made == [("b-de.pdf", "b-de-sbs.pdf"), ("b-de-key.pdf", "b-de-sbs-key.pdf")]
+    side = json.loads((tmp_path / "b-de.twin.json").read_text())
+    assert side["key"]["pdf"] == "b-de-key.pdf"
+    assert side["key"]["side_by_side"] == "b-de-sbs-key.pdf"
+    assert "key → " in capsys.readouterr().out
+
+
+def test_cli_twin_without_its_key_ships_the_twin_and_exits_3(tmp_path, monkeypatch, capsys):
+    import json
+
+    import parody.twin.build as B
+    (tmp_path / "en.pdf").write_bytes(b"%PDF en")
+    report = TwinReport(language="de", pages=1, abspages=[5], english_pdf=tmp_path / "en.pdf",
+                        key_problems=["the key twin has 2 pages for the twin's 1"])
+    build, _ = _fake_build(report)
+    monkeypatch.setattr(B, "build_twin", build)
+    code = main(["twin", str(tmp_path), "--lang", "de", "--key", "-o", str(tmp_path / "b-de.pdf")])
+    assert code == 3
+    assert "key" not in json.loads((tmp_path / "b-de.twin.json").read_text())
+    assert "✗ key: the key twin has 2 pages" in capsys.readouterr().out
+
+
+def test_cli_twin_without_key_asks_for_none(tmp_path, monkeypatch):
+    import parody.twin.build as B
+    (tmp_path / "en.pdf").write_bytes(b"%PDF en")
+    report = TwinReport(language="de", pages=1, abspages=[5], english_pdf=tmp_path / "en.pdf")
+    build, calls = _fake_build(report)
+    monkeypatch.setattr(B, "build_twin", build)
+    assert main(["twin", str(tmp_path), "--lang", "de", "-o", str(tmp_path / "b-de.pdf")]) == 0
+    assert calls["key"] is False

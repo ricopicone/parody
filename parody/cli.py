@@ -191,7 +191,7 @@ def cmd_twin(args):
         pdf, report = twin_build.build_twin(
             Path(args.project_dir), args.lang, chapters=args.chapter or None,
             published_pdf=Path(args.english) if args.english else None,
-            out=Path(out) if out else None)
+            out=Path(out) if out else None, key=args.key)
     except (ValueError, RuntimeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -229,14 +229,29 @@ def cmd_twin(args):
     if spilled:
         print(f"  ✗ the twin has {report.shipped_pages} pages for {report.pages} English pages: "
               "a page spilled over; no side-by-side sheets")
-    sbs = None
+    sbs = key_sbs = None
     if args.side_by_side and not spilled:
         sbs = sidebyside.side_by_side(report.english_pdf, pdf, report.abspages,
                                       Path(args.side_by_side))
         print(f"  side by side → {sbs}")
+    if args.key:
+        for line in report.key_problems:
+            print(f"  ✗ key: {line}")
+        if report.key_moved:
+            print("  ! key: pages fitted at another scale than the twin's (ink may not "
+                  "line up there): " + ", ".join(map(str, report.key_moved)))
+        if report.key_pdf:
+            print(f"  key → {report.key_pdf}")
+            if sbs:
+                key_sbs = sidebyside.side_by_side(
+                    report.english_pdf, report.key_pdf, report.abspages,
+                    Path(sbs).with_name(f"{Path(sbs).stem}-key.pdf"))
+                print(f"  key side by side → {key_sbs}")
     if report.tex_errors or report.mismatched_pages or spilled or report.coverage or report.references:
         return 1
-    print(f"  sidecar → {twin_build.write_twin_sidecar(pdf, report, sbs)}")
+    print(f"  sidecar → {twin_build.write_twin_sidecar(pdf, report, sbs, key_sbs)}")
+    if args.key and not report.key_pdf:
+        return 3
     return 0
 
 
@@ -525,6 +540,10 @@ def main(argv=None):
                       help="also write English + twin on landscape sheets")
     p_tw.add_argument("--english", metavar="PDF",
                       help="the published English PDF (default: build it)")
+    p_tw.add_argument("--key", action="store_true",
+                      help="also write the key twin (<twin>-key.pdf, and <sheets>-key.pdf "
+                           "with --side-by-side): the same pages with the blanks filled in; "
+                           "exit 3 when the twin is good but its key is not")
     p_tw.set_defaults(func=cmd_twin)
 
     p_check = sub.add_parser("check", help="validate an artifact against the schema")
