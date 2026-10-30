@@ -57,7 +57,10 @@
 % ---- cloze (fill-in-the-blank) --------------------------------------------
 % \clozemode is set by the writer via \def: blank | key | full. `blank` hides
 % the answer behind a rule measured from the real box, so the answer is never
-% typeset and cannot be recovered from the PDF. Orthogonal to \issolution.
+% typeset and cannot be recovered from the PDF. `key` is the same page with the
+% answers written in, taking no more room than the blanks did, so its lines
+% and pages break exactly where the student's do (as in the memoir profile).
+% Orthogonal to \issolution.
 \providecommand{\clozemode}{blank}
 \providecolor{parodyaccent}{HTML}{1F4E79} % themes that define it win
 \newlength{\parodyclozewd}
@@ -69,18 +72,26 @@
 \newcommand{\parody@blankrule}{%
   \ifdim\parodyclozewd<2em\relax\setlength{\parodyclozewd}{2em}\fi
   \leavevmode\rule[-0.55ex]{\dimexpr\parodyclozewd+1em\relax}{0.4pt}}
+% The answer, centred on the rule \parody@blankrule draws, adding no width and
+% (smashed) no height: a tall answer must not open the line out.
+\newcommand{\parody@keyrule}[1]{%
+  \ifdim\parodyclozewd<2em\relax\setlength{\parodyclozewd}{2em}\fi
+  \leavevmode
+  \rlap{\makebox[\dimexpr\parodyclozewd+1em\relax][c]{\smash{#1}}}%
+  \rule[-0.55ex]{\dimexpr\parodyclozewd+1em\relax}{0.4pt}}
 
 % \settowidth typesets in LR mode, so the outer math/text mode must be captured
 % before measuring — \ifmmode inside the box would always be false.
 \newcommand{\parody@cloze@text}[1]{%
   \parody@clozeswitch
     {\settowidth{\parodyclozewd}{#1}\parody@blankrule}
-    {\underline{\textcolor{parodyaccent}{#1}}}
+    {\settowidth{\parodyclozewd}{#1}\parody@keyrule{\textcolor{parodyaccent}{#1}}}
     {#1}}
 \newcommand{\parody@cloze@math}[1]{%
   \parody@clozeswitch
     {\settowidth{\parodyclozewd}{$#1$}\mbox{\parody@blankrule}}
-    {\underline{{\color{parodyaccent}#1}}}
+    {\settowidth{\parodyclozewd}{$#1$}%
+     \mbox{\parody@keyrule{$\color{parodyaccent}#1$}}}
     {#1}}
 \newcommand{\cloze}[1]{%
   \relax\ifmmode\parody@cloze@math{#1}\else\parody@cloze@text{#1}\fi}
@@ -109,32 +120,49 @@
 \newsavebox{\parodyclozebox}
 % The mode is chosen at \begin, not at \end: content captured into an lrbox
 % keeps whatever colour was in force at capture time, so a key-mode accent
-% applied to \usebox would do nothing. Only `blank` needs the box (to measure
-% the passage); key and full typeset in place. \clozemode cannot change inside
-% the environment, so both halves always take the same branch.
+% applied to \usebox would do nothing — it is set inside the lrbox, before the
+% minipage. `blank` and `key` both capture the passage to measure it; `key`
+% then shows it inside the frame, overlaid so the frame keeps its size.
+% `full` typesets in place. \clozemode cannot change inside the environment,
+% so both halves always take the same branch.
 % A blanked block is ONE framed box the height of what it hides, not a stack of
 % ruled lines. Ruled lines read as several separate answers and are hard to
 % pick out from every other rule on a typeset page; a box says "one thing goes
 % here" and gives its own margins to write in.
 \newlength{\parodyclozeht}
+\newcommand{\parody@clozefill}{}
+% key: the captured passage, centred vertically on the strut that sizes the
+% frame, starting at the frame's inner edge; zero-size, so the frame is
+% exactly the size it is when empty.
+\newcommand{\parody@clozeanswer}{%
+  \rlap{\hspace{-\fboxsep}\raisebox{\dimexpr(\parodyclozeht-\ht\parodyclozebox
+      -\dp\parodyclozebox)/2+\dp\parodyclozebox\relax}[0pt][0pt]{%
+    \usebox{\parodyclozebox}}}}
+\newcommand{\parody@clozecapture}{%
+  \begin{lrbox}{\parodyclozebox}%
+  \parody@clozeswitch{}{\color{parodyaccent}}{}%
+  \begin{minipage}{\linewidth}}
+\newcommand{\parody@clozeframe}{%
+  \end{minipage}\end{lrbox}%
+  \setlength{\parodyclozeht}{\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax}%
+  % Never so short that there is nowhere to write: a one-line equation
+  % still needs room for a hand, which is taller than the type it replaces.
+  \ifdim\parodyclozeht<2.6\baselineskip
+    \setlength{\parodyclozeht}{2.6\baselineskip}%
+  \fi
+  \parody@clozeswitch{}{\let\parody@clozefill\parody@clozeanswer}{}%
+  \par\nobreak\medskip
+  \noindent\framebox[\linewidth][l]{%
+    \rule{0pt}{\parodyclozeht}\rule{0pt}{0pt}\parody@clozefill}%
+  \par\medskip}
 \newenvironment{clozeblock}
   {\parody@clozeswitch
-     {\begin{lrbox}{\parodyclozebox}\begin{minipage}{\linewidth}}
-     {\par\medskip\bgroup\color{parodyaccent}}
+     {\parody@clozecapture}
+     {\parody@clozecapture}
      {\par}}
   {\parody@clozeswitch
-     {\end{minipage}\end{lrbox}%
-      \setlength{\parodyclozeht}{\dimexpr\ht\parodyclozebox+\dp\parodyclozebox\relax}%
-      % Never so short that there is nowhere to write: a one-line equation
-      % still needs room for a hand, which is taller than the type it replaces.
-      \ifdim\parodyclozeht<2.6\baselineskip
-        \setlength{\parodyclozeht}{2.6\baselineskip}%
-      \fi
-      \par\nobreak\medskip
-      \noindent\framebox[\linewidth]{%
-        \rule{0pt}{\parodyclozeht}\rule{0pt}{0pt}}%
-      \par\medskip}
-     {\par\egroup\medskip}
+     {\parody@clozeframe}
+     {\parody@clozeframe}
      {\par}}
 
 % ---- exercises (xsim) ----

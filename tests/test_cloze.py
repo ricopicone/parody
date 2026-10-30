@@ -6,6 +6,7 @@ answer must not appear in the output at all.
 """
 
 import os
+import re
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -415,10 +416,9 @@ A whole hidden paragraph that should blank to its own height.
 """
 
 
-@pytest.mark.parametrize("profile", ["memoir", "print"])
-@pytest.mark.parametrize("mode", ["blank", "key", "full"])
-def test_profile_macros_compile(tmp_path, profile, mode):
-    """The four contract names must compile in every mode, in both profiles."""
+def _compile_profile(tmp_path, profile, mode, body, extra_packages=""):
+    """Compile ``body`` once under ``profile`` in cloze ``mode``; returns the
+    work dir (main.pdf, main.log, main.aux)."""
     import shutil
     import subprocess
 
@@ -428,7 +428,7 @@ def test_profile_macros_compile(tmp_path, profile, mode):
         pytest.skip("no LaTeX toolchain")
 
     src = (Path(__file__).parent.parent / "parody" / "profiles" / profile)
-    work = tmp_path / profile
+    work = tmp_path / f"{profile}-{mode}"
     work.mkdir()
     for f in src.iterdir():
         if f.is_file() and f.name != "main.tex.template":
@@ -442,14 +442,18 @@ def test_profile_macros_compile(tmp_path, profile, mode):
     (work / "main.tex").write_text(
         preamble
         + f"\\def\\clozemode{{{mode}}}\n"
-        + packages
-        + "\n\\begin{document}\n" + CLOZE_TEX_SNIPPET + "\n\\end{document}\n",
+        + packages + "\n" + extra_packages
+        + "\n\\begin{document}\n" + body + "\n\\end{document}\n",
         encoding="utf-8")
 
     r = subprocess.run(
         ["lualatex", "-interaction=nonstopmode", "-shell-escape", "main.tex"],
         cwd=work, env=_tool_env(), capture_output=True, text=True)
     assert (work / "main.pdf").exists(), r.stdout[-3000:]
+    return work
+
+
+def _log_is_clean(work):
     # nonstopmode still emits a PDF over a LaTeX error, so the PDF's
     # existence proves nothing on its own — the log is the real gate. It must
     # catch name clashes too: \newcommand over an existing macro errors and
@@ -457,6 +461,95 @@ def test_profile_macros_compile(tmp_path, profile, mode):
     log = (work / "main.log").read_text(encoding="utf-8", errors="replace")
     assert "Undefined control sequence" not in log, log[-3000:]
     assert "LaTeX Error" not in log, log[-3000:]
+
+
+@pytest.mark.parametrize("profile", ["memoir", "print"])
+@pytest.mark.parametrize("mode", ["blank", "key", "full"])
+def test_profile_macros_compile(tmp_path, profile, mode):
+    """The four contract names must compile in every mode, in both profiles."""
+    _log_is_clean(_compile_profile(tmp_path, profile, mode, CLOZE_TEX_SNIPPET))
+
+
+# Every kind of cloze, each followed by a mark whose position is saved: short
+# and long inline answers (the long one wraps), maths answers (one tall), a
+# hidden passage, a clozed numbered equation, and a manual blank.
+GEOMETRY_SNIPPET = r"""
+Some words before \cloze{SHORTANSWER} and after\zsavepos{a} it, then more text
+so that the next answer \cloze{AVERYLONGANSWER that runs on for several words}
+has to wrap\zsavepos{b} somewhere in the middle of this paragraph of prose.
+
+Maths $\tau = \cloze{RC}$ and a tall one $x = \cloze{\frac{\text{ANSWERA}}{\text{ANSWERB}}}$
+then\zsavepos{c} text, and a manual \clozeblank{4em} blank\zsavepos{d}.
+
+\begin{clozeblock}
+ANSWERPASSAGE: a whole hidden paragraph, long enough to run onto a second line
+of the page so that its height is more than one line of type.
+\end{clozeblock}
+
+After the passage\zsavepos{e}.
+
+%EQ
+\begin{clozeequation}{eq:clozed}
+\[ y = \text{ANSWEREQ} + b \]
+\end{clozeequation}
+
+After the equation\zsavepos{f}, which is (\ref{eq:clozed}).
+%END
+
+\begin{clozeblock}
+ANSWERSHORTPASSAGE
+\end{clozeblock}
+
+The end\zsavepos{g}.
+"""
+
+_ZPOS = re.compile(r"\\zref@newlabel\{(\w)\}\{\\posx\{(-?\d+)\}\\posy\{(-?\d+)\}")
+
+
+def _positions(work):
+    aux = (work / "main.aux").read_text(encoding="utf-8", errors="replace")
+    return {label: (int(x), int(y)) for label, x, y in _ZPOS.findall(aux)}
+
+
+def _pdf_text(work):
+    import pypdf
+
+    # without whitespace: kerning splits a word ("A VERYLONG…") in extraction
+    text = "".join(page.extract_text() for page in pypdf.PdfReader(str(work / "main.pdf")).pages)
+    return re.sub(r"\s+", "", text)
+
+
+@pytest.mark.parametrize("profile", ["memoir", "print"])
+def test_the_key_keeps_the_blank_page_geometry(tmp_path, profile):
+    """A key page is the student's page with the answers written in: every
+    line breaks, and everything after a cloze sits, exactly where it does on
+    the blank page. That is what lets a filled copy go under a student's ink
+    on a blank one — the translated twins' key — and an instructor say
+    "page 12" to a class holding blank copies."""
+    pytest.importorskip("pypdf")
+    body, marks = GEOMETRY_SNIPPET, list("abcdefg")
+    answers = ["SHORTANSWER", "AVERYLONGANSWER", "ANSWERA", "ANSWERPASSAGE",
+               "ANSWEREQ", "ANSWERSHORTPASSAGE"]
+    if profile == "print":  # the generic profile has no clozeequation
+        body = re.sub(r"%EQ.*?%END", "", body, flags=re.S)
+        marks.remove("f")
+        answers.remove("ANSWEREQ")
+    blank = _compile_profile(tmp_path, profile, "blank", body,
+                             "\\usepackage{zref-savepos}")
+    key = _compile_profile(tmp_path, profile, "key", body,
+                           "\\usepackage{zref-savepos}")
+    for work in (blank, key):
+        _log_is_clean(work)
+    where = _positions(blank)
+    assert sorted(where) == marks
+    assert _positions(key) == where
+
+    shown = _pdf_text(key)
+    for answer in answers:
+        assert answer in shown, answer
+    hidden = _pdf_text(blank)
+    for answer in answers:
+        assert answer not in hidden, answer
 
 
 # --- figures ---------------------------------------------------------------

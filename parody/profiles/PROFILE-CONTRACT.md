@@ -69,7 +69,9 @@ off the page.
 `\issolution` (solutions manual), `\ispartial` (sample build), `\nocropmarks`,
 `\clozemode` (`blank` | `key` | `full`, default `blank`) — orthogonal to
 `\issolution`: a published student book wants clozes filled and exercise
-solutions hidden.
+solutions hidden. `key` must take exactly the room `blank` does — the answer
+on the blank's rule, a passage inside the blank's frame — so a key page breaks
+every line and page where the student's does (tests/test_cloze.py checks it).
 
 ## Theme layer (recommended, not required by the filter)
 
