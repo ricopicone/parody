@@ -479,7 +479,9 @@ so that the next answer \cloze{AVERYLONGANSWER that runs on for several words}
 has to wrap\zsavepos{b} somewhere in the middle of this paragraph of prose.
 
 Maths $\tau = \cloze{RC}$ and a tall one $x = \cloze{\frac{\text{ANSWERA}}{\text{ANSWERB}}}$
-then\zsavepos{c} text, and a manual \clozeblank{4em} blank\zsavepos{d}.
+then\zsavepos{c} text, and a manual \clozeblank{4em} blank\zsavepos{d}. One
+far taller than its line, which the key scales down:
+$y = \cloze{\left(\frac{\frac{\text{ANSWERTALL}}{b}}{\frac{c}{d}}\right)^{2}}$ and on.
 
 \begin{clozeblock}
 ANSWERPASSAGE: a whole hidden paragraph, long enough to run onto a second line
@@ -529,7 +531,7 @@ def test_the_key_keeps_the_blank_page_geometry(tmp_path, profile):
     pytest.importorskip("pypdf")
     body, marks = GEOMETRY_SNIPPET, list("abcdefg")
     answers = ["SHORTANSWER", "AVERYLONGANSWER", "ANSWERA", "ANSWERPASSAGE",
-               "ANSWEREQ", "ANSWERSHORTPASSAGE"]
+               "ANSWEREQ", "ANSWERSHORTPASSAGE", "ANSWERTALL"]
     if profile == "print":  # the generic profile has no clozeequation
         body = re.sub(r"%EQ.*?%END", "", body, flags=re.S)
         marks.remove("f")

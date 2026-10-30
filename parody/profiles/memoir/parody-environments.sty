@@ -80,11 +80,20 @@
   \ifdim\parodyclozewd<2em\relax\setlength{\parodyclozewd}{2em}\fi
   \leavevmode\rule[-0.55ex]{\dimexpr\parodyclozewd+1em\relax}{0.4pt}}
 % The answer, centred on the rule \parody@blankrule draws, adding no width and
-% (smashed) no height: a tall answer must not open the line out.
+% (smashed) no height: a tall answer must not open the line out. One taller
+% than \parodykeymaxht (a stacked fraction in big parentheses, say) is scaled
+% down to it, or it would run into the lines above and below.
+\newsavebox{\parodykeybox}
+\newlength{\parodykeymaxht}
+\setlength{\parodykeymaxht}{1.5\baselineskip}
 \newcommand{\parody@keyrule}[1]{%
   \ifdim\parodyclozewd<2em\relax\setlength{\parodyclozewd}{2em}\fi
+  \sbox{\parodykeybox}{#1}%
+  \ifdim\dimexpr\ht\parodykeybox+\dp\parodykeybox\relax>\parodykeymaxht
+    \sbox{\parodykeybox}{\resizebox*{!}{\parodykeymaxht}{\usebox{\parodykeybox}}}%
+  \fi
   \leavevmode
-  \rlap{\makebox[\dimexpr\parodyclozewd+1em\relax][c]{\smash{#1}}}%
+  \rlap{\makebox[\dimexpr\parodyclozewd+1em\relax][c]{\smash{\usebox{\parodykeybox}}}}%
   \rule[-0.55ex]{\dimexpr\parodyclozewd+1em\relax}{0.4pt}}
 
 % \settowidth typesets in LR mode, so the outer math/text mode must be captured
