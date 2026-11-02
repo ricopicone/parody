@@ -787,6 +787,16 @@ def convert_notebook_to_markdown_api(notebook, output_path):
         c.TagRemovePreprocessor.remove_all_outputs_tags = ("remove_output",)
         c.TagRemovePreprocessor.enabled = True
 
+        # ipykernel ships stdout in chunks on a timer (~0.2 s), so a cell
+        # that prints while it computes arrives as one stream output or as
+        # several, run to run — and each output renders as its own block,
+        # a blank line apart. Merge consecutive outputs of the same stream
+        # (text concatenated exactly) so the rendered output depends on what
+        # the program printed, never on when the kernel flushed it: the
+        # student and key builds of robotics v0.49.0 disagreed on that alone
+        # (task #881).
+        c.CoalesceStreamsPreprocessor.enabled = True
+
         # Configure the exporter for SVG figures where possible
         c.MarkdownExporter.preprocessors = [
             'nbconvert.preprocessors.TagRemovePreprocessor',
