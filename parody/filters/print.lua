@@ -733,10 +733,12 @@ coder_latex = function(el)
     local linenos = el.classes:includes('linenos') and ',linenos' or ''
     -- breaklines: a line longer than the measure wraps instead of running off
     -- the page. Breaks fall at spaces and after , ( and ., so a long call
-    -- chain with no spaces in it wraps too.
+    -- chain with no spaces in it wraps too. fontsize=\footnotesize: at the
+    -- body size a page of program and output loomed over the prose, and
+    -- most lines wrapped (Rico, 2026-11-01).
     return pandoc.RawBlock('latex',
       '\\begin{mintedwrapper}\\nointerlineskip\\nointerlineskip\\begin{minted}[autogobble'
-      .. ',breaklines,breakafter={,(.}'
+      .. ',fontsize=\\footnotesize,breaklines,breakafter={,(.}'
       .. samepage .. linenos .. ']{' .. language .. '}\n'
       .. content .. '\n\\end{minted}\n\\end{mintedwrapper}\n')
   elseif el.t == 'Code' then

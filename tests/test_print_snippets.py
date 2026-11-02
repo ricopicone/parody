@@ -67,9 +67,9 @@ def test_environments_snippet_matches_golden(request):
     "\\begin{listingsbox}{pythonlisting}{A script}{lst:script}",
     "\\begin{formattedoutput}",
     "\\begin{mintedwrapper}",
-    "\\begin{minted}[autogobble,breaklines,breakafter={,(.},samepage]{python}",
+    "\\begin{minted}[autogobble,fontsize=\\footnotesize,breaklines,breakafter={,(.},samepage]{python}",
     # 'arm' has no Pygments lexer; remapped to nasm so the print build compiles
-    "\\begin{minted}[autogobble,breaklines,breakafter={,(.},samepage]{nasm}",
+    "\\begin{minted}[autogobble,fontsize=\\footnotesize,breaklines,breakafter={,(.},samepage]{nasm}",
     "\\keyword{important term}",
     "\\myindex[][][][]{convolution}",
     "\\indexc[][][cfun][true][]{c}{printf}",

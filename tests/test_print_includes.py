@@ -189,3 +189,14 @@ def test_a_long_code_line_wraps_rather_than_running_off_the_page(notebook_chapte
     opts = tex.split("\\begin{minted}[", 1)[1].split("]{", 1)[0]
     assert "breaklines" in opts
     assert "breakafter={,(.}" in opts
+
+
+def test_block_code_is_set_footnotesize(notebook_chapter, tmp_path):
+    """Rico, 2026-11-01: block code was set at the body size, which made a
+    page of program and output loom over the prose, and most of its lines
+    wrapped. Inline code keeps the size of its sentence."""
+    section, _ = notebook_chapter
+    tex = render(section, "```python\nx = 1\n```\n\nSay `x` once.\n", tmp_path)
+    opts = tex.split("\\begin{minted}[", 1)[1].split("]{", 1)[0]
+    assert "fontsize=\\footnotesize" in opts
+    assert "\\mintinline{" in tex and "fontsize" not in tex.split("\\mintinline", 1)[1][:40]
