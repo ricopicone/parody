@@ -119,9 +119,11 @@ interior_filter = {
   Code = function(el)
     if is_latex() then return coder_latex(el) else return Code(el) end
   end,
-  CodeBlock = function(el)
-    if is_latex() then return coder_latex(el) else return CodeBlock(el) end
-  end,
+  -- The global dispatcher, not coder_latex: it expands include-py,
+  -- include-code and link-code fences, which are empty in the source.
+  -- Calling coder_latex here printed them inside an example or a solution
+  -- as nothing.
+  CodeBlock = function(el) return CodeBlock(el) end,
   Cite = function(el)
     local prefix = ref_prefix(el.citations[1].id)
     if is_latex() and prefix and CROSSREF_PREFIXES[prefix] then

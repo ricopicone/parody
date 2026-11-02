@@ -146,3 +146,34 @@ def test_section_to_latex_accepts_a_relative_path(tmp_path, monkeypatch):
     (tmp_path / "build" / "sections" / "ch" / "s.md").write_text("Hello there.\n")
     out = section_to_latex(Path("build/sections/ch/s.md"), Path("build/sections/ch/s.tex"))
     assert "Hello there." in out.read_text()
+
+
+# An include-py nested in a div that the print filter renders by walking its
+# interior (an example, its solution, an exercise solution) went through
+# interior_filter's CodeBlock, which called coder_latex directly and never
+# dispatched the include classes: the fence, empty in the source, printed as
+# nothing. robotics chapter 6 (2026-11-01) lost every program in its worked
+# examples from the PDF while the web showed them.
+@pytest.mark.parametrize("body", [
+    '::: {.example #exa:demo title="demo"}\n::: {.exa_problem}\nDo it.\n:::\n\n'
+    '::: {.exa_solution}\nThe program:\n\n```{.include-py path="analysis.py"}\n```\n:::\n:::\n',
+    '::: {.exercise #exe:demo}\nDo it.\n\n::: {.exercise-solution}\n'
+    '```{.include-py path="analysis.py"}\n```\n:::\n:::\n',
+])
+def test_include_py_inside_a_walked_div_inlines_executed_markdown(
+        notebook_chapter, tmp_path, body):
+    section, _ = notebook_chapter
+    tex = render(section, body, tmp_path)
+    assert "Some prose." in tex
+    # an example holds its minted inline; a solution, collected for the key,
+    # writes it to a side file and \\inputs it (verbatim cannot be collected)
+    assert ("\\begin{minted}" in tex and "print('hi')" in tex) or (
+        "\\begin{mintedwrapper}" in tex and "-verb1.tex}" in tex)
+
+
+def test_include_code_inside_an_example_inlines_verbatim(notebook_chapter, tmp_path):
+    section, _ = notebook_chapter
+    body = ('::: {.example #exa:demo title="demo"}\n::: {.exa_solution}\n'
+            '```{.include-code path="helper.py"}\n```\n:::\n:::\n')
+    tex = render(section, body, tmp_path)
+    assert "x = 1" in tex
