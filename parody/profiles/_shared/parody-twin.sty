@@ -7,9 +7,12 @@
 %% Sets the English page number, restores the counters the English had at the
 %% page's first sentence (so equations, figures and boxes number alike), sets
 %% the running heads, and typesets the content at the class's own size in a
-%% column 1/s as wide as the text block, then scales it by s. It lowers s by
-%% 0.01 until the page fits, with no floor: nothing is ever dropped to fit.
-%% Writes "TWINFIT page=<n> scale=<s>" to the log; parody reads it back.
+%% column 1/s as wide as the text block, then scales it by s: the largest s
+%% on the grid <start>, <start> - 0.01, ... at which the page fits, with no
+%% floor beyond 0.05: nothing is ever dropped to fit. It finds that s in a few
+%% attempts, not one per step (\__parodytwin_search:nn).
+%% Writes "TWINFIT page=<n> scale=<s>" to the log; parody reads it back,
+%% and "TWINTRIES page=<n> tries=<attempts>".
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesPackage{parody-twin}[2026/10/17 parody twin pages]
 \RequirePackage{graphicx}
@@ -47,6 +50,17 @@
 \tl_new:N \l__parodytwin_restore
 \dim_new:N \l__parodytwin_parindent
 \skip_new:N \l__parodytwin_parskip
+\fp_new:N \l__parodytwin_start_fp
+\fp_new:N \l__parodytwin_used_fp
+\int_new:N \l__parodytwin_step_int
+\int_new:N \l__parodytwin_last_int
+\int_new:N \l__parodytwin_lo_int
+\int_new:N \l__parodytwin_hi_int
+\int_new:N \l__parodytwin_gap_int
+\int_new:N \l__parodytwin_probe_int
+\int_new:N \l__parodytwin_found_int
+\int_new:N \l__parodytwin_tries_int
+\bool_new:N \l__parodytwin_fits_bool
 
 \cs_new_protected:Npn \__parodytwin_minipage:n #1
   {
@@ -87,36 +101,121 @@
       { \int_gset_eq:NN \g_xsim_id_int \g__parodytwin_xsim_id_int }
   }
 
+% One attempt: set the page's content at grid step #1 below the start scale
+% (scale = start - #1 * 0.01) in the measuring box, put the counters back,
+% and record whether it fits. Counts the attempts for the log.
+\cs_new_protected:Npn \__parodytwin_try:nn #1 #2
+  {
+    \int_set:Nn \l__parodytwin_step_int { #1 }
+    \fp_set:Nn \l__parodytwin_scale
+      { \l__parodytwin_start_fp - \l__parodytwin_step_int * 0.01 }
+    \int_incr:N \l__parodytwin_tries_int
+    \dim_set:Nn \l__parodytwin_width { \fp_to_dim:n { \textwidth / \l__parodytwin_scale } }
+    \group_begin:
+      % measuring: no labels, no index entries, no TOC lines
+      \RenewDocumentCommand \label { o m } { }
+      \cs_set_eq:NN \index \use_none:n
+      \cs_set_eq:NN \addcontentsline \use_none:nnn
+      \l__parodytwin_restore
+      \hbox_gset:Nn \g__parodytwin_box { \__parodytwin_minipage:n { #2 } }
+    \group_end:
+    \cs_if_exist:NT \g_xsim_id_int
+      { \int_gset_eq:NN \g__parodytwin_xsim_after_int \g_xsim_id_int }
+    \__parodytwin_put_counters:
+    \fp_set:Nn \l__parodytwin_used_fp
+      { ( \dim_to_fp:n { \box_ht:N \g__parodytwin_box + \box_dp:N \g__parodytwin_box } )
+        * \l__parodytwin_scale }
+    \fp_compare:nNnTF { \l__parodytwin_used_fp } > { \dim_to_fp:n { \l__parodytwin_avail } }
+      { \bool_set_false:N \l__parodytwin_fits_bool }
+      { \bool_set_true:N \l__parodytwin_fits_bool }
+  }
+
+% The largest scale on the grid start, start - 0.01, ... at which the page
+% fits, down to the first step at or below 0.05 (set there even if it does
+% not fit: nothing is ever dropped). That is what stepping down 0.01 at a time
+% finds, whenever fitting is monotone in the scale, but in a few attempts
+% rather than one per step. After the start, it tries a guess (the content's
+% area is about constant, so its scaled height goes as the square of the
+% scale); then, between a step known not to fit (lo) and one known to (hi),
+% it gallops down from a guess that did not fit, and bisects.
+\cs_new_protected:Npn \__parodytwin_search:nn #1 #2
+  {
+    \fp_set:Nn \l__parodytwin_start_fp { #1 }
+    \int_set:Nn \l__parodytwin_last_int
+      { \fp_eval:n { max ( 0 , ceil ( ( \l__parodytwin_start_fp - 0.05 ) * 100 ) ) } }
+    \int_zero:N \l__parodytwin_found_int
+    \__parodytwin_try:nn { 0 } { #2 }
+    \bool_if:NF \l__parodytwin_fits_bool
+      {
+        \int_compare:nNnT { \l__parodytwin_last_int } > { 0 }
+          { \__parodytwin_bracket:n { #2 } }
+      }
+    \fp_set:Nn \l__parodytwin_scale
+      { \l__parodytwin_start_fp - \l__parodytwin_found_int * 0.01 }
+    % and its column: the last attempt may have been a step that did not fit,
+    % whose width would otherwise set the page
+    \dim_set:Nn \l__parodytwin_width { \fp_to_dim:n { \textwidth / \l__parodytwin_scale } }
+  }
+
+% Step 0 did not fit and there is room below it: find the first step that
+% fits, into \l__parodytwin_found_int (the last step if none does).
+\cs_new_protected:Npn \__parodytwin_bracket:n #1
+  {
+    \int_zero:N \l__parodytwin_lo_int
+    \int_set:Nn \l__parodytwin_hi_int { -1 }
+    \fp_compare:nNnTF { \dim_to_fp:n { \l__parodytwin_avail } } > { 0 }
+      {
+        \int_set:Nn \l__parodytwin_probe_int
+          {
+            \fp_eval:n
+              {
+                max ( 1 , min ( \l__parodytwin_last_int ,
+                  floor ( ( \l__parodytwin_start_fp
+                    - \l__parodytwin_start_fp
+                      * sqrt ( \dim_to_fp:n { \l__parodytwin_avail }
+                               / \l__parodytwin_used_fp ) ) * 100 ) ) )
+              }
+          }
+      }
+      { \int_set_eq:NN \l__parodytwin_probe_int \l__parodytwin_last_int }
+    \__parodytwin_probe:n { #1 }
+    % gallop down (1, 2, 4, ... steps) until a step fits, or the last step
+    \int_set:Nn \l__parodytwin_gap_int { 1 }
+    \int_while_do:nNnn { \l__parodytwin_hi_int } < { 0 }
+      {
+        \int_set:Nn \l__parodytwin_probe_int
+          { \int_min:nn { \l__parodytwin_lo_int + \l__parodytwin_gap_int } { \l__parodytwin_last_int } }
+        \__parodytwin_probe:n { #1 }
+        \int_compare:nNnT { \l__parodytwin_lo_int } = { \l__parodytwin_last_int }
+          { \int_set_eq:NN \l__parodytwin_hi_int \l__parodytwin_last_int }
+        \int_set:Nn \l__parodytwin_gap_int { 2 * \l__parodytwin_gap_int }
+      }
+    % bisect between them
+    \int_while_do:nNnn { \l__parodytwin_hi_int - \l__parodytwin_lo_int } > { 1 }
+      {
+        \int_set:Nn \l__parodytwin_probe_int
+          { \int_div_truncate:nn { \l__parodytwin_lo_int + \l__parodytwin_hi_int } { 2 } }
+        \__parodytwin_probe:n { #1 }
+      }
+    \int_set_eq:NN \l__parodytwin_found_int \l__parodytwin_hi_int
+  }
+
+% Try the step in \l__parodytwin_probe_int; it becomes hi if it fits, lo if not.
+\cs_new_protected:Npn \__parodytwin_probe:n #1
+  {
+    \__parodytwin_try:nn { \l__parodytwin_probe_int } { #1 }
+    \bool_if:NTF \l__parodytwin_fits_bool
+      { \int_set_eq:NN \l__parodytwin_hi_int \l__parodytwin_probe_int }
+      { \int_set_eq:NN \l__parodytwin_lo_int \l__parodytwin_probe_int }
+  }
+
 \cs_new_protected:Npn \__parodytwin_fit:nn #1 #2
   {
-    \fp_set:Nn \l__parodytwin_scale { #1 }
     \__parodytwin_save_counters:
-    \bool_set_true:N \l_tmpa_bool
-    \bool_while_do:Nn \l_tmpa_bool
-      {
-        \dim_set:Nn \l__parodytwin_width { \fp_to_dim:n { \textwidth / \l__parodytwin_scale } }
-        \group_begin:
-          % measuring: no labels, no index entries, no TOC lines
-          \RenewDocumentCommand \label { o m } { }
-          \cs_set_eq:NN \index \use_none:n
-          \cs_set_eq:NN \addcontentsline \use_none:nnn
-          \l__parodytwin_restore
-          \hbox_gset:Nn \g__parodytwin_box { \__parodytwin_minipage:n { #2 } }
-        \group_end:
-        \cs_if_exist:NT \g_xsim_id_int
-          { \int_gset_eq:NN \g__parodytwin_xsim_after_int \g_xsim_id_int }
-        \__parodytwin_put_counters:
-        \fp_compare:nNnTF
-          { ( \dim_to_fp:n { \box_ht:N \g__parodytwin_box + \box_dp:N \g__parodytwin_box } )
-            * \l__parodytwin_scale } > { \dim_to_fp:n { \l__parodytwin_avail } }
-          {
-            \fp_compare:nNnTF { \l__parodytwin_scale } > { 0.05 }
-              { \fp_set:Nn \l__parodytwin_scale { \l__parodytwin_scale - 0.01 } }
-              { \bool_set_false:N \l_tmpa_bool }
-          }
-          { \bool_set_false:N \l_tmpa_bool }
-      }
+    \int_zero:N \l__parodytwin_tries_int
+    \__parodytwin_search:nn { #1 } { #2 }
     \iow_log:x { TWINFIT ~ page=\thepage \c_space_tl scale=\fp_use:N \l__parodytwin_scale }
+    \iow_log:x { TWINTRIES ~ page=\thepage \c_space_tl tries=\int_use:N \l__parodytwin_tries_int }
     \cs_if_exist:NT \g_xsim_id_int
       { \int_gset_eq:NN \g_xsim_id_int \g__parodytwin_xsim_after_int }
     \l__parodytwin_restore

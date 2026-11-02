@@ -146,7 +146,13 @@ _NEWLABEL_LINE = re.compile(r"^\\newlabel\{([^}]+)\}.*$", re.M)
 
 
 def _read(path):
-    return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    # newline="": TeX writes a control space at a line's end into the aux as a
+    # backslash and a raw CR, which universal newlines would turn into a line
+    # break, cutting the \newlabel it is in short (english_labels)
+    if not path.is_file():
+        return ""
+    with open(path, encoding="utf-8", errors="replace", newline="") as f:
+        return f.read()
 
 
 def _labels_tag(path):

@@ -6,7 +6,8 @@ import pytest
 
 from parody.translate.chunks import chunk_hash, split_chunks, split_frontmatter
 from parody.translate.store import TranslationFile, translation_path
-from parody.twin.build import (TwinReport, _page_tex, base_scale, build_twin, log_errors,
+from parody.twin.build import (TwinReport, _page_tex, _read, base_scale, build_twin,
+                               english_labels, log_errors,
                                mark_errors, pdf_pages, reference_problems,
                                parse_twinfit, restore_code, section_ranges, twin_errors,
                                write_twin_sidecar)
@@ -680,3 +681,17 @@ def test_a_twin_of_some_chapters_numbers_citations_as_the_english(tmp_path):
     import pypdf
     text = " ".join(" ".join((p.extract_text() or "").split()) for p in pypdf.PdfReader(str(pdf)).pages)
     assert "Zebra shows [2]" in text, text[:400]
+
+
+def test_a_label_whose_text_holds_a_carriage_return_is_copied_whole(tmp_path):
+    # TeX writes a control space at a line's end (\ then the line end) into the
+    # aux as a backslash and a raw CR. Read with universal newlines, the CR
+    # split the \newlabel line, and the twin of some chapters stopped on
+    # "File ended while scanning use of \@newl@bel" (robotics, fig. 4.8).
+    english = tmp_path / "english.aux"
+    english.write_bytes(b"\\relax\n\\newlabel{fig:a}{{4.8}{226}{taken to $0.2\\\r\\mathrm {m}$}{figure.8}{}}\n"
+                        b"\\newlabel{fig:b}{{4.9}{227}{plain}{figure.9}{}}\n")
+    twin = tmp_path / "twin.aux"
+    twin.write_bytes(b"\\newlabel{fig:b}{{4.9}{227}{plain}{figure.9}{}}\n")
+    out = english_labels(_read(english), _read(twin))
+    assert out == "\\newlabel{fig:a}{{4.8}{226}{taken to $0.2\\\r\\mathrm {m}$}{figure.8}{}}\n"

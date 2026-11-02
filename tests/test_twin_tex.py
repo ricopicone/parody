@@ -254,3 +254,68 @@ def test_chapter_and_section_references_read_the_language_s_way(tmp_path, langua
     pdf, _ = _compile(tmp_path, body, language, runs=2)
     text = " ".join(_text(pdf)).replace(" ", "")
     assert f"See{chapter}and{section}" in text, text[-200:]
+
+
+def _fit(log, page):
+    """(scale, attempts) the twin logged for one page."""
+    scale = float(log.split(f"TWINFIT page={page} scale=")[1].split()[0])
+    tries = int(log.split(f"TWINTRIES page={page} tries=")[1].split()[0])
+    return scale, tries
+
+
+# Pages of different make-up: running text, which narrows as the scale drops,
+# and boxes of fixed height, which do not, so the scale they need is not the
+# one the search first guesses.
+_PAGES = {
+    21: " ".join(["Ein langer deutscher Satz, der die Seite füllt."] * 130),
+    22: " ".join(["Ein langer deutscher Satz, der die Seite füllt."] * 400),
+    23: ("\\noindent\\rule{1pt}{0.6\\textheight}\\par "
+         + " ".join(["Kurzer Satz mit Inhalt."] * 120)),
+    24: "\n\n".join(["Ein Absatz von zwei Zeilen, der gerade so umbricht und weiterläuft."] * 40),
+}
+
+
+@needs_tex
+def test_the_fit_is_the_largest_scale_that_fits(tmp_path):
+    """What stepping down 0.01 at a time finds: the page fits at the scale the
+    search settles on, and does not at the next step up (its start aside)."""
+    body = "".join(f"\\begin{{twinpage}}{{{n}}}{{1.0}}{{}}{{}}{{}}\n{text}\n\\end{{twinpage}}\n"
+                   for n, text in _PAGES.items())
+    (tmp_path / "a").mkdir()
+    searched, log = _compile(tmp_path / "a", body)
+    found = {n: _fit(log, n)[0] for n in _PAGES}
+    assert all(s < 1.0 for s in found.values()), found
+    # each page again, started one step above what it found: it must step down
+    probe = "".join(
+        f"\\begin{{twinpage}}{{{n}}}{{{round(found[n] + 0.01, 2)}}}{{}}{{}}{{}}\n{text}\n\\end{{twinpage}}\n"
+        f"\\begin{{twinpage}}{{{n + 100}}}{{{found[n]}}}{{}}{{}}{{}}\n{text}\n\\end{{twinpage}}\n"
+        for n, text in _PAGES.items())
+    (tmp_path / "b").mkdir()
+    direct, log2 = _compile(tmp_path / "b", probe)
+    for n in _PAGES:
+        assert _fit(log2, n)[0] == found[n], (n, found[n], _fit(log2, n))
+        assert _fit(log2, n + 100) == (found[n], 1), (n, found[n], _fit(log2, n + 100))
+    # and each page is SET at the scale it found, byte for byte as the same
+    # page started there, which tries nothing else first: the search's last
+    # attempt may be a step that did not fit, and its column width must not
+    # stay behind (robotics 3.x, page 59, was set 0.74 wide at 0.73)
+    again = "".join(f"\\begin{{twinpage}}{{{n}}}{{{found[n]}}}{{}}{{}}{{}}\n{text}\n\\end{{twinpage}}\n"
+                    for n, text in _PAGES.items())
+    (tmp_path / "c").mkdir()
+    direct, _ = _compile(tmp_path / "c", again)
+    import pypdf
+    for i, (a, b) in enumerate(zip(pypdf.PdfReader(str(searched)).pages,
+                                   pypdf.PdfReader(str(direct)).pages)):
+        assert a.get_contents().get_data() == b.get_contents().get_data(), list(_PAGES)[i]
+
+
+@needs_tex
+def test_a_dense_page_fits_in_a_few_attempts(tmp_path):
+    # Stepping down 0.01 at a time took one typesetting per step: about 45 for
+    # this page, on every page and every LaTeX run, which is where a German
+    # twin's hour went.
+    lots = " ".join(["Ein langer deutscher Satz, der die Seite füllt."] * 400)
+    _, log = _compile(tmp_path, f"\\begin{{twinpage}}{{7}}{{1.0}}{{}}{{}}{{}}\n{lots}\n\\end{{twinpage}}\n")
+    scale, tries = _fit(log, 7)
+    assert scale < 0.6
+    assert tries <= 6, tries
