@@ -1219,7 +1219,7 @@ wheels = [
 
 [[package]]
 name = "parody"
-version = "0.64.1"
+version = "0.64.2"
 source = { editable = "." }
 dependencies = [
     { name = "ipykernel" },
