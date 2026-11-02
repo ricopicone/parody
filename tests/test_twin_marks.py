@@ -65,7 +65,8 @@ def test_mark_section_list_head_is_inline():
 
 
 @pytest.mark.parametrize("start", ["> quoted.", "[^3]: A note.", "1.  numbered.",
-                                   "a.  lettered.", ":   a definition."])
+                                   "#.  auto-numbered.", "a.  lettered.",
+                                   ":   a definition."])
 def test_mark_section_inline_heads(start):
     marked = mark_section(start, 1)
     # inline after the marker, so a list, quote or footnote is not broken up
@@ -328,6 +329,27 @@ def test_a_definition_list_stays_one_list():
     assert [b["t"] for b in blocks] == ["DefinitionList", "RawBlock"]  # then \parodysoff
     assert ":   \\parodys{1002000}A related reason." in marked
     assert "\\parodys{1001001}Another." in marked
+
+
+def test_an_auto_numbered_list_stays_one_list():
+    # "#." numbers each item from the one before. A loose list of them is a
+    # chunk per item, and a head mark on its own line before each ended the
+    # list there: every step printed as "1.", in lists of their own whose
+    # spacing moved a line onto the next page (system dynamics 3.3).
+    import json
+
+    import pypandoc
+
+    text = ("#. Include all nodes.\n\n   ![](step1){.figure .standalone}\n\n"
+            "#. Include the sources. If they cannot all be\n   included, they form a loop.\n\n"
+            "   ![](step2){.figure .standalone}\n\n"
+            "#. Check the tree.")
+    marked = mark_section(text, 1)
+    blocks = json.loads(pypandoc.convert_text(marked, "json", format="markdown"))["blocks"]
+    assert [b["t"] for b in blocks] == ["OrderedList", "RawBlock"]  # then \parodysoff
+    assert len(blocks[0]["c"][1]) == 3
+    assert "#. \\parodys{1002000}Include the sources." in marked
+    assert "\\parodys{1002001}If they" in marked
 
 
 def test_a_lettered_list_after_a_paragraph_stays_a_list():

@@ -104,9 +104,43 @@ def _numbered_examples(text, a, piece):
     return _EXAMPLE_MARKER.sub(lambda m: f"{m.group(1)}({next(count)})", piece)
 
 
+_AUTO_ITEM = re.compile(r"(\(?)#([.)])(?=[ \t])")
+_FENCE_LINE = re.compile(r"[ \t]*(```|~~~)")
+
+
+def numbered_auto_lists(chunks):
+    """``chunks`` (a section's, in order) with each top-level "#." item given
+    the number pandoc gives it, counted across the whole section.
+
+    "#." numbers an item from the one before. A twin page is a document of
+    its own, where the count starts again: a page holding steps 4 to 6 of a
+    loose list (an item per chunk) printed them 1 to 3. An explicit number
+    sets the list's start, as the English page has it. A top-level block
+    that is not an item ends the list; an indented one, or a lazy line of
+    the item's paragraph, does not. ``None`` (no text) passes through."""
+    count, out = 0, []
+    for chunk in chunks:
+        if chunk is None:
+            out.append(None)
+            continue
+        lines, fenced, new_block = chunk.split("\n"), False, True
+        for i, line in enumerate(lines):
+            if _FENCE_LINE.match(line):
+                fenced = not fenced
+            m = None if fenced else _AUTO_ITEM.match(line)
+            if m:
+                count += 1
+                lines[i] = f"{m.group(1)}{count}{m.group(2)}{line[m.end():]}"
+            elif new_block and line.strip() and not line[:1].isspace():
+                count = 0
+            new_block = not line.strip()
+        out.append("\n".join(lines))
+    return out
+
+
 # Where a line's own content starts: its indentation, then a list or
 # definition marker and the space after it.
-_CONTENT_START = re.compile(r"[ ]*(?:(?:[-+*]|\d+[.)]|[A-Za-z][.)]|[:~])[ \t]+)?")
+_CONTENT_START = re.compile(r"[ ]*(?:(?:[-+*]|\d+[.)]|#[.)]|[A-Za-z][.)]|[:~])[ \t]+)?")
 
 
 def _indent(line):

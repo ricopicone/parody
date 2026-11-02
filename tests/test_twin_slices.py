@@ -378,3 +378,25 @@ def test_an_item_right_after_a_fence_is_an_item():
     assert "\\\\" not in right, right
     lists = [b for b in _blocks_of(right) if b["t"] == "Div"]
     assert lists and lists[0]["c"][1][0]["t"] == "OrderedList", right
+
+
+def test_auto_numbered_items_take_their_number_from_the_section():
+    # "#." counts from the item before; a twin page is its own document, so a
+    # page holding steps 4 to 6 printed them as 1 to 3 (system dynamics 3.3).
+    from parody.twin.slices import numbered_auto_lists
+
+    chunks = ["Form a tree.", "#. Include all nodes.\n\n   ![](step1){.figure}",
+              "#. Include the sources. If they cannot all be\nincluded, they loop.",
+              "#. Check the tree.", "The order matters.", "#) Again."]
+    assert numbered_auto_lists(chunks) == [
+        "Form a tree.", "1. Include all nodes.\n\n   ![](step1){.figure}",
+        "2. Include the sources. If they cannot all be\nincluded, they loop.",
+        "3. Check the tree.", "The order matters.", "1) Again."]
+
+
+def test_auto_numbering_leaves_headings_code_nesting_and_gaps_alone():
+    from parody.twin.slices import numbered_auto_lists
+
+    assert numbered_auto_lists([None, "# Heading", "```\n#. not a list\n```",
+                                "-   bullet\n\n    #. nested"]) == [
+        None, "# Heading", "```\n#. not a list\n```", "-   bullet\n\n    #. nested"]

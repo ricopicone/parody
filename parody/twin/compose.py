@@ -19,7 +19,8 @@ from pathlib import Path
 
 from ..translate.check import compare_chunks
 from ..translate.chunks import align_chunks, chunk_hash, split_chunks, split_frontmatter
-from .slices import footnote_definitions, slice_chunk, without_footnote_definitions
+from .slices import (footnote_definitions, numbered_auto_lists, slice_chunk,
+                     without_footnote_definitions)
 
 # Counters a box steps when it opens (parody-environments.sty).
 BOX_COUNTERS = ("thmctr", "examplectr", "infoboxctr", "listingctr", "algorithmctr",
@@ -115,20 +116,25 @@ def page_markdown(page, english, translated, language, counters):
     """``([(section index, markdown)], notes)`` for one twin page."""
     groups, notes = [], []
     run = None  # the marker the previous piece opened: one per run of chunks, not per chunk
+    numbered = {}  # section -> its texts with "#." items numbered, as each is met
     for piece in page.pieces:
         en = english[piece.section]
         en_text = en.chunks[piece.chunk]
         if _is_footnote_definition(en_text):
             continue  # every page gets the section's definitions below
         tr = translated[piece.section]
-        text, state = tr.texts[piece.chunk], tr.states[piece.chunk]
+        if piece.section not in numbered:
+            numbered[piece.section] = numbered_auto_lists(
+                [t if t is not None else c for t, c in zip(tr.texts, en.chunks)])
+        state = tr.states[piece.chunk]
         lang, blocks, marker = language, [], None
-        if text is None:
-            text, lang, marker = en_text, "en", "\\parodyuntranslated"
+        if tr.texts[piece.chunk] is None:
+            lang, marker = "en", "\\parodyuntranslated"
             notes.append(f"untranslated: {en.key} chunk {piece.chunk}")
         elif state == "stale":
             marker = "\\parodystale"
             notes.append(f"stale: {en.key} chunk {piece.chunk}")
+        text = numbered[piece.section][piece.chunk]  # the English where untranslated
         if marker and marker != run:
             blocks.append(marker)
         run = marker

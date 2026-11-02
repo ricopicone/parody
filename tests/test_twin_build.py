@@ -64,6 +64,18 @@ def test_page_markdown_untranslated_uses_english_with_marker():
     assert any("untranslated" in n for n in notes)
 
 
+def test_page_markdown_numbers_a_list_that_began_on_an_earlier_page():
+    en = ["Steps:", "#. One step.", "#. Two step.", "#. Three step."]
+    tr = align_translation(_section(en), _tf(en, lambda c: c.replace("step", "Schritt")))
+    groups, _ = page_markdown(TwinPage(6, 1, pieces=[Piece(1, 2, 0, None), Piece(1, 3, 0, None)]),
+                              {1: _section(en)}, {1: tr}, "de", {})
+    assert "2. Two Schritt.\n\n3. Three Schritt." in groups[0][1]
+    # untranslated, the English is numbered the same way
+    groups, _ = page_markdown(TwinPage(6, 1, pieces=[Piece(1, 3, 0, None)]),
+                              {1: _section(en)}, {1: align_translation(_section(en), None)}, "de", {})
+    assert "3. Three step." in groups[0][1]
+
+
 def test_page_markdown_stale_uses_old_translation():
     old = EN[:1] + ["One alpha. Two. Three alpha."] + EN[2:]
     tf = _tf(old, lambda c: c.replace("alpha", "Alpha-DE"))

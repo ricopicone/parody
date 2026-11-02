@@ -34,7 +34,8 @@ _PROTECTED = re.compile(
     r"|!\[(?:[^\[\]]|\[[^\]]*\])*\]\([^)]*\)(?:\{[^{}]*\})?"  # images
     r"|\{[^{}\n]*\}"                             # attribute blocks
     r"|\]\([^)\n]*\)"                            # link targets
-    r"|^[ \t]*(?:#|\||:::|\+-).*?$",             # headings, tables, div fences
+    # a heading is #s then a space: "#." opens an auto-numbered list item
+    r"|^[ \t]*(?:\#{1,6}(?=[ \t]|$)|\||:::|\+-).*?$",  # headings, tables, div fences
     re.S | re.M)
 
 _CLOSERS = "\"'”’»)］）」』"
@@ -62,10 +63,12 @@ _WORD_BEFORE = re.compile(r"([^\s(\[{]+)$")
 
 _DISPLAY_END = re.compile(r"[.?!。！？]\s*(?:\\end\{[^}]+\}\s*)*$")
 _AFTER_DISPLAY = re.compile(r"\s+")
+# "#." is pandoc's auto-numbered item: each one numbers itself from the item
+# before, so a mark on its own line between two of them restarted the count.
 _LIST_ITEM = re.compile(
-    r"^[ \t]*(?:[-*+]|\(?(?:[0-9]{1,9}|[a-z]|[ivxlc]{1,6})[.)]"
+    r"^[ \t]*(?:[-*+]|\(?(?:[0-9]{1,9}|[a-z]|[ivxlc]{1,6}|#)[.)]"
     r"|\(?(?:[A-Z]|[IVXLC]{1,6})[.)](?=[ \t]{2}))[ \t]+", re.M)
-_MARKER_NUMBER = re.compile(r"[ \t]*\(?(?:\d{1,9}|[A-Za-z]|[ivxlcIVXLC]{1,6})")
+_MARKER_NUMBER = re.compile(r"[ \t]*\(?(?:\d{1,9}|[A-Za-z]|[ivxlcIVXLC]{1,6}|#)")
 # [ \t]*, not \s*: a closing ":::" then a paragraph is not an opener.
 _NESTED_OPEN = re.compile(r"^:{3,}[ \t]*[^\s:][^\n]*\n", re.M)
 _BLANK_LINE = re.compile(r"\n[ \t]*\n\s*")
@@ -75,7 +78,7 @@ _BLANK_LINE = re.compile(r"\n[ \t]*\n\s*")
 # List markers as pandoc reads them: a number, one letter or a roman numeral;
 # an uppercase marker needs two spaces after it (so "B. Russell" is prose).
 _INLINE_HEAD = re.compile(
-    r"^(?:[ \t]*(?:[-*+]|\(?(?:[0-9]{1,9}|[a-z]|[ivxlc]{1,6})[.)]"
+    r"^(?:[ \t]*(?:[-*+]|\(?(?:[0-9]{1,9}|[a-z]|[ivxlc]{1,6}|#)[.)]"
     r"|\(?(?:[A-Z]|[IVXLC]{1,6})[.)](?=[ \t]{2}))[ \t]+"
     r"|>[ \t]*|\[\^[^\]\s]+\]:[ \t]*|[:~][ \t]+)")
 
