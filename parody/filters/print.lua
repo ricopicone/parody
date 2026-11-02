@@ -731,8 +731,12 @@ coder_latex = function(el)
     local content = pandoc.utils.stringify(el.text)
     local samepage = el.classes:includes('nosamepage') and '' or ',samepage'
     local linenos = el.classes:includes('linenos') and ',linenos' or ''
+    -- breaklines: a line longer than the measure wraps instead of running off
+    -- the page. Breaks fall at spaces and after , ( and ., so a long call
+    -- chain with no spaces in it wraps too.
     return pandoc.RawBlock('latex',
       '\\begin{mintedwrapper}\\nointerlineskip\\nointerlineskip\\begin{minted}[autogobble'
+      .. ',breaklines,breakafter={,(.}'
       .. samepage .. linenos .. ']{' .. language .. '}\n'
       .. content .. '\n\\end{minted}\n\\end{mintedwrapper}\n')
   elseif el.t == 'Code' then

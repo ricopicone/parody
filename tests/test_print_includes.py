@@ -177,3 +177,15 @@ def test_include_code_inside_an_example_inlines_verbatim(notebook_chapter, tmp_p
             '```{.include-code path="helper.py"}\n```\n:::\n:::\n')
     tex = render(section, body, tmp_path)
     assert "x = 1" in tex
+
+
+def test_a_long_code_line_wraps_rather_than_running_off_the_page(notebook_chapter, tmp_path):
+    """minted without breaklines set a 100-character line in one piece, past
+    the right margin and off the page: robotics chapter 6's programs, once
+    they printed at all. Breaks fall at spaces and after , ( and ., so a long
+    call chain with no spaces wraps too."""
+    section, _ = notebook_chapter
+    tex = render(section, "```python\nx = 1\n```\n", tmp_path)
+    opts = tex.split("\\begin{minted}[", 1)[1].split("]{", 1)[0]
+    assert "breaklines" in opts
+    assert "breakafter={,(.}" in opts
